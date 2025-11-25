@@ -1,11 +1,13 @@
+
 'use client';
 
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
-import { FirebaseClientProvider } from '@/firebase';
+import { FirebaseClientProvider, useAuth } from '@/firebase';
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -27,16 +29,23 @@ import {
   Truck,
   BookCheck,
   Building2,
+  LogOut,
 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { signOut } from 'firebase/auth';
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const auth = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    if (auth) {
+      await signOut(auth);
+      router.push('/login');
+    }
+  };
 
   const menuItems = [
     { href: '/dashboard', label: 'Panel de Control', icon: Home },
@@ -52,9 +61,69 @@ export default function RootLayout({
     { href: '/usuarios', label: 'Usuarios', icon: Users },
   ];
 
-  // We hide the sidebar on the login, signup, and root pages.
   const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
 
+  if (hideSidebar) {
+    return <main className="flex-1">{children}</main>;
+  }
+
+  return (
+    <SidebarProvider>
+      <Sidebar>
+        <SidebarHeader>
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Building2 />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-semibold">Inventario</span>
+              <span className="text-sm text-sidebar-foreground/80">App</span>
+            </div>
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu>
+            {menuItems.map((item) => (
+              <SidebarMenuItem key={item.label}>
+                <Link href={item.href} passHref>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.href}
+                    icon={<item.icon />}
+                  >
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </Link>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarContent>
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={handleLogout} icon={<LogOut />}>
+                <span>Cerrar Sesión</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
+          <SidebarTrigger className="md:hidden" />
+          <div className="w-full flex-1">{/* Add Header Content Here */}</div>
+        </header>
+        <main className="flex-1">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -71,53 +140,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background font-body antialiased">
         <FirebaseClientProvider>
-          <SidebarProvider>
-            {!hideSidebar && (
-              <Sidebar>
-                <SidebarHeader>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                      <Building2 />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-semibold">Inventario</span>
-                      <span className="text-sm text-sidebar-foreground/80">
-                        App
-                      </span>
-                    </div>
-                  </div>
-                </SidebarHeader>
-                <SidebarContent>
-                  <SidebarMenu>
-                    {menuItems.map((item) => (
-                      <SidebarMenuItem key={item.label}>
-                        <Link href={item.href} passHref>
-                          <SidebarMenuButton
-                            asChild
-                            isActive={pathname === item.href}
-                            icon={<item.icon />}
-                          >
-                            <span>{item.label}</span>
-                          </SidebarMenuButton>
-                        </Link>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarContent>
-              </Sidebar>
-            )}
-            <SidebarInset>
-              {!hideSidebar && (
-                <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
-                  <SidebarTrigger className="md:hidden" />
-                  <div className="w-full flex-1">
-                    {/* Add Header Content Here */}
-                  </div>
-                </header>
-              )}
-              <main className="flex-1">{children}</main>
-            </SidebarInset>
-          </SidebarProvider>
+          <AppLayout>{children}</AppLayout>
           <Toaster />
         </FirebaseClientProvider>
       </body>
