@@ -1,5 +1,10 @@
+
 'use client';
 
+import { useState, useEffect } from 'react';
+import { useForm, type SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import {
   Table,
   TableHeader,
@@ -24,9 +29,42 @@ import {
   useUser,
   useDoc,
 } from '@/firebase';
-import { collection, doc, updateDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Edit, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+
+const formSchema = z.object({
+  firstName: z
+    .string()
+    .min(1, { message: 'El nombre es requerido.' }),
+  lastName: z
+    .string()
+    .min(1, { message: 'El apellido es requerido.' }),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
 
 type UserProfile = {
   id: string;
@@ -34,6 +72,8 @@ type UserProfile = {
   lastName?: string;
   email: string;
   photoURL?: string;
+  phone?: string;
+  address?: string;
   role?: 'administrador' | 'editor' | 'visualizador';
 };
 
@@ -44,6 +84,8 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
 };
 
 export default function UsuariosPage() {
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
   const { toast } = useToast();
@@ -52,13 +94,30 @@ export default function UsuariosPage() {
     () => (firestore ? collection(firestore, 'users') : null),
     [firestore]
   );
-  const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
+  const { data: users, isLoading } =
+    useCollection<UserProfile>(usersCollection);
 
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
     [firestore, currentUser]
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
+  
+  const editForm = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+  });
+  
+  useEffect(() => {
+    if (editingUser) {
+      editForm.reset({
+        firstName: editingUser.firstName || '',
+        lastName: editingUser.lastName || '',
+        phone: editingUser.phone || '',
+        address: editingUser.address || '',
+      });
+    }
+  }, [editingUser, editForm]);
+
 
   const handleRoleChange = async (userId: string, role: string) => {
     if (!firestore) return;
@@ -76,6 +135,32 @@ export default function UsuariosPage() {
         title: 'Error de Permisos',
         description: 'No tienes permisos para cambiar el rol de este usuario.',
       });
+    }
+  };
+  
+  const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
+    if (!firestore || !editingUser) return;
+    setIsEditSubmitting(true);
+    try {
+      const userRef = doc(firestore, 'users', editingUser.id);
+      await updateDoc(userRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+      });
+      toast({
+        title: 'Usuario Actualizado',
+        description: `Los datos del usuario han sido actualizados.`,
+      });
+      setEditingUser(null);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error al actualizar el usuario.',
+      });
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
@@ -103,8 +188,10 @@ export default function UsuariosPage() {
             <TableRow>
               <TableHead>Usuario</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Teléfono</TableHead>
+              <TableHead>Dirección</TableHead>
               <TableHead>Rol</TableHead>
-              <TableHead className="w-48 text-right">Cambiar Rol</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -123,10 +210,16 @@ export default function UsuariosPage() {
                     <Skeleton className="h-4 w-40" />
                   </TableCell>
                   <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-48" />
+                  </TableCell>
+                  <TableCell>
                     <Skeleton className="h-6 w-24 rounded-full" />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Skeleton className="h-10 w-36 ml-auto" />
+                    <Skeleton className="h-10 w-48 ml-auto" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -149,6 +242,12 @@ export default function UsuariosPage() {
                   <TableCell className="text-muted-foreground">
                     {user.email}
                   </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {user.phone || '-'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {user.address || '-'}
+                  </TableCell>
                   <TableCell>
                     {user.role ? (
                       <Badge variant={roleColors[user.role] || 'default'}>
@@ -159,28 +258,127 @@ export default function UsuariosPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Select
-                      defaultValue={user.role}
-                      onValueChange={(value) => handleRoleChange(user.id, value)}
-                      disabled={!currentUserIsAdmin || user.id === currentUser?.uid}
-                    >
-                      <SelectTrigger className="w-36 ml-auto">
-                        <SelectValue placeholder="Seleccionar rol" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="administrador">
-                          Administrador
-                        </SelectItem>
-                        <SelectItem value="editor">Editor</SelectItem>
-                        <SelectItem value="visualizador">Visualizador</SelectItem>
-                      </SelectContent>
-                    </Select>
+                     {currentUserIsAdmin && (
+                       <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditingUser(user)}
+                        >
+                          <Edit className="h-4 w-4" />
+                          <span className="sr-only">Editar</span>
+                        </Button>
+                        <Select
+                          defaultValue={user.role}
+                          onValueChange={(value) => handleRoleChange(user.id, value)}
+                          disabled={user.id === currentUser?.uid}
+                        >
+                          <SelectTrigger className="w-36 ml-auto inline-flex">
+                            <SelectValue placeholder="Seleccionar rol" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="administrador">
+                              Administrador
+                            </SelectItem>
+                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="visualizador">Visualizador</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
           </TableBody>
         </Table>
       </div>
+      
+      {/* Edit User Dialog */}
+      <Dialog
+        open={!!editingUser}
+        onOpenChange={(isOpen) => !isOpen && setEditingUser(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Usuario</DialogTitle>
+            <DialogDescription>
+              Modifica los detalles del usuario.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form
+              onSubmit={editForm.handleSubmit(onEditSubmit)}
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editForm.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={editForm.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Apellido</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={editForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Teléfono</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dirección</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancelar</Button>
+                </DialogClose>
+                <Button type="submit" disabled={isEditSubmitting}>
+                  {isEditSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Guardar Cambios
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

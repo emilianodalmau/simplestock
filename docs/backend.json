@@ -24,6 +24,14 @@
           "description": "Email address of the user.",
           "format": "email"
         },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number of the user."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address of the user."
+        },
         "photoURL": {
           "type": "string",
           "description": "The URL of the user's profile picture."
