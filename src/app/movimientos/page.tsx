@@ -210,119 +210,112 @@ export default function MovimientosPage() {
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
-    if (!firestore || !user) return;
+    if (!firestore || !user || !productsMap.size) return;
     setIsSubmitting(true);
+    
+    // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
+    // This is the key change to correctly handle multiple lines for the same product.
+    const productChanges = new Map<string, number>();
+    for (const item of data.items) {
+        if (item.productId) {
+            const change = data.type === 'salida' ? -item.quantity : item.quantity;
+            productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
+        }
+    }
 
     try {
-      // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
-      // This is the key change to correctly handle multiple lines for the same product.
-      const productChanges = new Map<string, number>();
-      for (const item of data.items) {
-        if (item.productId) {
-          const change = data.type === 'salida' ? -item.quantity : item.quantity;
-          productChanges.set(
-            item.productId,
-            (productChanges.get(item.productId) || 0) + change
-          );
-        }
-      }
+        await runTransaction(firestore, async (transaction) => {
+            const stockChecks: any[] = [];
+            
+            // --- PHASE 2.1: READ all necessary documents ---
+            for (const [productId, change] of productChanges.entries()) {
+                const inventoryDocId = `${productId}_${data.depositId}`;
+                const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+                const stockDocSnap = await transaction.get(stockDocRef);
+                stockChecks.push({
+                    productId,
+                    change,
+                    stockDocRef,
+                    stockDocSnap,
+                    productName: productsMap.get(productId)?.name || 'N/A'
+                });
+            }
 
-      await runTransaction(firestore, async (transaction) => {
-        const stockChecks = [];
+            // --- PHASE 2.2: VALIDATE all reads ---
+            if (data.type === 'salida') {
+                for (const check of stockChecks) {
+                    const currentQuantity = check.stockDocSnap.exists() ? check.stockDocSnap.data().quantity : 0;
+                    const quantityToWithdraw = -check.change; // change is negative for salidas
 
-        // --- PHASE 2.1: READ all necessary documents ---
-        for (const [productId, change] of productChanges.entries()) {
-          const product = productsMap.get(productId);
-          if (!product) throw new Error(`Producto con ID ${productId} no encontrado.`);
-
-          const inventoryDocId = `${productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
-          const stockDocSnap = await transaction.get(stockDocRef);
-          
-          stockChecks.push({
-            ref: stockDocRef,
-            snap: stockDocSnap,
-            change: change,
-            productName: product.name,
-            productId: product.id
-          });
-        }
-        
-        // --- PHASE 2.2: VALIDATE all reads ---
-        if (data.type === 'salida') {
-            for (const check of stockChecks) {
-                const currentQuantity = check.snap.exists() ? check.snap.data().quantity : 0;
-                const quantityToWithdraw = -check.change; // change is negative for salidas
-
-                if (currentQuantity < quantityToWithdraw) {
-                    throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`);
+                    if (currentQuantity < quantityToWithdraw) {
+                        throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`);
+                    }
                 }
             }
-        }
-        
-        // --- PHASE 2.3: GET NEW REMITO NUMBER ---
-        const counterRef = doc(firestore, 'counters', 'remitoCounter');
-        const counterSnap = await transaction.get(counterRef);
-        const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-        const newRemitoNumber = lastNumber + 1;
-        const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
 
-        // --- PHASE 3: WRITE all changes ---
-        transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+            // --- PHASE 2.3: GET NEW REMITO NUMBER ---
+            const counterRef = doc(firestore, 'counters', 'remitoCounter');
+            const counterSnap = await transaction.get(counterRef);
+            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+            const newRemitoNumber = lastNumber + 1;
+            const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
 
-        for (const check of stockChecks) {
-          transaction.set(
-            check.ref,
-            {
-              quantity: increment(check.change),
-              lastUpdated: serverTimestamp(),
-              productId: check.productId,
-              depositId: data.depositId,
-            },
-            { merge: true }
-          );
-        }
+            // --- PHASE 3: WRITE all changes ---
+            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
-        // Prepare final movement document data from original form data
-        const movementItemsForDoc: StockMovementItem[] = data.items.map(item => {
-            const product = productsMap.get(item.productId);
-            return {
-                productId: item.productId,
-                productName: product?.name || 'N/A',
-                quantity: item.quantity,
-                unit: product?.unit || 'N/A',
-            };
+            for (const check of stockChecks) {
+                transaction.set(
+                    check.stockDocRef,
+                    {
+                        quantity: increment(check.change),
+                        lastUpdated: serverTimestamp(),
+                        productId: check.productId,
+                        depositId: data.depositId,
+                    },
+                    { merge: true }
+                );
+            }
+
+            // Prepare final movement document data from original form data
+            const movementItemsForDoc: StockMovementItem[] = data.items.map(item => {
+                const product = productsMap.get(item.productId);
+                return {
+                    productId: item.productId,
+                    productName: product?.name || 'N/A',
+                    quantity: item.quantity,
+                    unit: product?.unit || 'N/A',
+                };
+            });
+
+            const deposit = deposits?.find((d) => d.id === data.depositId);
+            const actor = actors?.find((a) => a.id === data.actorId);
+            const movementRef = doc(collection(firestore, 'stockMovements'));
+
+            transaction.set(movementRef, {
+                id: movementRef.id,
+                remitoNumber: formattedRemitoNumber,
+                type: data.type,
+                depositId: data.depositId,
+                depositName: deposit?.name || 'N/A',
+                actorId: data.actorId || null,
+                actorName: actor?.name || null,
+                actorType: data.actorId ? (data.type === 'salida' ? 'client' : 'supplier') : null,
+                createdAt: serverTimestamp(),
+                userId: user.uid,
+                items: movementItemsForDoc,
+            });
         });
 
-        const deposit = deposits?.find((d) => d.id === data.depositId);
-        const actor = actors?.find((a) => a.id === data.actorId);
-        const movementRef = doc(collection(firestore, 'stockMovements'));
-
-        transaction.set(movementRef, {
-            id: movementRef.id,
-            remitoNumber: formattedRemitoNumber,
-            type: data.type,
-            depositId: data.depositId,
-            depositName: deposit?.name || 'N/A',
-            actorId: data.actorId || null,
-            actorName: actor?.name || null,
-            actorType: data.actorId ? (data.type === 'salida' ? 'client' : 'supplier') : null,
-            createdAt: serverTimestamp(),
-            userId: user.uid,
-            items: movementItemsForDoc,
+        toast({
+            title: 'Movimiento Registrado',
+            description: 'El remito ha sido registrado exitosamente.',
         });
-      });
-
-      toast({
-          title: 'Movimiento Registrado',
-          description: `El remito ha sido registrado exitosamente.`,
-      });
-      form.reset({
-          type: 'salida',
-          depositId: '',
-          actorId: '',
-          items: [{ productId: '', quantity: 1 }],
-      });
+        form.reset({
+            type: 'salida',
+            depositId: '',
+            actorId: '',
+            items: [{ productId: '', quantity: 1 }],
+        });
     } catch (error: any) {
         console.error('Error procesando el movimiento:', error);
         toast({
@@ -333,7 +326,8 @@ export default function MovimientosPage() {
     } finally {
         setIsSubmitting(false);
     }
-  };
+};
+
 
   const handleDeleteMovement = async (movement: StockMovement) => {
     if (!firestore) return;
