@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   useForm,
   useFieldArray,
@@ -207,9 +207,22 @@ export default function MovimientosPage() {
     defaultValues: { type: 'salida', depositId: '', remitoNumber: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
   });
 
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
+  const { fields, append, remove, replace } = useFieldArray({ control: form.control, name: 'items' });
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
+
+    // --- Effects ---
+  useEffect(() => {
+    // When the selected deposit changes, reset the items array
+    // to force re-evaluation of available products.
+    replace([{ productId: '', quantity: 1 }]);
+  }, [selectedDepositId, replace]);
+
+  useEffect(() => {
+    // Also reset when movement type changes
+    replace([{ productId: '', quantity: 1 }]);
+  }, [movementType, replace]);
+
 
   // --- Data Memoization for UI ---
   const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
@@ -240,8 +253,8 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size) return;
     setIsSubmitting(true);
 
-    // 1. AGGREGATE changes for each product.
     const productChanges = new Map<string, number>();
+
     for (const item of data.items) {
         if (item.productId) {
             const change = data.type === 'salida' ? -item.quantity : item.quantity;
@@ -253,8 +266,6 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
         await runTransaction(firestore, async (transaction) => {
             const stockChecks: any[] = [];
             const counterRef = doc(firestore, 'counters', 'remitoCounter');
-
-            // --- PHASE 1: READ all necessary documents ---
             const counterSnap = await transaction.get(counterRef);
 
             for (const [productId, change] of productChanges.entries()) {
@@ -270,12 +281,10 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                 });
             }
 
-            // --- PHASE 2: VALIDATE all reads ---
             for (const check of stockChecks) {
-                // This validation should ONLY run for salidas (negative change)
                 if (check.change < 0) {
                     const currentQuantity = check.stockDocSnap.exists() ? check.stockDocSnap.data().quantity : 0;
-                    const quantityToWithdraw = -check.change; // make it a positive number for comparison
+                    const quantityToWithdraw = -check.change;
 
                     if (currentQuantity < quantityToWithdraw) {
                         throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`);
@@ -283,7 +292,6 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                 }
             }
             
-            // --- PHASE 3: WRITE all changes ---
             const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
             const newRemitoNumber = lastNumber + 1;
             const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
@@ -482,7 +490,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {availableProductsForMovement.length === 0 && movementType === 'salida' ? (
+                                {availableProductsForMovement.length === 0 && movementType === 'salida' && !!selectedDepositId ? (
                                   <div className="text-center text-sm text-muted-foreground p-4">No hay productos con stock en este depósito.</div>
                                 ) : (
                                   availableProductsForMovement.map((p) => <SelectItem key={p.id} value={p.id}>{`${p.name} (${p.code})`}</SelectItem>)
