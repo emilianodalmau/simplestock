@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -47,10 +47,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
+const unitTypes = ["unidades", "litros", "kilos", "metros", "gramos", "cajas"] as const;
+
 const formSchema = z.object({
   name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
   minStock: z.coerce.number().min(0, { message: 'El stock mínimo no puede ser negativo.' }),
+  unit: z.enum(unitTypes, { required_error: 'El tipo de unidad es requerido.'}),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -66,6 +69,7 @@ type Product = {
   name: string;
   categoryId: string;
   minStock: number;
+  unit: string;
 };
 
 type UserProfile = {
@@ -169,13 +173,13 @@ export default function ProductosPage() {
               <Form {...form}>
                 <form
                   onSubmit={form.handleSubmit(onSubmit)}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
                 >
                   <FormField
                     control={form.control}
                     name="name"
                     render={({ field }) => (
-                      <FormItem className="sm:col-span-2 lg:col-span-1">
+                      <FormItem className="lg:col-span-1 xl:col-span-1">
                         <FormLabel>Nombre del Producto</FormLabel>
                         <FormControl>
                           <Input placeholder="Ej: Martillo de Goma" {...field} />
@@ -214,6 +218,30 @@ export default function ProductosPage() {
                   />
                   <FormField
                     control={form.control}
+                    name="unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Unidad</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona una unidad" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {unitTypes.map((unit) => (
+                              <SelectItem key={unit} value={unit}>
+                                {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="minStock"
                     render={({ field }) => (
                       <FormItem>
@@ -225,7 +253,7 @@ export default function ProductosPage() {
                       </FormItem>
                     )}
                   />
-                  <div className="flex items-end sm:col-span-2 lg:col-span-1">
+                  <div className="flex items-end">
                     <Button type="submit" disabled={isSubmitting} className="w-full">
                         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Agregar Producto
@@ -250,6 +278,7 @@ export default function ProductosPage() {
                       <TableHead>Código</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Categoría</TableHead>
+                      <TableHead>Tipo de Unidad</TableHead>
                       <TableHead>Stock Mínimo</TableHead>
                       {canManageProducts && (
                         <TableHead className="text-right">Acciones</TableHead>
@@ -264,6 +293,7 @@ export default function ProductosPage() {
                           <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                           {canManageProducts && (
                             <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                           )}
@@ -271,7 +301,7 @@ export default function ProductosPage() {
                       ))}
                     {!isLoadingProducts && products?.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={canManageProducts ? 5 : 4} className="text-center">
+                        <TableCell colSpan={canManageProducts ? 6 : 5} className="text-center">
                           No hay productos creados.
                         </TableCell>
                       </TableRow>
@@ -282,6 +312,7 @@ export default function ProductosPage() {
                           <TableCell className="font-mono">{product.code}</TableCell>
                           <TableCell className="font-medium">{product.name}</TableCell>
                           <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
+                          <TableCell className="text-muted-foreground">{product.unit}</TableCell>
                           <TableCell className="text-muted-foreground">{product.minStock}</TableCell>
                           {canManageProducts && (
                             <TableCell className="text-right">

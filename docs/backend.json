@@ -129,6 +129,18 @@
         "minStock": {
           "type": "number",
           "description": "The minimum stock level for the product."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement for the product stock.",
+          "enum": [
+            "unidades",
+            "litros",
+            "kilos",
+            "metros",
+            "gramos",
+            "cajas"
+          ]
         }
       },
       "required": [
@@ -136,7 +148,8 @@
         "code",
         "name",
         "categoryId",
-        "minStock"
+        "minStock",
+        "unit"
       ]
     }
   },
