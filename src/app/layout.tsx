@@ -27,7 +27,6 @@ import {
   Truck,
   BookCheck,
   Building2,
-  Briefcase,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -46,7 +45,7 @@ export default function RootLayout({
     { href: '/productos', label: 'Productos', icon: Box },
     { href: '/movimientos', label: 'Movimientos', icon: ArrowRightLeft },
     { href: '/usuarios', label: 'Usuarios', icon: Users },
-    { href: '/sucursales', label: 'Sucursales', icon: Briefcase },
+    { href: '/clientes', label: 'Clientes', icon: Building },
     { href: '/depositos', label: 'Depósitos', icon: Archive },
     { href: '/categorias', label: 'Categorías', icon: Tags },
     { href: '/proveedores', label: 'Proveedores', icon: Truck },
@@ -83,7 +82,7 @@ export default function RootLayout({
                     <div className="flex flex-col">
                       <span className="font-semibold">Inventario</span>
                       <span className="text-sm text-sidebar-foreground/80">
-                        Municipal
+                        App
                       </span>
                     </div>
                   </div>
