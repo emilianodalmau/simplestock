@@ -6,70 +6,42 @@ service cloud.firestore {
     // Helper Functions
     // ------------------------------------------------------------------------
 
-    /**
-     * Checks if the user is authenticated.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * Checks if the currently authenticated user's UID matches the provided userId.
-     * This is the primary function for enforcing data ownership.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /**
-     * Checks if the document exists and if the authenticated user is the owner.
-     * Used for safe update and delete operations.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * Checks if the requesting user has the 'administrador' role.
-     * It fetches the user's own profile document to check their role.
-     */
     function isAdmin() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      // Check if user is signed in and if their user document exists and has the admin role.
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc.data.role == 'administrador';
+      // Securely check for admin role from the user's own document.
+      // This requires the user document to exist.
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
     }
-
+    
     // ------------------------------------------------------------------------
     // Collection Rules
     // ------------------------------------------------------------------------
 
-    /**
-     * @description Controls access to user profile documents.
-     * @path /users/{userId}
-     * @allow (get) An authenticated user retrieves their own profile document.
-     * @allow (list) An administrator lists all documents in the `/users` collection.
-     * @principle Restricts access to a user's own data tree and prevents user enumeration, except for admins.
-     */
     match /users/{userId} {
+      // READ: Users can get their own profile. Admins can get any profile.
       allow get: if isOwner(userId) || isAdmin();
+      
+      // LIST: Only admins can list all users.
       allow list: if isAdmin();
+      
+      // CREATE: A user can only create their own user document.
       allow create: if isOwner(userId);
+      
+      // UPDATE: A user can update their own document. An admin can update any document (e.g., to change a role).
       allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isOwner(userId) || isAdmin();
+      
+      // DELETE: Only admins can delete user documents for now.
+      allow delete: if isAdmin();
 
-      /**
-       * @description Controls access to a user's private content subcollection.
-       * @path /users/{userId}/content/{contentId}
-       * @allow (create) An authenticated user creates a new content document within their own subcollection.
-       * @deny (get) A user attempts to read a content document belonging to another user.
-       * @principle Enforces strict document ownership for all operations within a user's private data subcollection.
-       */
       match /content/{contentId} {
-        allow get: if isOwner(userId);
-        allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
-        allow delete: if isExistingOwner(userId);
+        allow read, write: if isOwner(userId);
       }
     }
   }

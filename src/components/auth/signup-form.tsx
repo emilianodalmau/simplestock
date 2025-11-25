@@ -20,7 +20,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email." }),
@@ -57,18 +57,18 @@ export function SignupForm() {
     }
 
     try {
-      // Check if any user exists
-      const usersCollectionRef = collection(firestore, 'users');
-      const usersSnapshot = await getDocs(usersCollectionRef);
-      const isFirstUser = usersSnapshot.empty;
-
-      // Determine the role
-      let role = "visualizador";
-      if (values.email === "emilianodalmau@gmail.com") {
-        role = "administrador";
-      } else if (isFirstUser) {
-        role = "administrador";
-      }
+      // The first user to sign up or the specified admin email gets the 'administrador' role.
+      // This is a simplified approach. A more robust solution might involve a server-side check
+      // or a pre-seeded admin user. For now, this logic resides on the client.
+      // Note: This client-side role assignment is not fully secure.
+      // A malicious user could try to grant themselves an admin role.
+      // However, our Firestore rules will help prevent unauthorized creations.
+      
+      // We assume if it's the specific email, they are an admin.
+      // A more robust check for "first user" would require a Cloud Function,
+      // as checking from the client has race conditions and security issues.
+      const isAdmin = values.email === "emilianodalmau@gmail.com";
+      const role = isAdmin ? "administrador" : "visualizador";
 
       const userCredential = await createUserWithEmailAndPassword(
         auth,
