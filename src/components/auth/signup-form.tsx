@@ -16,10 +16,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { useAuth } from "@/firebase";
+import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email." }),
@@ -33,6 +34,7 @@ export function SignupForm() {
   const router = useRouter();
   const { toast } = useToast();
   const auth = useAuth();
+  const firestore = useFirestore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -44,8 +46,40 @@ export function SignupForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
+    if (!firestore) {
+      toast({
+        title: "Error",
+        description: "Firestore is not available.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      await createUserWithEmailAndPassword(auth, values.email, values.password);
+      // Check if any user exists
+      const usersCollectionRef = collection(firestore, 'users');
+      const usersSnapshot = await getDocs(usersCollectionRef);
+      const isFirstUser = usersSnapshot.empty;
+
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        values.email,
+        values.password
+      );
+      const user = userCredential.user;
+
+      // Create a user document in Firestore
+      const userDocRef = doc(firestore, "users", user.uid);
+      await setDoc(userDocRef, {
+        id: user.uid,
+        email: user.email,
+        displayName: user.displayName || "",
+        photoURL: user.photoURL || "",
+        // Assign 'administrador' role to the first user, 'visualizador' to others
+        role: isFirstUser ? "administrador" : "visualizador",
+      });
+
       router.push("/dashboard");
     } catch (error: any) {
       toast({
@@ -53,7 +87,7 @@ export function SignupForm() {
         description:
           error.code === "auth/email-already-in-use"
             ? "This email is already in use."
-            : "An unexpected error occurred.",
+            : "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {
