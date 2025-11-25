@@ -104,6 +104,10 @@
             "gramos",
             "cajas"
           ]
+        },
+        "isArchived": {
+          "type": "boolean",
+          "description": "If true, the product is archived and not available for new transactions."
         }
       },
       "required": [

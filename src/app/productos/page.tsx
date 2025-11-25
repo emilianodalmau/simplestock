@@ -16,9 +16,10 @@ import {
   collection,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   serverTimestamp,
+  query,
+  where,
 } from 'firebase/firestore';
 import {
   Card,
@@ -119,6 +120,7 @@ type Product = {
   supplierId: string;
   minStock: number;
   unit: (typeof unitTypes)[number];
+  isArchived?: boolean;
 };
 
 type UserProfile = {
@@ -147,21 +149,21 @@ export default function ProductosPage() {
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
   const categoriesCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'categories') : null),
+    () => (firestore ? query(collection(firestore, 'categories')) : null),
     [firestore]
   );
   const { data: categories, isLoading: isLoadingCategories } =
     useCollection<Category>(categoriesCollection);
 
   const suppliersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'suppliers') : null),
+    () => (firestore ? query(collection(firestore, 'suppliers')) : null),
     [firestore]
   );
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
   const productsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'products') : null),
+    () => (firestore ? query(collection(firestore, 'products'), where('isArchived', '!=', true)) : null),
     [firestore]
   );
   const { data: products, isLoading: isLoadingProducts } =
@@ -201,6 +203,7 @@ export default function ProductosPage() {
       await addDoc(collection(firestore, 'products'), {
         ...data,
         code: productCode,
+        isArchived: false,
         createdAt: serverTimestamp(),
       });
       toast({
@@ -247,20 +250,22 @@ export default function ProductosPage() {
     }
   };
 
-  const handleDeleteProduct = async (productId: string) => {
+  const handleArchiveProduct = async (productId: string) => {
     if (!firestore) return;
     try {
-      await deleteDoc(doc(firestore, 'products', productId));
+      await updateDoc(doc(firestore, 'products', productId), {
+        isArchived: true
+      });
       toast({
-        title: 'Producto Eliminado',
-        description: 'El producto ha sido eliminado correctamente.',
+        title: 'Producto Archivado',
+        description: 'El producto ha sido archivado y no aparecerá en nuevas transacciones.',
       });
     } catch (error) {
-      console.error('Error deleting product:', error);
+      console.error('Error archiving product:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Ocurrió un error al eliminar el producto.',
+        description: 'Ocurrió un error al archivar el producto.',
       });
     }
   };
@@ -538,17 +543,16 @@ export default function ProductosPage() {
                                 <AlertDialogTrigger asChild>
                                   <Button variant="ghost" size="icon">
                                     <Trash2 className="h-4 w-4 text-destructive" />
-                                    <span className="sr-only">Eliminar</span>
+                                    <span className="sr-only">Archivar</span>
                                   </Button>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>
-                                      ¿Estás seguro?
+                                      ¿Estás seguro de archivar este producto?
                                     </AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      Esta acción no se puede deshacer. Esto
-                                      eliminará permanentemente el producto.
+                                      Esta acción no eliminará el producto, pero lo ocultará de las listas y no podrá ser usado en nuevos movimientos. El historial existente no se verá afectado.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -557,11 +561,11 @@ export default function ProductosPage() {
                                     </AlertDialogCancel>
                                     <AlertDialogAction
                                       onClick={() =>
-                                        handleDeleteProduct(product.id)
+                                        handleArchiveProduct(product.id)
                                       }
                                       className="bg-destructive hover:bg-destructive/90"
                                     >
-                                      Eliminar
+                                      Archivar
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
@@ -720,5 +724,3 @@ export default function ProductosPage() {
     </div>
   );
 }
-
-    

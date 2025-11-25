@@ -25,6 +25,7 @@ import {
   increment,
   writeBatch,
   deleteDoc,
+  where,
 } from 'firebase/firestore';
 import {
   Card,
@@ -78,7 +79,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- Data Types ---
-type Product = { id: string; name: string; unit: string; code: string };
+type Product = { id: string; name: string; unit: string; code: string, isArchived?: boolean };
 type Deposit = { id: string; name: string };
 type Client = { id: string; name: string };
 type Supplier = { id: string; name: string };
@@ -179,7 +180,7 @@ export default function MovimientosPage() {
   const userDocRef = useMemoFirebase(() => (firestore && user ? doc(firestore, 'users', user.uid) : null), [firestore, user]);
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
   
-  const productsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'products') : null, [firestore]);
+  const productsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'products'), where('isArchived', '!=', true)) : null, [firestore]);
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
 
   const depositsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'deposits') : null, [firestore]);
@@ -234,12 +235,12 @@ export default function MovimientosPage() {
     return products.filter((product) => productsWithStock.has(product.id));
   }, [movementType, selectedDepositId, products, inventory]);
 
-  // --- Form Submission Logic ---
+// --- Form Submission Logic ---
 const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size) return;
     setIsSubmitting(true);
-    
-    // 1. AGGREGATE a map of the total changes for each product.
+
+    // 1. AGGREGATE changes for each product.
     const productChanges = new Map<string, number>();
     for (const item of data.items) {
         if (item.productId) {
@@ -251,9 +252,9 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     try {
         await runTransaction(firestore, async (transaction) => {
             const stockChecks: any[] = [];
-            
-            // --- PHASE 1: READ all necessary documents ---
             const counterRef = doc(firestore, 'counters', 'remitoCounter');
+
+            // --- PHASE 1: READ all necessary documents ---
             const counterSnap = await transaction.get(counterRef);
 
             for (const [productId, change] of productChanges.entries()) {
@@ -271,7 +272,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
 
             // --- PHASE 2: VALIDATE all reads ---
             for (const check of stockChecks) {
-                // This validation should ONLY run for salidas (negative change)
+                 // This validation should ONLY run for salidas (negative change)
                 if (check.change < 0) {
                     const currentQuantity = check.stockDocSnap.exists() ? check.stockDocSnap.data().quantity : 0;
                     const quantityToWithdraw = -check.change; // make it a positive number for comparison
@@ -281,7 +282,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                     }
                 }
             }
-
+            
             // --- PHASE 3: WRITE all changes ---
             const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
             const newRemitoNumber = lastNumber + 1;
@@ -352,7 +353,6 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
         setIsSubmitting(false);
     }
 };
-
 
   const handleDeleteMovement = async (movement: StockMovement) => {
     if (!firestore) return;
@@ -454,9 +454,9 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                     name="remitoNumber"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nº Remito (Opcional)</FormLabel>
+                        <FormLabel>Nº Remito (Auto)</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ej: RE-00123" {...field} />
+                          <Input placeholder="Se genera automáticamente" {...field} disabled />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -615,5 +615,3 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     </div>
   );
 }
-
-    
