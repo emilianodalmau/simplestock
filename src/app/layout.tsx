@@ -2,7 +2,7 @@
 
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
-import { FirebaseClientProvider } from '@/firebase';
+import { FirebaseClientProvider, useFirebase, useAuth } from '@/firebase';
 import {
   Sidebar,
   SidebarContent,
@@ -45,7 +45,7 @@ function AppLayout({
   settings: AppSettings | null;
 }) {
   const pathname = usePathname();
-  const { auth } = useFirebase();
+  const auth = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
