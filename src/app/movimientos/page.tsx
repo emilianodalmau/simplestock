@@ -184,7 +184,7 @@ export default function MovimientosPage() {
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementFormSchema),
-    defaultValues: { type: 'salida', depositId: '', items: [{ productId: '', quantity: 1 }] },
+    defaultValues: { type: 'salida', depositId: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
   });
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
@@ -203,36 +203,33 @@ export default function MovimientosPage() {
     try {
       await runTransaction(firestore, async (transaction) => {
         const movementItemsForDoc: StockMovementItem[] = [];
-        const stockUpdateData: { 
-          ref: DocumentReference, 
-          change: number,
-          isNew: boolean
-        }[] = [];
+        const stockWriteOperations: (() => void)[] = [];
+        const virtualStock = new Map<string, number>();
 
-        // PHASE 1: READS
+        // PHASE 1: READS and VALIDATIONS
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
           if (!product) {
             throw new Error(`Producto con ID ${item.productId} no encontrado.`);
           }
-          
+
           const inventoryDocId = `${item.productId}_${data.depositId}`;
           const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
-          
-          const stockDocSnap = await transaction.get(inventoryDocRef);
-          
-          if (data.type === 'salida') {
-            const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
-            if (currentQuantity < item.quantity) {
-              throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}.`);
-            }
+          let currentQuantity = virtualStock.get(inventoryDocId) ?? -1;
+
+          if (currentQuantity === -1) {
+            const stockDocSnap = await transaction.get(inventoryDocRef);
+            currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
+            virtualStock.set(inventoryDocId, currentQuantity);
           }
           
-          stockUpdateData.push({
-            ref: inventoryDocRef,
-            change: item.quantity,
-            isNew: !stockDocSnap.exists()
-          });
+          if (data.type === 'salida') {
+            if (currentQuantity < item.quantity) {
+              throw new Error(`Stock insuficiente para ${product.name}. Stock virtual: ${currentQuantity}.`);
+            }
+            // Update virtual stock for subsequent checks in the same transaction
+            virtualStock.set(inventoryDocId, currentQuantity - item.quantity);
+          }
 
           movementItemsForDoc.push({
             productId: product.id,
@@ -240,24 +237,31 @@ export default function MovimientosPage() {
             quantity: item.quantity,
             unit: product.unit,
           });
+
+          // Prepare write operation
+          stockWriteOperations.push(() => {
+            const changeAmount = data.type === 'salida' ? -item.quantity : item.quantity;
+            const stockDocSnapExists = currentQuantity > 0 || (data.type === 'entrada' && currentQuantity === 0);
+
+             if (!stockDocSnapExists) {
+               transaction.set(inventoryDocRef, {
+                productId: item.productId,
+                depositId: data.depositId,
+                quantity: changeAmount,
+                lastUpdated: serverTimestamp(),
+              });
+            } else {
+              transaction.update(inventoryDocRef, { 
+                quantity: increment(changeAmount), 
+                lastUpdated: serverTimestamp() 
+              });
+            }
+          });
         }
 
         // PHASE 2: WRITES
-        for (const update of stockUpdateData) {
-          const changeAmount = data.type === 'salida' ? -update.change : update.change;
-          
-          if (update.isNew) {
-             transaction.set(update.ref, {
-              productId: update.ref.id.split('_')[0],
-              depositId: data.depositId,
-              quantity: changeAmount,
-              lastUpdated: serverTimestamp(),
-            });
-          } else {
-            transaction.update(update.ref, { quantity: increment(changeAmount), lastUpdated: serverTimestamp() });
-          }
-        }
-        
+        stockWriteOperations.forEach(op => op());
+
         const deposit = deposits?.find(d => d.id === data.depositId);
         const actor = actors?.find(a => a.id === data.actorId);
         const movementRef = doc(collection(firestore, 'stockMovements'));
@@ -278,9 +282,14 @@ export default function MovimientosPage() {
 
       toast({ title: 'Movimiento Registrado', description: `El remito de ${data.type} ha sido registrado.` });
       form.reset({ type: 'salida', depositId: '', actorId: '', items: [{ productId: '', quantity: 1 }] });
+    
     } catch (error: any) {
       console.error('Error procesando el movimiento:', error);
-      toast({ variant: 'destructive', title: 'Error en el movimiento', description: error.message || 'Ocurrió un error al procesar el remito.' });
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error en el movimiento', 
+        description: error.message || 'Ocurrió un error al procesar el remito.' 
+      });
     } finally {
       setIsSubmitting(false);
     }
