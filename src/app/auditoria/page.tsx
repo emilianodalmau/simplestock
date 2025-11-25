@@ -47,6 +47,19 @@ type UserProfile = {
   role?: 'administrador' | 'editor' | 'visualizador';
 };
 
+function UserDisplayName({ userId }: { userId: string }) {
+    const firestore = useFirestore();
+    const userDocRef = useMemoFirebase(() => (firestore ? doc(firestore, 'users', userId) : null), [firestore, userId]);
+    const { data: userProfile, isLoading } = useDoc<UserProfile>(userDocRef);
+
+    if (isLoading) {
+        return <Skeleton className="h-4 w-24" />;
+    }
+
+    return <span>{userProfile?.displayName || userProfile?.email || userId}</span>;
+}
+
+
 export default function AuditoriaPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
@@ -67,19 +80,7 @@ export default function AuditoriaPage() {
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsCollection);
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore && canViewPage ? collection(firestore, 'users') : null),
-    [firestore, canViewPage]
-  );
-  const { data: users, isLoading: isLoadingUsers } =
-    useCollection<UserProfile>(usersCollection);
-
-  const userMap = useMemo(() => {
-    if (!users) return new Map();
-    return new Map(users.map((user) => [user.id, user.displayName || user.email]));
-  }, [users]);
-  
-  const isLoading = isLoadingMovements || isLoadingUsers || isLoadingUser;
+  const isLoading = isLoadingMovements || isLoadingUser;
 
   if (!isLoadingUser && !canViewPage) {
      return (
@@ -155,7 +156,7 @@ export default function AuditoriaPage() {
                           : '-'}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {userMap.get(mov.userId) || mov.userId}
+                        <UserDisplayName userId={mov.userId} />
                       </TableCell>
                       <TableCell>
                         <span
@@ -182,5 +183,3 @@ export default function AuditoriaPage() {
     </div>
   );
 }
-
-    
