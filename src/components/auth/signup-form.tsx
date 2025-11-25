@@ -57,16 +57,6 @@ export function SignupForm() {
     }
 
     try {
-      // The first user to sign up or the specified admin email gets the 'administrador' role.
-      // This is a simplified approach. A more robust solution might involve a server-side check
-      // or a pre-seeded admin user. For now, this logic resides on the client.
-      // Note: This client-side role assignment is not fully secure.
-      // A malicious user could try to grant themselves an admin role.
-      // However, our Firestore rules will help prevent unauthorized creations.
-      
-      // We assume if it's the specific email, they are an admin.
-      // A more robust check for "first user" would require a Cloud Function,
-      // as checking from the client has race conditions and security issues.
       const isAdmin = values.email === "emilianodalmau@gmail.com";
       const role = isAdmin ? "administrador" : "visualizador";
 
@@ -77,7 +67,6 @@ export function SignupForm() {
       );
       const user = userCredential.user;
 
-      // Create a user document in Firestore
       const userDocRef = doc(firestore, "users", user.uid);
       await setDoc(userDocRef, {
         id: user.uid,
