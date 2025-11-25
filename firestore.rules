@@ -91,6 +91,14 @@ service cloud.firestore {
       // WRITE: Only editors or admins can create, update, or delete clients.
       allow write: if isEditorOrAdmin();
     }
+
+    match /inventory/{inventoryStockId} {
+      // READ: Any signed-in user can read inventory stock levels.
+      allow get, list: if isSignedIn();
+
+      // WRITE: Only editors or admins can modify stock levels.
+      allow write: if isEditorOrAdmin();
+    }
   }
 }
 
