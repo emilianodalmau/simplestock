@@ -1,0 +1,302 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useForm, type SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import {
+  useFirestore,
+  useCollection,
+  useMemoFirebase,
+  useUser,
+} from '@/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from '@/components/ui/card';
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
+
+const formSchema = z.object({
+  name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
+  categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
+  minStock: z.coerce.number().min(0, { message: 'El stock mínimo no puede ser negativo.' }),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+type Category = {
+  id: string;
+  name: string;
+};
+
+type Product = {
+  id: string;
+  code: string;
+  name: string;
+  categoryId: string;
+  minStock: number;
+};
+
+type UserProfile = {
+  id: string;
+  role?: 'administrador' | 'editor' | 'visualizador';
+};
+
+const generateProductCode = (name: string): string => {
+  const namePrefix = name.substring(0, 3).toUpperCase();
+  const randomNumber = Math.floor(1000 + Math.random() * 9000);
+  return `${namePrefix}-${randomNumber}`;
+};
+
+export default function ProductosPage() {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+  const firestore = useFirestore();
+  const { user: currentUser } = useUser();
+
+  const usersCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'users') : null),
+    [firestore]
+  );
+  const { data: users } = useCollection<UserProfile>(usersCollection);
+
+  const categoriesCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'categories') : null),
+    [firestore]
+  );
+  const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(categoriesCollection);
+
+  const productsCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'products') : null),
+    [firestore]
+  );
+  const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: '',
+      categoryId: '',
+      minStock: 0,
+    },
+  });
+
+  const onSubmit: SubmitHandler<FormValues> = async (data) => {
+    if (!firestore) return;
+    setIsSubmitting(true);
+    try {
+      const productCode = generateProductCode(data.name);
+      await addDoc(collection(firestore, 'products'), {
+        ...data,
+        code: productCode,
+        createdAt: serverTimestamp(),
+      });
+      toast({
+        title: 'Producto Creado',
+        description: `El producto "${data.name}" con código "${productCode}" ha sido agregado.`,
+      });
+      form.reset();
+    } catch (error) {
+      console.error('Error creating product:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error al crear el producto. Revisa los permisos.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const currentUserProfile = users?.find((u) => u.id === currentUser?.uid);
+  const canManageProducts =
+    currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
+    
+  const getCategoryName = (categoryId: string) => {
+    return categories?.find(c => c.id === categoryId)?.name || 'N/A';
+  }
+
+  return (
+    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
+        <p className="text-muted-foreground">
+          Administra los productos del inventario.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-8">
+        {canManageProducts && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Agregar Nuevo Producto</CardTitle>
+              <CardDescription>
+                Completa el formulario para añadir un producto.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2 lg:col-span-1">
+                        <FormLabel>Nombre del Producto</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ej: Martillo de Goma" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="categoryId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Categoría</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona una categoría" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {isLoadingCategories ? (
+                                <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                            ) : (
+                                categories?.map((cat) => (
+                                    <SelectItem key={cat.id} value={cat.id}>
+                                        {cat.name}
+                                    </SelectItem>
+                                ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="minStock"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Stock Mínimo</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="Ej: 10" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex items-end sm:col-span-2 lg:col-span-1">
+                    <Button type="submit" disabled={isSubmitting} className="w-full">
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Agregar Producto
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        )}
+
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Lista de Productos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Código</TableHead>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead>Stock Mínimo</TableHead>
+                      {canManageProducts && (
+                        <TableHead className="text-right">Acciones</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(isLoadingProducts || isLoadingCategories) &&
+                      [...Array(3)].map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          {canManageProducts && (
+                            <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    {!isLoadingProducts && products?.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={canManageProducts ? 5 : 4} className="text-center">
+                          No hay productos creados.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!isLoadingProducts &&
+                      products?.map((product) => (
+                        <TableRow key={product.id}>
+                          <TableCell className="font-mono">{product.code}</TableCell>
+                          <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
+                          <TableCell className="text-muted-foreground">{product.minStock}</TableCell>
+                          {canManageProducts && (
+                            <TableCell className="text-right">
+                              {/* TODO: Add Edit/Delete buttons here */}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -59,5 +59,13 @@ service cloud.firestore {
       // WRITE: Only editors or admins can create, update, or delete categories.
       allow write: if isEditorOrAdmin();
     }
+
+    match /products/{productId} {
+      // READ: Any signed-in user can get or list products.
+      allow get, list: if isSignedIn();
+
+      // WRITE: Only editors or admins can create, update, or delete products.
+      allow write: if isEditorOrAdmin();
+    }
   }
 }

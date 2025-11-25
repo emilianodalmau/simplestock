@@ -103,6 +103,41 @@
         "id",
         "name"
       ]
+    },
+    "Product": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Product",
+      "type": "object",
+      "description": "Represents a product in the inventory.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Product entity."
+        },
+        "code": {
+          "type": "string",
+          "description": "A unique, auto-generated code for the product."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the product."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "Reference to the Category this product belongs to."
+        },
+        "minStock": {
+          "type": "number",
+          "description": "The minimum stock level for the product."
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "categoryId",
+        "minStock"
+      ]
     }
   },
   "auth": {
@@ -161,6 +196,22 @@
             {
               "name": "categoryId",
               "description": "The unique identifier of the category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/products/{productId}",
+        "definition": {
+          "entityName": "Product",
+          "schema": {
+            "$ref": "#/backend/entities/Product"
+          },
+          "description": "Stores individual products.",
+          "params": [
+            {
+              "name": "productId",
+              "description": "The unique identifier of the product."
             }
           ]
         }
