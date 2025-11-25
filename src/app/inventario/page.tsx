@@ -221,18 +221,26 @@ export default function InventarioPage() {
     sortConfig,
   ]);
 
-  // Memoize data for the detail modal
+  // Memoize data for the detail modal, now with aggregation
   const productStockDetails = useMemo(() => {
     if (!selectedProduct || !inventory || !deposits) return [];
 
     const depositMap = new Map(deposits.map((dep) => [dep.id, dep.name]));
+    const stockByDeposit = new Map<string, number>();
 
-    return inventory
+    // Filter and aggregate stock for the selected product
+    inventory
       .filter((stock) => stock.productId === selectedProduct.productId)
-      .map((stockItem) => ({
-        depositName: depositMap.get(stockItem.depositId) || 'Depósito desconocido',
-        quantity: stockItem.quantity,
-      }));
+      .forEach((stockItem) => {
+        const currentQuantity = stockByDeposit.get(stockItem.depositId) || 0;
+        stockByDeposit.set(stockItem.depositId, currentQuantity + stockItem.quantity);
+      });
+
+    // Create the final details array from the aggregated map
+    return Array.from(stockByDeposit.entries()).map(([depositId, quantity]) => ({
+      depositName: depositMap.get(depositId) || 'Depósito desconocido',
+      quantity: quantity,
+    }));
   }, [selectedProduct, inventory, deposits]);
   
   const requestSort = (key: keyof InventoryItem) => {
