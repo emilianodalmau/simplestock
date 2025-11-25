@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -42,30 +41,49 @@ export function RemitoActions({
     if (!settings || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
 
-    // Create a temporary container for rendering the PDF component off-screen
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '-9999px';
     document.body.appendChild(container);
     setPdfComponentContainer(container);
     
-    // Use a timeout to allow React to render the component before we capture it
     setTimeout(async () => {
       if (container) {
-        const canvas = await html2canvas(container, { scale: 2 });
-        const imgData = canvas.toDataURL('image/png');
+        const canvas = await html2canvas(container, {
+          scale: 2, // Increase resolution
+          useCORS: true,
+        });
         
         const pdf = new jsPDF({
           orientation: 'portrait',
-          unit: 'px',
-          format: [canvas.width, canvas.height]
+          unit: 'mm',
+          format: 'a4',
         });
         
-        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const canvasAspectRatio = canvasWidth / canvasHeight;
+        const pdfAspectRatio = pdfWidth / pdfHeight;
+
+        let renderWidth = pdfWidth - 20; // 10mm margin on each side
+        let renderHeight = renderWidth / canvasAspectRatio;
+        
+        let x = 10; // 10mm margin
+        let y = 10; // 10mm margin
+        
+        if (renderHeight > pdfHeight - 20) {
+            renderHeight = pdfHeight - 20;
+            renderWidth = renderHeight * canvasAspectRatio;
+            x = (pdfWidth - renderWidth) / 2;
+        }
+
+        const imgData = canvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', x, y, renderWidth, renderHeight);
         pdf.save(`remito-${movement.remitoNumber || movement.id}.pdf`);
       }
       
-      // Cleanup
       if (container) {
         document.body.removeChild(container);
       }
