@@ -205,12 +205,11 @@ export default function MovimientosPage() {
         const movementItemsForDoc: StockMovementItem[] = [];
         const stockUpdateData: { 
           ref: DocumentReference, 
-          change: number, 
-          snapshot: DocumentSnapshot 
+          change: number,
+          isNew: boolean
         }[] = [];
 
         // PHASE 1: READS
-        // Perform all reads first to comply with Firestore transaction rules.
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
           if (!product) {
@@ -220,7 +219,6 @@ export default function MovimientosPage() {
           const inventoryDocId = `${item.productId}_${data.depositId}`;
           const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
           
-          // Read the document inside the transaction.
           const stockDocSnap = await transaction.get(inventoryDocRef);
           
           if (data.type === 'salida') {
@@ -229,15 +227,13 @@ export default function MovimientosPage() {
               throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}.`);
             }
           }
-
-          // Save the necessary data for the write phase.
+          
           stockUpdateData.push({
             ref: inventoryDocRef,
-            change: data.type === 'salida' ? -item.quantity : item.quantity,
-            snapshot: stockDocSnap,
+            change: item.quantity,
+            isNew: !stockDocSnap.exists()
           });
 
-          // Prepare the item for the final movement document.
           movementItemsForDoc.push({
             productId: product.id,
             productName: product.name,
@@ -247,23 +243,21 @@ export default function MovimientosPage() {
         }
 
         // PHASE 2: WRITES
-        // Now, perform all writes.
         for (const update of stockUpdateData) {
-          if (update.snapshot.exists()) {
-            transaction.update(update.ref, { quantity: increment(update.change) });
-          } else {
-            // This case should only happen for 'entrada' if the doc doesn't exist.
-            // The check for 'salida' above prevents it from reaching here if stock is insufficient.
-            transaction.set(update.ref, {
+          const changeAmount = data.type === 'salida' ? -update.change : update.change;
+          
+          if (update.isNew) {
+             transaction.set(update.ref, {
               productId: update.ref.id.split('_')[0],
               depositId: data.depositId,
-              quantity: update.change, // This is the initial quantity.
+              quantity: changeAmount,
               lastUpdated: serverTimestamp(),
             });
+          } else {
+            transaction.update(update.ref, { quantity: increment(changeAmount), lastUpdated: serverTimestamp() });
           }
         }
         
-        // Final write: create the movement document.
         const deposit = deposits?.find(d => d.id === data.depositId);
         const actor = actors?.find(a => a.id === data.actorId);
         const movementRef = doc(collection(firestore, 'stockMovements'));
@@ -286,7 +280,7 @@ export default function MovimientosPage() {
       form.reset({ type: 'salida', depositId: '', actorId: '', items: [{ productId: '', quantity: 1 }] });
     } catch (error: any) {
       console.error('Error procesando el movimiento:', error);
-      toast({ variant: 'destructive', title: 'Error en el movimiento', description: error.message || 'Ocurrió un error.' });
+      toast({ variant: 'destructive', title: 'Error en el movimiento', description: error.message || 'Ocurrió un error al procesar el remito.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -337,7 +331,7 @@ export default function MovimientosPage() {
                   <FormField control={form.control} name="actorId" render={({ field }) => (
                     <FormItem>
                       <FormLabel>{actorLabel} (Opcional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ''} disabled={!actors}>
+                      <Select onValueChange={field.onChange} value={field.value || ''}>
                         <FormControl><SelectTrigger><SelectValue placeholder={`Selecciona un ${actorLabel.toLowerCase()}`} /></SelectTrigger></FormControl>
                         <SelectContent>
                            {actors?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
