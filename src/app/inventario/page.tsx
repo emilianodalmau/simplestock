@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import {
@@ -18,6 +19,14 @@ import {
   TableBody,
   TableCell,
 } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StockStatusBadge } from '@/components/ui/stock-status-badge';
 
@@ -42,6 +51,8 @@ type InventoryStock = {
   quantity: number;
 };
 
+type StockStatus = 'En Stock' | 'Stock Bajo' | 'Sin Stock';
+
 // Type for the combined data displayed in the table
 type InventoryItem = {
   productId: string;
@@ -51,11 +62,16 @@ type InventoryItem = {
   totalStock: number;
   minStock: number;
   unit: string;
-  status: 'En Stock' | 'Stock Bajo' | 'Sin Stock';
+  status: StockStatus;
 };
 
 export default function InventarioPage() {
   const firestore = useFirestore();
+
+  // State for filters and search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState<StockStatus | 'all'>('all');
 
   // Fetch all necessary collections
   const productsCollection = useMemoFirebase(
@@ -78,30 +94,27 @@ export default function InventarioPage() {
   );
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
-    
-  const isLoading = isLoadingProducts || isLoadingCategories || isLoadingInventory;
 
-  // Memoize the data processing logic
-  const inventoryData = useMemo(() => {
+  const isLoading =
+    isLoadingProducts || isLoadingCategories || isLoadingInventory;
+
+  // Memoize the data processing logic, including filtering and searching
+  const filteredInventoryData = useMemo(() => {
     if (!products || !categories || !inventory) {
       return [];
     }
 
-    // Create a map for quick category lookup
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
-
-    // Create a map to aggregate stock for each product
     const stockMap = new Map<string, number>();
     for (const stockItem of inventory) {
       const currentStock = stockMap.get(stockItem.productId) || 0;
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
     }
 
-    // Combine all data into the final format
     const combinedData: InventoryItem[] = products.map((product) => {
       const totalStock = stockMap.get(product.id) || 0;
       const minStock = product.minStock;
-      let status: 'En Stock' | 'Stock Bajo' | 'Sin Stock' = 'En Stock';
+      let status: StockStatus = 'En Stock';
       if (totalStock === 0) {
         status = 'Sin Stock';
       } else if (totalStock <= minStock) {
@@ -112,6 +125,7 @@ export default function InventarioPage() {
         productId: product.id,
         productName: product.name,
         productCode: product.code,
+        categoryId: product.categoryId, // Keep id for filtering
         categoryName: categoryMap.get(product.categoryId) || 'Sin categoría',
         totalStock: totalStock,
         minStock: minStock,
@@ -120,15 +134,34 @@ export default function InventarioPage() {
       };
     });
 
-    return combinedData;
-  }, [products, categories, inventory]);
+    // Apply filters and search
+    return combinedData.filter((item) => {
+      const matchesCategory =
+        selectedCategory === 'all' || item.categoryId === selectedCategory;
+      const matchesStatus =
+        selectedStatus === 'all' || item.status === selectedStatus;
+      const matchesSearch =
+        searchTerm === '' ||
+        item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.productCode.toLowerCase().includes(searchTerm.toLowerCase());
+
+      return matchesCategory && matchesStatus && matchesSearch;
+    });
+  }, [
+    products,
+    categories,
+    inventory,
+    searchTerm,
+    selectedCategory,
+    selectedStatus,
+  ]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Inventario General</h1>
         <p className="text-muted-foreground">
-          Vista consolidada del stock de todos los productos.
+          Filtra y busca para ver el estado del stock de todos los productos.
         </p>
       </div>
 
@@ -136,10 +169,47 @@ export default function InventarioPage() {
         <CardHeader>
           <CardTitle>Estado del Inventario</CardTitle>
           <CardDescription>
-            Aquí puedes ver el stock total de cada producto y su estado actual.
+            Utiliza los filtros para refinar la búsqueda de productos.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row">
+            <Input
+              placeholder="Buscar por nombre o código..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-grow"
+            />
+            <Select
+              value={selectedCategory}
+              onValueChange={setSelectedCategory}
+              disabled={isLoadingCategories}
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filtrar por categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las categorías</SelectItem>
+                {categories?.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Filtrar por estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los estados</SelectItem>
+                <SelectItem value="En Stock">En Stock</SelectItem>
+                <SelectItem value="Stock Bajo">Stock Bajo</SelectItem>
+                <SelectItem value="Sin Stock">Sin Stock</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="rounded-lg border">
             <Table>
               <TableHeader>
@@ -155,26 +225,38 @@ export default function InventarioPage() {
                 {isLoading &&
                   [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-6 w-24 mx-auto" /></TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-24" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-5 w-16 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-5 w-16 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Skeleton className="h-6 w-24 mx-auto" />
+                      </TableCell>
                     </TableRow>
                   ))}
-                {!isLoading && inventoryData.length === 0 && (
+                {!isLoading && filteredInventoryData.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center h-24">
-                      No hay productos en el inventario.
+                      No se encontraron productos con los filtros aplicados.
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoading &&
-                  inventoryData.map((item) => (
+                  filteredInventoryData.map((item) => (
                     <TableRow key={item.productId}>
                       <TableCell>
                         <div className="font-medium">{item.productName}</div>
-                        <div className="text-sm text-muted-foreground font-mono">{item.productCode}</div>
+                        <div className="text-sm text-muted-foreground font-mono">
+                          {item.productCode}
+                        </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {item.categoryName}
@@ -182,7 +264,7 @@ export default function InventarioPage() {
                       <TableCell className="text-right font-medium">
                         {`${item.totalStock} ${item.unit}`}
                       </TableCell>
-                       <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-right text-muted-foreground">
                         {`${item.minStock} ${item.unit}`}
                       </TableCell>
                       <TableCell className="text-center">
@@ -198,4 +280,4 @@ export default function InventarioPage() {
     </div>
   );
 }
-    
+
