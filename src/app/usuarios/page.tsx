@@ -21,11 +21,12 @@ import {
   useFirestore,
   useCollection,
   useMemoFirebase,
+  useUser,
 } from '@/firebase';
 import { collection, doc, updateDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 
-type User = {
+type UserProfile = {
   id: string;
   displayName?: string;
   email: string;
@@ -41,11 +42,13 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
 
 export default function UsuariosPage() {
   const firestore = useFirestore();
+  const { user: currentUser } = useUser();
+
   const usersCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'users') : null),
     [firestore]
   );
-  const { data: users, isLoading } = useCollection<User>(usersCollection);
+  const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
 
   const handleRoleChange = async (userId: string, role: string) => {
     if (!firestore) return;
@@ -62,8 +65,11 @@ export default function UsuariosPage() {
     return name
       .split(' ')
       .map((n) => n[0])
-      .join('');
+      .join('')
+      .toUpperCase();
   };
+
+  const currentUserIsAdmin = users?.find(u => u.id === currentUser?.uid)?.role === 'administrador';
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -139,6 +145,7 @@ export default function UsuariosPage() {
                     <Select
                       defaultValue={user.role}
                       onValueChange={(value) => handleRoleChange(user.id, value)}
+                      disabled={!currentUserIsAdmin || user.id === currentUser?.uid}
                     >
                       <SelectTrigger className="w-36">
                         <SelectValue placeholder="Seleccionar rol" />

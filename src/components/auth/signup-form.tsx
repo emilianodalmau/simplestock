@@ -82,7 +82,7 @@ export function SignupForm() {
       await setDoc(userDocRef, {
         id: user.uid,
         email: user.email,
-        displayName: user.displayName || "",
+        displayName: user.displayName || user.email.split('@')[0],
         photoURL: user.photoURL || "",
         role: role,
       });

@@ -72,6 +72,7 @@ service cloud.firestore {
      * It fetches the user's own profile document to check their role.
      */
     function isAdmin() {
+      // Check if user is signed in and if their user document exists and has the admin role.
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
     }
 
@@ -87,9 +88,9 @@ service cloud.firestore {
      * @principle Restricts access to a user's own data tree and prevents user enumeration, except for admins.
      */
     match /users/{userId} {
-      allow get: if isOwner(userId);
+      allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
 
