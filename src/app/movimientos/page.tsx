@@ -102,6 +102,7 @@ type StockMovement = {
   items: StockMovementItem[];
 };
 type InventoryStock = {
+  id: string;
   productId: string;
   depositId: string;
   quantity: number;
@@ -116,6 +117,7 @@ const movementItemSchema = z.object({
 const movementFormSchema = z.object({
   type: z.enum(['entrada', 'salida']),
   depositId: z.string().min(1, 'Selecciona un depósito.'),
+  remitoNumber: z.string().optional(),
   actorId: z.string().optional(),
   items: z.array(movementItemSchema).min(1, 'Debes agregar al menos un producto.'),
 });
@@ -191,8 +193,12 @@ export default function MovimientosPage() {
 
   const movementsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'stockMovements')) : null, [firestore]);
   const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
+  
+  const inventoryCollection = useMemoFirebase(() => (firestore ? collection(firestore, 'inventory') : null), [firestore]);
+  const { data: inventory, isLoading: isLoadingInventory } = useCollection<InventoryStock>(inventoryCollection);
 
-  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements;
+
+  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements || isLoadingInventory;
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
@@ -202,31 +208,51 @@ export default function MovimientosPage() {
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
   const movementType = form.watch('type');
+  const selectedDepositId = form.watch('depositId');
 
   // --- Data Memoization for UI ---
   const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
   const actors = useMemo(() => (movementType === 'salida' ? clients : suppliers), [movementType, clients, suppliers]);
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
 
+  const availableProductsForMovement = useMemo(() => {
+    if (!products) return [];
+    if (movementType === 'entrada' || !selectedDepositId) {
+      return products;
+    }
+
+    // For "salida", filter products that have stock > 0 in the selected deposit
+    const productsWithStock = new Set(
+      inventory
+        ?.filter(
+          (stock) =>
+            stock.depositId === selectedDepositId && stock.quantity > 0
+        )
+        .map((stock) => stock.productId)
+    );
+
+    return products.filter((product) => productsWithStock.has(product.id));
+  }, [movementType, selectedDepositId, products, inventory]);
+
   // --- Form Submission Logic ---
 const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size) return;
     setIsSubmitting(true);
     
-    try {
-        // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
-        const productChanges = new Map<string, number>();
-        for (const item of data.items) {
-            if (item.productId) {
-                const change = data.type === 'salida' ? -item.quantity : item.quantity;
-                productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
-            }
+    // 1. AGGREGATE a map of the total changes for each product.
+    const productChanges = new Map<string, number>();
+    for (const item of data.items) {
+        if (item.productId) {
+            const change = data.type === 'salida' ? -item.quantity : item.quantity;
+            productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
         }
+    }
 
+    try {
         await runTransaction(firestore, async (transaction) => {
             const stockChecks: any[] = [];
             
-            // --- PHASE 2.1: READ all necessary documents ---
+            // --- PHASE 1: READ all necessary documents ---
             const counterRef = doc(firestore, 'counters', 'remitoCounter');
             const counterSnap = await transaction.get(counterRef);
 
@@ -243,7 +269,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                 });
             }
 
-            // --- PHASE 2.2: VALIDATE all reads ---
+            // --- PHASE 2: VALIDATE all reads ---
             for (const check of stockChecks) {
                 // This validation should ONLY run for salidas (negative change)
                 if (check.change < 0) {
@@ -291,7 +317,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
 
             transaction.set(movementRef, {
                 id: movementRef.id,
-                remitoNumber: formattedRemitoNumber,
+                remitoNumber: data.remitoNumber || formattedRemitoNumber,
                 type: data.type,
                 depositId: data.depositId,
                 depositName: deposit?.name || 'N/A',
@@ -311,6 +337,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
         form.reset({
             type: 'salida',
             depositId: '',
+            remitoNumber: '',
             actorId: '',
             items: [{ productId: '', quantity: 1 }],
         });
@@ -386,7 +413,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                 <CardDescription>Completa el formulario para registrar una entrada o salida de productos.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <FormField control={form.control} name="type" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tipo de Movimiento</FormLabel>
@@ -422,6 +449,19 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                       </Select>
                     </FormItem>
                   )} />
+                   <FormField
+                    control={form.control}
+                    name="remitoNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nº Remito (Opcional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ej: RE-00123" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
                 <Separator />
                 <div>
@@ -435,10 +475,18 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                         <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
                           <FormItem>
                             <FormLabel className="sr-only">Producto</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un producto" /></SelectTrigger></FormControl>
+                            <Select onValueChange={field.onChange} value={field.value} disabled={!selectedDepositId}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder={!selectedDepositId ? 'Selecciona un depósito primero' : 'Selecciona un producto'} />
+                                </SelectTrigger>
+                              </FormControl>
                               <SelectContent>
-                                {products?.map((p) => <SelectItem key={p.id} value={p.id}>{`${p.name} (${p.code})`}</SelectItem>)}
+                                {availableProductsForMovement.length === 0 && movementType === 'salida' ? (
+                                  <div className="text-center text-sm text-muted-foreground p-4">No hay productos con stock en este depósito.</div>
+                                ) : (
+                                  availableProductsForMovement.map((p) => <SelectItem key={p.id} value={p.id}>{`${p.name} (${p.code})`}</SelectItem>)
+                                )}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -567,3 +615,5 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     </div>
   );
 }
+
+    
