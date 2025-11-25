@@ -24,6 +24,8 @@ import {
   increment,
   DocumentSnapshot,
   DocumentReference,
+  WriteBatch,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Card,
@@ -199,73 +201,80 @@ export default function MovimientosPage() {
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user) return;
     setIsSubmitting(true);
-
+  
     try {
       await runTransaction(firestore, async (transaction) => {
         const movementItemsForDoc: StockMovementItem[] = [];
-        const stockWriteOperations: (() => void)[] = [];
-        const virtualStock = new Map<string, number>();
-
-        // PHASE 1: READS and VALIDATIONS
+        const stockChecks: {
+          ref: DocumentReference;
+          snapshot: DocumentSnapshot;
+          change: number;
+          productName: string;
+        }[] = [];
+  
+        // PHASE 1: READS - Read all documents and prepare checks.
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
           if (!product) {
             throw new Error(`Producto con ID ${item.productId} no encontrado.`);
           }
-
+  
           const inventoryDocId = `${item.productId}_${data.depositId}`;
           const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
-          let currentQuantity = virtualStock.get(inventoryDocId) ?? -1;
-
-          if (currentQuantity === -1) {
-            const stockDocSnap = await transaction.get(inventoryDocRef);
-            currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
-            virtualStock.set(inventoryDocId, currentQuantity);
-          }
-          
-          if (data.type === 'salida') {
-            if (currentQuantity < item.quantity) {
-              throw new Error(`Stock insuficiente para ${product.name}. Stock virtual: ${currentQuantity}.`);
-            }
-            // Update virtual stock for subsequent checks in the same transaction
-            virtualStock.set(inventoryDocId, currentQuantity - item.quantity);
-          }
-
+          const stockDocSnap = await transaction.get(inventoryDocRef);
+  
+          stockChecks.push({
+            ref: inventoryDocRef,
+            snapshot: stockDocSnap,
+            change: data.type === 'salida' ? -item.quantity : item.quantity,
+            productName: product.name,
+          });
+  
           movementItemsForDoc.push({
             productId: product.id,
             productName: product.name,
             quantity: item.quantity,
             unit: product.unit,
           });
-
-          // Prepare write operation
-          stockWriteOperations.push(() => {
-            const changeAmount = data.type === 'salida' ? -item.quantity : item.quantity;
-            const stockDocSnapExists = currentQuantity > 0 || (data.type === 'entrada' && currentQuantity === 0);
-
-             if (!stockDocSnapExists) {
-               transaction.set(inventoryDocRef, {
-                productId: item.productId,
-                depositId: data.depositId,
-                quantity: changeAmount,
-                lastUpdated: serverTimestamp(),
-              });
-            } else {
-              transaction.update(inventoryDocRef, { 
-                quantity: increment(changeAmount), 
-                lastUpdated: serverTimestamp() 
-              });
-            }
-          });
         }
-
-        // PHASE 2: WRITES
-        stockWriteOperations.forEach(op => op());
-
-        const deposit = deposits?.find(d => d.id === data.depositId);
-        const actor = actors?.find(a => a.id === data.actorId);
+  
+        // PHASE 2: VALIDATIONS - Check for sufficient stock for all items.
+        if (data.type === 'salida') {
+          for (const check of stockChecks) {
+            const currentQuantity = check.snapshot.exists()
+              ? check.snapshot.data().quantity
+              : 0;
+            if (currentQuantity < -check.change) { // -check.change is positive quantity
+              throw new Error(
+                `Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}.`
+              );
+            }
+          }
+        }
+  
+        // PHASE 3: WRITES - If all validations pass, perform all writes.
+        for (const check of stockChecks) {
+          if (!check.snapshot.exists()) {
+             // If document doesn't exist, it must be an 'entrada' (checked implicitly by validation phase)
+            transaction.set(check.ref, {
+              productId: check.ref.id.split('_')[0],
+              depositId: data.depositId,
+              quantity: check.change, // This is the initial quantity
+              lastUpdated: serverTimestamp(),
+            });
+          } else {
+            transaction.update(check.ref, {
+              quantity: increment(check.change),
+              lastUpdated: serverTimestamp(),
+            });
+          }
+        }
+  
+        // Final write: create the movement document
+        const deposit = deposits?.find((d) => d.id === data.depositId);
+        const actor = actors?.find((a) => a.id === data.actorId);
         const movementRef = doc(collection(firestore, 'stockMovements'));
-        
+  
         transaction.set(movementRef, {
           id: movementRef.id,
           type: data.type,
@@ -279,16 +288,24 @@ export default function MovimientosPage() {
           items: movementItemsForDoc,
         });
       });
-
-      toast({ title: 'Movimiento Registrado', description: `El remito de ${data.type} ha sido registrado.` });
-      form.reset({ type: 'salida', depositId: '', actorId: '', items: [{ productId: '', quantity: 1 }] });
-    
+  
+      toast({
+        title: 'Movimiento Registrado',
+        description: `El remito de ${data.type} ha sido registrado.`,
+      });
+      form.reset({
+        type: 'salida',
+        depositId: '',
+        actorId: '',
+        items: [{ productId: '', quantity: 1 }],
+      });
     } catch (error: any) {
       console.error('Error procesando el movimiento:', error);
-      toast({ 
-        variant: 'destructive', 
-        title: 'Error en el movimiento', 
-        description: error.message || 'Ocurrió un error al procesar el remito.' 
+      toast({
+        variant: 'destructive',
+        title: 'Error en el movimiento',
+        description:
+          error.message || 'Ocurrió un error al procesar el remito.',
       });
     } finally {
       setIsSubmitting(false);
