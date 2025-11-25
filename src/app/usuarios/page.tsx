@@ -26,6 +26,7 @@ import {
 } from '@/firebase';
 import { collection, doc, updateDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
 
 type UserProfile = {
   id: string;
@@ -44,6 +45,7 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
 export default function UsuariosPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
+  const { toast } = useToast();
 
   const usersCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'users') : null),
@@ -62,8 +64,17 @@ export default function UsuariosPage() {
     const userDocRef = doc(firestore, 'users', userId);
     try {
       await updateDoc(userDocRef, { role });
+      toast({
+        title: 'Rol actualizado',
+        description: `El rol del usuario ha sido cambiado a ${role}.`,
+      });
     } catch (error) {
       console.error('Error updating user role:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de Permisos',
+        description: 'No tienes permisos para cambiar el rol de este usuario.',
+      });
     }
   };
 
@@ -116,7 +127,7 @@ export default function UsuariosPage() {
                     <Skeleton className="h-6 w-24 rounded-full" />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Skeleton className="h-10 w-36" />
+                    <Skeleton className="h-10 w-36 ml-auto" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -154,7 +165,7 @@ export default function UsuariosPage() {
                       onValueChange={(value) => handleRoleChange(user.id, value)}
                       disabled={!currentUserIsAdmin || user.id === currentUser?.uid}
                     >
-                      <SelectTrigger className="w-36">
+                      <SelectTrigger className="w-36 ml-auto">
                         <SelectValue placeholder="Seleccionar rol" />
                       </SelectTrigger>
                       <SelectContent>
