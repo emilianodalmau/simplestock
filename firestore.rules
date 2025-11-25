@@ -83,5 +83,15 @@ service cloud.firestore {
       // WRITE: Only editors or admins can create, update, or delete suppliers.
       allow write: if isEditorOrAdmin();
     }
+
+    match /clients/{clientId} {
+      // READ: Any signed-in user can get or list clients.
+      allow get, list: if isSignedIn();
+
+      // WRITE: Only editors or admins can create, update, or delete clients.
+      allow write: if isEditorOrAdmin();
+    }
   }
 }
+
+    

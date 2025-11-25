@@ -208,6 +208,45 @@
         "id",
         "name"
       ]
+    },
+    "Client": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Client",
+      "type": "object",
+      "description": "Represents a client or area.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Client entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the client or area."
+        },
+        "contactName": {
+          "type": "string",
+          "description": "Contact person at the client."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number of the client."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email of the client."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address of the client."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "contactName",
+        "email"
+      ]
     }
   },
   "auth": {
@@ -314,6 +353,22 @@
             {
               "name": "supplierId",
               "description": "The unique identifier of the supplier."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/clients/{clientId}",
+        "definition": {
+          "entityName": "Client",
+          "schema": {
+            "$ref": "#/backend/entities/Client"
+          },
+          "description": "Stores clients or company areas.",
+          "params": [
+            {
+              "name": "clientId",
+              "description": "The unique identifier of the client."
             }
           ]
         }
