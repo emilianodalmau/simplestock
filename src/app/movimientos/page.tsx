@@ -389,7 +389,7 @@ export default function MovimientosPage() {
         const productName = productDoc.data().name;
         const depositName = depositDoc.data().name;
 
-        // Create the query for the inventory document inside the transaction
+        // Create the query for the inventory document INSIDE the transaction
         const inventoryQuery = query(
           collection(firestore, 'inventory'),
           where('productId', '==', productId),
