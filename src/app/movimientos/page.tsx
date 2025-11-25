@@ -209,25 +209,27 @@ export default function MovimientosPage() {
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
 
   // --- Form Submission Logic ---
-  const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
+const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size) return;
     setIsSubmitting(true);
     
-    // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
-    // This is the key change to correctly handle multiple lines for the same product.
-    const productChanges = new Map<string, number>();
-    for (const item of data.items) {
-        if (item.productId) {
-            const change = data.type === 'salida' ? -item.quantity : item.quantity;
-            productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
-        }
-    }
-
     try {
+        // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
+        const productChanges = new Map<string, number>();
+        for (const item of data.items) {
+            if (item.productId) {
+                const change = data.type === 'salida' ? -item.quantity : item.quantity;
+                productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
+            }
+        }
+
         await runTransaction(firestore, async (transaction) => {
             const stockChecks: any[] = [];
             
             // --- PHASE 2.1: READ all necessary documents ---
+            const counterRef = doc(firestore, 'counters', 'remitoCounter');
+            const counterSnap = await transaction.get(counterRef);
+
             for (const [productId, change] of productChanges.entries()) {
                 const inventoryDocId = `${productId}_${data.depositId}`;
                 const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
@@ -242,10 +244,11 @@ export default function MovimientosPage() {
             }
 
             // --- PHASE 2.2: VALIDATE all reads ---
-            if (data.type === 'salida') {
-                for (const check of stockChecks) {
+            for (const check of stockChecks) {
+                // This validation should ONLY run for salidas (negative change)
+                if (check.change < 0) {
                     const currentQuantity = check.stockDocSnap.exists() ? check.stockDocSnap.data().quantity : 0;
-                    const quantityToWithdraw = -check.change; // change is negative for salidas
+                    const quantityToWithdraw = -check.change; // make it a positive number for comparison
 
                     if (currentQuantity < quantityToWithdraw) {
                         throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`);
@@ -253,14 +256,10 @@ export default function MovimientosPage() {
                 }
             }
 
-            // --- PHASE 2.3: GET NEW REMITO NUMBER ---
-            const counterRef = doc(firestore, 'counters', 'remitoCounter');
-            const counterSnap = await transaction.get(counterRef);
+            // --- PHASE 3: WRITE all changes ---
             const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
             const newRemitoNumber = lastNumber + 1;
             const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
-
-            // --- PHASE 3: WRITE all changes ---
             transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
             for (const check of stockChecks) {
@@ -276,7 +275,6 @@ export default function MovimientosPage() {
                 );
             }
 
-            // Prepare final movement document data from original form data
             const movementItemsForDoc: StockMovementItem[] = data.items.map(item => {
                 const product = productsMap.get(item.productId);
                 return {
@@ -354,16 +352,16 @@ export default function MovimientosPage() {
         });
 
         toast({
-            title: 'Remito Eliminado',
-            description: `El remito ${movement.remitoNumber} ha sido eliminado y el stock ha sido revertido.`,
+            title: 'Remito Anulado',
+            description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
         });
 
     } catch (error: any) {
         console.error('Error deleting movement:', error);
         toast({
             variant: 'destructive',
-            title: 'Error al Eliminar',
-            description: error.message || 'No se pudo eliminar el remito. Revisa los permisos.',
+            title: 'Error al Anular',
+            description: error.message || 'No se pudo anular el remito. Revisa los permisos.',
         });
     }
 };
@@ -530,7 +528,7 @@ export default function MovimientosPage() {
 
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" disabled={!isAdmin} title={!isAdmin ? "Solo los administradores pueden eliminar remitos" : "Eliminar Remito"}>
+                                    <Button variant="ghost" size="icon" disabled={!isAdmin} title={!isAdmin ? "Solo los administradores pueden anular remitos" : "Anular Remito"}>
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                         <span className="sr-only">Eliminar</span>
                                     </Button>
@@ -569,5 +567,3 @@ export default function MovimientosPage() {
     </div>
   );
 }
-
-    
