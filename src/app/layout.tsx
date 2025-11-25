@@ -28,6 +28,7 @@ import {
   LogOut,
   Replace,
   Settings,
+  ClipboardList,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -58,6 +59,7 @@ function AppLayout({
     { href: '/dashboard', label: 'Panel de Control', icon: Home },
     { href: '/inventario', label: 'Inventario', icon: Warehouse },
     { href: '/movimientos', label: 'Movimientos', icon: Replace },
+    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList },
     { href: '/productos', label: 'Productos', icon: Box },
     { href: '/categorias', label: 'Categorías', icon: Tags },
     { href: '/proveedores', label: 'Proveedores', icon: Truck },
