@@ -24,6 +24,7 @@ import {
   query,
   where,
   increment,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Card,
@@ -87,8 +88,8 @@ type StockMovement = {
   };
   items: StockMovementItem[];
 };
+// Note: InventoryStock ID is now predictable: `${productId}_${depositId}`
 type InventoryStock = {
-  id: string;
   productId: string;
   depositId: string;
   quantity: number;
@@ -179,10 +180,7 @@ export default function MovimientosPage() {
   const movementsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'stockMovements')) : null, [firestore]);
   const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
 
-  const inventoryCollection = useMemoFirebase(() => firestore ? collection(firestore, 'inventory') : null, [firestore]);
-  const { data: inventory, isLoading: isLoadingInventory } = useCollection<InventoryStock>(inventoryCollection);
-
-  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements || isLoadingInventory;
+  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements;
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
@@ -198,15 +196,14 @@ export default function MovimientosPage() {
   const actors = useMemo(() => (movementType === 'salida' ? clients : suppliers), [movementType, clients, suppliers]);
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
 
-  // --- Form Submission Logic ---
+  // --- [THE NEW SOLUTION] Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user) return;
     setIsSubmitting(true);
 
     try {
       await runTransaction(firestore, async (transaction) => {
-        const movementRef = doc(collection(firestore, 'stockMovements'));
-        const movementItems: StockMovementItem[] = [];
+        const movementItemsForDoc: StockMovementItem[] = [];
 
         // Use a standard for...of loop for async operations
         for (const item of data.items) {
@@ -215,49 +212,42 @@ export default function MovimientosPage() {
             throw new Error(`Producto con ID ${item.productId} no encontrado.`);
           }
 
-          // 1. Build the query for the specific stock document INSIDE the transaction loop
-          const inventoryQuery = query(
-            collection(firestore, 'inventory'),
-            where('depositId', '==', data.depositId),
-            where('productId', '==', item.productId)
-          );
+          // **NEW APPROACH**: Construct the PREDICTABLE document ID and get a direct reference.
+          const inventoryDocId = `${item.productId}_${data.depositId}`;
+          const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
+          
+          const stockDocSnap = await transaction.get(inventoryDocRef);
+          const currentStockData = stockDocSnap.data() as InventoryStock | undefined;
+          const currentQuantity = currentStockData?.quantity || 0;
 
-          // 2. Get the document snapshot using the transaction
-          const inventorySnap = await transaction.get(inventoryQuery);
-          const stockDoc = inventorySnap.docs[0];
-
-          // 3. For salidas, re-verify stock inside the transaction for atomicity
+          // For 'salida', verify stock inside the transaction for atomicity
           if (data.type === 'salida') {
-            if (!stockDoc || stockDoc.data().quantity < item.quantity) {
-              throw new Error(`Stock insuficiente para ${product.name} en el depósito seleccionado.`);
+            if (!stockDocSnap.exists() || currentQuantity < item.quantity) {
+              throw new Error(`Stock insuficiente para ${product.name} en el depósito seleccionado. Stock actual: ${currentQuantity}.`);
             }
           }
           
-          // 4. Prepare update/set operation
+          // Prepare update/set operation
           const change = data.type === 'salida' ? -item.quantity : item.quantity;
-          if (stockDoc) {
-            transaction.update(stockDoc.ref, { 
+
+          if (stockDocSnap.exists()) {
+            transaction.update(inventoryDocRef, { 
               quantity: increment(change),
               lastUpdated: serverTimestamp() 
             });
           } else {
-             // If it's an entry and the doc doesn't exist, we create it.
-             if (data.type === 'entrada') {
-                const newStockRef = doc(collection(firestore, 'inventory'));
-                transaction.set(newStockRef, { 
-                    depositId: data.depositId, 
-                    productId: item.productId, 
-                    quantity: item.quantity, 
-                    lastUpdated: serverTimestamp() 
-                });
-             } else {
-                // This case should be caught by the stock check above, but it's a safeguard.
-                throw new Error(`No se puede dar salida a ${product.name} porque no hay registro de stock en este depósito.`);
-             }
+             // If the doc doesn't exist, we create it.
+             // This is safe for 'salida' because the check above would have already failed.
+            transaction.set(inventoryDocRef, { 
+                productId: item.productId, 
+                depositId: data.depositId, 
+                quantity: item.quantity, 
+                lastUpdated: serverTimestamp() 
+            });
           }
           
-          // 5. Add item to the movement document
-          movementItems.push({ 
+          // Add item to the movement document
+          movementItemsForDoc.push({ 
             productId: product.id, 
             productName: product.name, 
             quantity: item.quantity, 
@@ -268,7 +258,8 @@ export default function MovimientosPage() {
         const deposit = deposits?.find(d => d.id === data.depositId);
         const actor = actors?.find(a => a.id === data.actorId);
 
-        // 6. Create the final movement document
+        // Create the final movement document
+        const movementRef = doc(collection(firestore, 'stockMovements'));
         transaction.set(movementRef, {
           id: movementRef.id,
           type: data.type,
@@ -279,7 +270,7 @@ export default function MovimientosPage() {
           actorType: data.actorId ? (data.type === 'salida' ? 'client' : 'supplier') : null,
           createdAt: serverTimestamp(),
           userId: user.uid,
-          items: movementItems,
+          items: movementItemsForDoc,
         });
       });
 
@@ -341,7 +332,7 @@ export default function MovimientosPage() {
                       <Select onValueChange={field.onChange} value={field.value || ''} disabled={!actors}>
                         <FormControl><SelectTrigger><SelectValue placeholder={`Selecciona un ${actorLabel.toLowerCase()}`} /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {actors?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                           {actors?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </FormItem>

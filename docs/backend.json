@@ -211,7 +211,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "InventoryStock",
       "type": "object",
-      "description": "Represents the stock of a specific product in a specific deposit.",
+      "description": "Represents the stock of a specific product in a specific deposit. The document ID is a composite key: `${productId}_${depositId}`.",
       "properties": {
         "productId": {
           "type": "string",
@@ -418,11 +418,11 @@
           "schema": {
             "$ref": "#/backend/entities/InventoryStock"
           },
-          "description": "Stores stock levels for each product in various deposits.",
+          "description": "Stores stock levels for each product in various deposits. The ID is a composite `${productId}_${depositId}`.",
           "params": [
             {
               "name": "inventoryStockId",
-              "description": "The unique identifier for the stock record."
+              "description": "The composite identifier for the stock record."
             }
           ]
         }
