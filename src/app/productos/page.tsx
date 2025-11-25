@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -10,7 +11,14 @@ import {
   useMemoFirebase,
   useUser,
 } from '@/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -43,17 +51,48 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Edit, Trash2 } from 'lucide-react';
 
-const unitTypes = ["unidades", "litros", "kilos", "metros", "gramos", "cajas"] as const;
+const unitTypes = [
+  'unidades',
+  'litros',
+  'kilos',
+  'metros',
+  'gramos',
+  'cajas',
+] as const;
 
 const formSchema = z.object({
-  name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
+  name: z
+    .string()
+    .min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
-  minStock: z.coerce.number().min(0, { message: 'El stock mínimo no puede ser negativo.' }),
-  unit: z.enum(unitTypes, { required_error: 'El tipo de unidad es requerido.'}),
+  minStock: z.coerce
+    .number()
+    .min(0, { message: 'El stock mínimo no puede ser negativo.' }),
+  unit: z.enum(unitTypes, { required_error: 'El tipo de unidad es requerido.' }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -69,7 +108,7 @@ type Product = {
   name: string;
   categoryId: string;
   minStock: number;
-  unit: string;
+  unit: (typeof unitTypes)[number];
 };
 
 type UserProfile = {
@@ -85,6 +124,8 @@ const generateProductCode = (name: string): string => {
 
 export default function ProductosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
@@ -99,15 +140,17 @@ export default function ProductosPage() {
     () => (firestore ? collection(firestore, 'categories') : null),
     [firestore]
   );
-  const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(categoriesCollection);
+  const { data: categories, isLoading: isLoadingCategories } =
+    useCollection<Category>(categoriesCollection);
 
   const productsCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'products') : null),
     [firestore]
   );
-  const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
+  const { data: products, isLoading: isLoadingProducts } =
+    useCollection<Product>(productsCollection);
 
-  const form = useForm<FormValues>({
+  const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
@@ -116,7 +159,22 @@ export default function ProductosPage() {
     },
   });
 
-  const onSubmit: SubmitHandler<FormValues> = async (data) => {
+  const editForm = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+  });
+
+  useEffect(() => {
+    if (editingProduct) {
+      editForm.reset({
+        name: editingProduct.name,
+        categoryId: editingProduct.categoryId,
+        minStock: editingProduct.minStock,
+        unit: editingProduct.unit,
+      });
+    }
+  }, [editingProduct, editForm]);
+
+  const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
     try {
@@ -130,26 +188,72 @@ export default function ProductosPage() {
         title: 'Producto Creado',
         description: `El producto "${data.name}" con código "${productCode}" ha sido agregado.`,
       });
-      form.reset();
+      createForm.reset();
     } catch (error) {
       console.error('Error creating product:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Ocurrió un error al crear el producto. Revisa los permisos.',
+        description:
+          'Ocurrió un error al crear el producto. Revisa los permisos.',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
+    if (!firestore || !editingProduct) return;
+    setIsEditSubmitting(true);
+    try {
+      const productRef = doc(firestore, 'products', editingProduct.id);
+      await updateDoc(productRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+      });
+      toast({
+        title: 'Producto Actualizado',
+        description: `El producto "${data.name}" ha sido actualizado.`,
+      });
+      setEditingProduct(null);
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error al actualizar el producto.',
+      });
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!firestore) return;
+    try {
+      await deleteDoc(doc(firestore, 'products', productId));
+      toast({
+        title: 'Producto Eliminado',
+        description: 'El producto ha sido eliminado correctamente.',
+      });
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error al eliminar el producto.',
+      });
+    }
+  };
+
   const currentUserProfile = users?.find((u) => u.id === currentUser?.uid);
   const canManageProducts =
-    currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
-    
+    currentUserProfile?.role === 'administrador' ||
+    currentUserProfile?.role === 'editor';
+
   const getCategoryName = (categoryId: string) => {
-    return categories?.find(c => c.id === categoryId)?.name || 'N/A';
-  }
+    return categories?.find((c) => c.id === categoryId)?.name || 'N/A';
+  };
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -170,31 +274,37 @@ export default function ProductosPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Form {...form}>
+              <Form {...createForm}>
                 <form
-                  onSubmit={form.handleSubmit(onSubmit)}
+                  onSubmit={createForm.handleSubmit(onCreateSubmit)}
                   className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
                 >
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem className="lg:col-span-1 xl:col-span-1">
                         <FormLabel>Nombre del Producto</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ej: Martillo de Goma" {...field} />
+                          <Input
+                            placeholder="Ej: Martillo de Goma"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="categoryId"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Categoría</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona una categoría" />
@@ -202,13 +312,15 @@ export default function ProductosPage() {
                           </FormControl>
                           <SelectContent>
                             {isLoadingCategories ? (
-                                <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                              <SelectItem value="loading" disabled>
+                                Cargando...
+                              </SelectItem>
                             ) : (
-                                categories?.map((cat) => (
-                                    <SelectItem key={cat.id} value={cat.id}>
-                                        {cat.name}
-                                    </SelectItem>
-                                ))
+                              categories?.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))
                             )}
                           </SelectContent>
                         </Select>
@@ -217,12 +329,15 @@ export default function ProductosPage() {
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="unit"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tipo de Unidad</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona una unidad" />
@@ -241,7 +356,7 @@ export default function ProductosPage() {
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="minStock"
                     render={({ field }) => (
                       <FormItem>
@@ -254,9 +369,15 @@ export default function ProductosPage() {
                     )}
                   />
                   <div className="flex items-end">
-                    <Button type="submit" disabled={isSubmitting} className="w-full">
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Agregar Producto
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full"
+                    >
+                      {isSubmitting && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      Agregar Producto
                     </Button>
                   </div>
                 </form>
@@ -289,19 +410,34 @@ export default function ProductosPage() {
                     {(isLoadingProducts || isLoadingCategories) &&
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-20" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-40" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-32" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-24" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-24" />
+                          </TableCell>
                           {canManageProducts && (
-                            <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                            <TableCell>
+                              <Skeleton className="ml-auto h-8 w-20" />
+                            </TableCell>
                           )}
                         </TableRow>
                       ))}
                     {!isLoadingProducts && products?.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={canManageProducts ? 6 : 5} className="text-center">
+                        <TableCell
+                          colSpan={canManageProducts ? 6 : 5}
+                          className="text-center"
+                        >
                           No hay productos creados.
                         </TableCell>
                       </TableRow>
@@ -309,14 +445,63 @@ export default function ProductosPage() {
                     {!isLoadingProducts &&
                       products?.map((product) => (
                         <TableRow key={product.id}>
-                          <TableCell className="font-mono">{product.code}</TableCell>
-                          <TableCell className="font-medium">{product.name}</TableCell>
-                          <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
-                          <TableCell className="text-muted-foreground">{product.unit}</TableCell>
-                          <TableCell className="text-muted-foreground">{product.minStock}</TableCell>
+                          <TableCell className="font-mono">
+                            {product.code}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {product.name}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {getCategoryName(product.categoryId)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {product.unit}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {product.minStock}
+                          </TableCell>
                           {canManageProducts && (
                             <TableCell className="text-right">
-                              {/* TODO: Add Edit/Delete buttons here */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setEditingProduct(product)}
+                              >
+                                <Edit className="h-4 w-4" />
+                                <span className="sr-only">Editar</span>
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                    <span className="sr-only">Eliminar</span>
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      ¿Estás seguro?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Esta acción no se puede deshacer. Esto
+                                      eliminará permanentemente el producto.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                      Cancelar
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handleDeleteProduct(product.id)
+                                      }
+                                      className="bg-destructive hover:bg-destructive/90"
+                                    >
+                                      Eliminar
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </TableCell>
                           )}
                         </TableRow>
@@ -328,6 +513,120 @@ export default function ProductosPage() {
           </Card>
         </div>
       </div>
+
+      {/* Edit Product Dialog */}
+      <Dialog
+        open={!!editingProduct}
+        onOpenChange={(isOpen) => !isOpen && setEditingProduct(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Producto</DialogTitle>
+            <DialogDescription>
+              Modifica los detalles del producto.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form
+              onSubmit={editForm.handleSubmit(onEditSubmit)}
+              className="space-y-6"
+            >
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre del Producto</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="categoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoría</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona una categoría" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories?.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="unit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de Unidad</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona una unidad" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {unitTypes.map((unit) => (
+                          <SelectItem key={unit} value={unit}>
+                            {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="minStock"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Stock Mínimo</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancelar</Button>
+                </DialogClose>
+                <Button type="submit" disabled={isEditSubmitting}>
+                  {isEditSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Guardar Cambios
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
