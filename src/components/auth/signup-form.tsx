@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -23,6 +23,8 @@ import Link from "next/link";
 import { doc, setDoc } from "firebase/firestore";
 
 const formSchema = z.object({
+  firstName: z.string().min(1, { message: "Please enter your first name." }),
+  lastName: z.string().min(1, { message: "Please enter your last name." }),
   email: z.string().email({ message: "Please enter a valid email." }),
   password: z
     .string()
@@ -39,6 +41,8 @@ export function SignupForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
       email: "",
       password: "",
     },
@@ -64,6 +68,9 @@ export function SignupForm() {
       );
       const user = userCredential.user;
       
+      const displayName = `${values.firstName} ${values.lastName}`;
+      await updateProfile(user, { displayName });
+
       const isAdmin = values.email === "emilianodalmau@gmail.com";
       const role = isAdmin ? "administrador" : "visualizador";
 
@@ -71,7 +78,8 @@ export function SignupForm() {
       await setDoc(userDocRef, {
         id: user.uid,
         email: user.email,
-        displayName: user.displayName || user.email.split('@')[0],
+        firstName: values.firstName,
+        lastName: values.lastName,
         photoURL: user.photoURL || "",
         role: role,
       });
@@ -100,6 +108,34 @@ export function SignupForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="firstName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>First Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="John" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="lastName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Last Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Doe" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+        </div>
         <FormField
           control={form.control}
           name="email"

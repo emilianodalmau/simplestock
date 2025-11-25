@@ -11,9 +11,13 @@
           "type": "string",
           "description": "Unique identifier for the User entity."
         },
-        "displayName": {
+        "firstName": {
           "type": "string",
-          "description": "The user's display name."
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
         },
         "email": {
           "type": "string",
@@ -36,7 +40,9 @@
       },
       "required": [
         "id",
-        "email"
+        "email",
+        "firstName",
+        "lastName"
       ]
     },
     "Category": {

@@ -30,7 +30,8 @@ import { useToast } from '@/hooks/use-toast';
 
 type UserProfile = {
   id: string;
-  displayName?: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   photoURL?: string;
   role?: 'administrador' | 'editor' | 'visualizador';
@@ -78,13 +79,11 @@ export default function UsuariosPage() {
     }
   };
 
-  const getInitials = (name?: string) => {
-    if (!name) return 'U';
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase();
+  const getInitials = (firstName?: string, lastName?: string) => {
+    if (!firstName) return 'U';
+    const firstInitial = firstName[0] || '';
+    const lastInitial = lastName ? lastName[0] : '';
+    return `${firstInitial}${lastInitial}`.toUpperCase();
   };
 
   const currentUserIsAdmin = currentUserProfile?.role === 'administrador';
@@ -139,11 +138,11 @@ export default function UsuariosPage() {
                       <Avatar>
                         <AvatarImage src={user.photoURL} />
                         <AvatarFallback>
-                          {getInitials(user.displayName)}
+                          {getInitials(user.firstName, user.lastName)}
                         </AvatarFallback>
                       </Avatar>
                       <span className="font-medium">
-                        {user.displayName || 'Sin Nombre'}
+                        {user.firstName || ''} {user.lastName || 'Sin Nombre'}
                       </span>
                     </div>
                   </TableCell>
