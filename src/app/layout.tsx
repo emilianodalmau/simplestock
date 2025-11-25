@@ -94,7 +94,6 @@ function AppLayout({ children }: { children: React.ReactNode }) {
               <span className="font-semibold">
                 {settings?.appName || 'Inventario'}
               </span>
-              <span className="text-sm text-sidebar-foreground/80">App</span>
             </div>
           </div>
         </SidebarHeader>
