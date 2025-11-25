@@ -20,6 +20,7 @@ import {
   increment,
   query,
   where,
+  deleteDoc,
 } from 'firebase/firestore';
 import {
   Card,
@@ -51,6 +52,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, PlusCircle } from 'lucide-react';
 import { ProductComboBox } from '@/components/ui/product-combobox';
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from '@/components/ui/table';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { RemitoActions } from '@/components/remito-actions';
+import type { AppSettings } from '@/lib/settings';
+import { getSettings } from '@/lib/settings';
 
 // --- Data Types ---
 type Product = {
@@ -67,11 +81,24 @@ type UserProfile = {
   lastName?: string;
   role?: 'administrador' | 'editor' | 'visualizador' 
 };
-type StockMovementItem = {
+export type StockMovementItem = {
   productId: string;
   productName: string;
   quantity: number;
   unit: string;
+};
+export type StockMovement = {
+  id: string;
+  remitoNumber?: string;
+  type: 'entrada' | 'salida';
+  depositId: string;
+  depositName: string;
+  actorName?: string;
+  userId: string;
+  createdAt: {
+    toDate: () => Date;
+  };
+  items: StockMovementItem[];
 };
 type InventoryStock = {
   id: string;
@@ -97,7 +124,7 @@ type RequestFormValues = z.infer<typeof requestFormSchema>;
 // --- Skeleton Component ---
 function SolicitudesPageSkeleton() {
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <Card>
         <CardHeader>
           <Skeleton className="h-7 w-1/2" />
@@ -125,6 +152,14 @@ function SolicitudesPageSkeleton() {
           <Skeleton className="h-10 w-40" />
         </CardFooter>
       </Card>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-7 w-1/3" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-40 w-full" />
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -132,9 +167,19 @@ function SolicitudesPageSkeleton() {
 // --- Main Page Component ---
 export default function SolicitudesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+
+  // --- Settings Loading ---
+  useEffect(() => {
+    async function loadSettings() {
+      const settings = await getSettings();
+      setAppSettings(settings);
+    }
+    loadSettings();
+  }, []);
 
   // --- Data Loading ---
   const currentUserDocRef = useMemoFirebase(
@@ -173,11 +218,18 @@ export default function SolicitudesPage() {
   );
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollection);
 
+  const movementsCollection = useMemoFirebase(
+    () => (firestore ? query(collection(firestore, 'stockMovements'), where('type', '==', 'salida')) : null),
+    [firestore]
+  );
+  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
+  
   const isLoading =
     isLoadingProducts ||
     isLoadingDeposits ||
     isLoadingInventory ||
-    isLoadingUsers;
+    isLoadingUsers ||
+    isLoadingMovements;
 
   // --- Form Setup ---
   const form = useForm<RequestFormValues>({
@@ -202,7 +254,6 @@ export default function SolicitudesPage() {
         form.setValue('actorId', user.uid);
     }
   }, [user, form]);
-
 
   // --- Effects ---
   useEffect(() => {
@@ -246,7 +297,15 @@ export default function SolicitudesPage() {
   }, [selectedDepositId, products, inventory]);
   
   const canCreateRequest = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor' || currentUserProfile?.role === 'visualizador';
+  const isAdmin = currentUserProfile?.role === 'administrador';
 
+  const filteredMovements = useMemo(() => {
+    if (!movements || !user) return [];
+    if (isAdmin) {
+        return movements;
+    }
+    return movements.filter(mov => mov.userId === user.uid);
+  }, [movements, user, isAdmin]);
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
@@ -380,12 +439,56 @@ export default function SolicitudesPage() {
     }
   };
 
+  const handleDeleteMovement = async (movement: StockMovement) => {
+    if (!firestore) return;
+
+    try {
+      await runTransaction(firestore, async (transaction) => {
+        // 1. Revert stock for each item in the movement
+        for (const item of movement.items) {
+          const inventoryDocId = `${item.productId}_${movement.depositId}`;
+          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+
+          // The change is the opposite of the original movement type
+          const change =
+            movement.type === 'entrada' ? -item.quantity : item.quantity;
+
+          transaction.set(
+            stockDocRef,
+            {
+              quantity: increment(change),
+              lastUpdated: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+        // 2. Delete the movement document itself
+        const movementDocRef = doc(firestore, 'stockMovements', movement.id);
+        transaction.delete(movementDocRef);
+      });
+
+      toast({
+        title: 'Remito Anulado',
+        description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
+      });
+    } catch (error: any) {
+      console.error('Error deleting movement:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error al Anular',
+        description:
+          error.message || 'No se pudo anular el remito. Revisa los permisos.',
+      });
+    }
+  };
+
   if (isLoading) {
     return <SolicitudesPageSkeleton />;
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
        <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">
           Solicitudes de Productos
@@ -554,6 +657,73 @@ export default function SolicitudesPage() {
             </CardHeader>
         </Card>
        )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Historial de Mis Pedidos</CardTitle>
+          <CardDescription>
+             {isAdmin ? 'Como administrador, puedes ver todos los pedidos.' : 'Aquí puedes ver todos los pedidos que has generado.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Remito Nº</TableHead>
+                  <TableHead>Depósito</TableHead>
+                  <TableHead>Solicitante</TableHead>
+                  <TableHead>Productos</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoadingMovements &&
+                  [...Array(3)].map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                      <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                    </TableRow>
+                  ))}
+                {!isLoadingMovements && filteredMovements.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center h-24">
+                      No has generado ningún pedido todavía.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!isLoadingMovements &&
+                  filteredMovements
+                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
+                    .map((mov) => (
+                      <TableRow key={mov.id}>
+                        <TableCell className="font-medium">
+                          {format(mov.createdAt.toDate(), 'PPpp', { locale: es })}
+                        </TableCell>
+                        <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
+                        <TableCell>{mov.depositName}</TableCell>
+                        <TableCell>{mov.actorName || '-'}</TableCell>
+                        <TableCell>{mov.items.length}</TableCell>
+                        <TableCell className="text-right">
+                           <RemitoActions 
+                             movement={mov}
+                             settings={appSettings}
+                             canDelete={isAdmin}
+                             onDelete={() => handleDeleteMovement(mov)}
+                           />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
