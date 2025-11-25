@@ -213,7 +213,7 @@ export default function CategoriasPage() {
         </p>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="flex flex-col gap-8">
         {canManageCategories && (
           <Card>
             <CardHeader>
@@ -269,7 +269,7 @@ export default function CategoriasPage() {
           </Card>
         )}
 
-        <div className={!canManageCategories ? 'md:col-span-2' : ''}>
+        <div>
           <Card>
             <CardHeader>
               <CardTitle>Lista de Categorías</CardTitle>
