@@ -93,10 +93,11 @@ export default function RootLayout({
                       <SidebarMenuItem key={item.label}>
                         <Link href={item.href} passHref>
                           <SidebarMenuButton
+                            asChild
                             isActive={pathname === item.href}
                             icon={<item.icon />}
                           >
-                            {item.label}
+                            <span>{item.label}</span>
                           </SidebarMenuButton>
                         </Link>
                       </SidebarMenuItem>
