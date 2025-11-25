@@ -75,5 +75,13 @@ service cloud.firestore {
       // WRITE: Only editors or admins can create, update, or delete deposits.
       allow write: if isEditorOrAdmin();
     }
+    
+    match /suppliers/{supplierId} {
+      // READ: Any signed-in user can get or list suppliers.
+      allow get, list: if isSignedIn();
+
+      // WRITE: Only editors or admins can create, update, or delete suppliers.
+      allow write: if isEditorOrAdmin();
+    }
   }
 }
