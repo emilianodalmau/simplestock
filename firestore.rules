@@ -22,11 +22,8 @@ service cloud.firestore {
 
     function isEditorOrAdmin() {
       // Securely check for editor or admin role.
-      if (!isSignedIn()) {
-        return false;
-      }
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return userRole == 'administrador' || userRole == 'editor';
+      return isSignedIn() && (userRole == 'administrador' || userRole == 'editor');
     }
     
     // ------------------------------------------------------------------------
