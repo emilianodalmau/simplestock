@@ -40,16 +40,16 @@ export default function RootLayout({
 
   const menuItems = [
     { href: '/dashboard', label: 'Panel de Control', icon: Home },
+    { href: '/inventario', label: 'Inventario', icon: Warehouse },
+    { href: '/movimientos', label: 'Movimientos', icon: ArrowRightLeft },
     { href: '/auditoria', label: 'Auditoría', icon: BookCheck },
     { href: '/solicitudes', label: 'Solicitudes', icon: FileText },
-    { href: '/movimientos', label: 'Movimientos', icon: ArrowRightLeft },
-    { href: '/inventario', label: 'Inventario', icon: Warehouse },
     { href: '/productos', label: 'Productos', icon: Box },
     { href: '/categorias', label: 'Categorías', icon: Tags },
     { href: '/proveedores', label: 'Proveedores', icon: Truck },
-    { href: '/usuarios', label: 'Usuarios', icon: Users },
     { href: '/clientes', label: 'Clientes', icon: Building },
     { href: '/depositos', label: 'Depósitos', icon: Archive },
+    { href: '/usuarios', label: 'Usuarios', icon: Users },
   ];
 
   // We hide the sidebar on the login, signup, and root pages.

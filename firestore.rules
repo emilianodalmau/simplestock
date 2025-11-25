@@ -99,7 +99,27 @@ service cloud.firestore {
       // WRITE: Only editors or admins can modify stock levels.
       allow write: if isEditorOrAdmin();
     }
+
+    match /stockMovements/{movementId} {
+        // READ: Admins and editors can list and get stock movements.
+        allow get, list: if isEditorOrAdmin();
+        
+        // CREATE: Admins and editors can create stock movements.
+        allow create: if isEditorOrAdmin();
+        
+        // No updates or deletes for audit trail integrity.
+        allow update, delete: if false;
+
+        match /items/{itemId} {
+            // READ: If you can read the parent movement, you can read its items.
+            allow read: if isEditorOrAdmin();
+            
+            // CREATE: Items can only be created as part of the parent movement transaction.
+            allow create: if isEditorOrAdmin();
+            
+            // No updates or deletes.
+            allow update, delete: if false;
+        }
+    }
   }
 }
-
-    
