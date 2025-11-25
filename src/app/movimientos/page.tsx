@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -89,6 +88,12 @@ type StockMovement = {
   };
   items: StockMovementItem[];
 };
+type InventoryStock = {
+  id: string;
+  productId: string;
+  depositId: string;
+  quantity: number;
+};
 
 // --- Zod Schemas ---
 const movementItemSchema = z.object({
@@ -175,7 +180,10 @@ export default function MovimientosPage() {
   const movementsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'stockMovements')) : null, [firestore]);
   const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
 
-  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements;
+  const inventoryCollection = useMemoFirebase(() => firestore ? collection(firestore, 'inventory') : null, [firestore]);
+  const { data: inventory, isLoading: isLoadingInventory } = useCollection<InventoryStock>(inventoryCollection);
+
+  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements || isLoadingInventory;
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
@@ -185,11 +193,25 @@ export default function MovimientosPage() {
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
   const movementType = form.watch('type');
+  const selectedProductId = form.watch('items.0.productId');
+
 
   // --- Data Memoization for UI ---
   const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
   const actors = useMemo(() => (movementType === 'salida' ? clients : suppliers), [movementType, clients, suppliers]);
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
+
+  const stockByDeposit = useMemo(() => {
+    if (!inventory || !selectedProductId) return new Map<string, number>();
+
+    const stockMap = new Map<string, number>();
+    inventory
+      .filter(item => item.productId === selectedProductId)
+      .forEach(item => {
+        stockMap.set(item.depositId, item.quantity);
+      });
+    return stockMap;
+  }, [inventory, selectedProductId]);
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
@@ -201,51 +223,58 @@ export default function MovimientosPage() {
         const movementRef = doc(collection(firestore, 'stockMovements'));
         const movementItems: StockMovementItem[] = [];
 
-        const stockChecks = data.items.map(async (item) => {
-          if (data.type === 'salida') {
-            const inventoryQuery = query(
-              collection(firestore, 'inventory'),
-              where('depositId', '==', data.depositId),
-              where('productId', '==', item.productId)
-            );
-            const inventorySnap = await getDocs(inventoryQuery);
-            const stockDoc = inventorySnap.docs[0];
-            if (!stockDoc || stockDoc.data().quantity < item.quantity) {
-              const product = productsMap.get(item.productId);
-              throw new Error(`Stock insuficiente para ${product?.name || 'un producto'}.`);
-            }
-          }
-        });
-        
-        await Promise.all(stockChecks);
-
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
           if (!product) throw new Error(`Producto no encontrado.`);
-          
-          movementItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, unit: product.unit });
 
+          // 1. Build the query for the specific stock document INSIDE the transaction
           const inventoryQuery = query(
             collection(firestore, 'inventory'),
             where('depositId', '==', data.depositId),
             where('productId', '==', item.productId)
           );
-
+          
+          // 2. Get the document snapshot using the transaction
           const inventorySnap = await transaction.get(inventoryQuery);
           const stockDoc = inventorySnap.docs[0];
-          const change = data.type === 'salida' ? -item.quantity : item.quantity;
+
+          // 3. For salidas, re-verify stock inside the transaction for atomicity
+          if (data.type === 'salida') {
+            if (!stockDoc || stockDoc.data().quantity < item.quantity) {
+              throw new Error(`Stock insuficiente para ${product.name} en el depósito seleccionado.`);
+            }
+          }
           
+          // 4. Prepare update/set operation
+          const change = data.type === 'salida' ? -item.quantity : item.quantity;
           if (stockDoc) {
-            transaction.update(stockDoc.ref, { quantity: increment(change), lastUpdated: serverTimestamp() });
+            transaction.update(stockDoc.ref, { 
+              quantity: increment(change),
+              lastUpdated: serverTimestamp() 
+            });
           } else {
              const newStockRef = doc(collection(firestore, 'inventory'));
-             transaction.set(newStockRef, { depositId: data.depositId, productId: item.productId, quantity: item.quantity, lastUpdated: serverTimestamp() });
+             transaction.set(newStockRef, { 
+               depositId: data.depositId, 
+               productId: item.productId, 
+               quantity: item.quantity, 
+               lastUpdated: serverTimestamp() 
+             });
           }
+          
+          // 5. Add item to the movement document
+          movementItems.push({ 
+            productId: product.id, 
+            productName: product.name, 
+            quantity: item.quantity, 
+            unit: product.unit 
+          });
         }
         
         const deposit = deposits?.find(d => d.id === data.depositId);
         const actor = actors?.find(a => a.id === data.actorId);
 
+        // 6. Create the final movement document
         transaction.set(movementRef, {
           id: movementRef.id,
           type: data.type,
