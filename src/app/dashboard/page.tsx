@@ -1,22 +1,22 @@
 "use client";
 
-import { useAuth } from "@/context/auth-context";
+import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
+  const { user, isUserLoading } = useUser();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!isUserLoading && !user) {
       router.push("/login");
     }
-  }, [user, loading, router]);
+  }, [user, isUserLoading, router]);
 
-  if (loading) {
+  if (isUserLoading) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <div className="space-y-4">

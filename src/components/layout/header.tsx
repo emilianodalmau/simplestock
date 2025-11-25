@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { UserNav } from "./user-nav";
-import { useAuth } from "@/context/auth-context";
+import { useUser } from "@/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function Header() {
-  const { user, loading } = useAuth();
+  const { user, isUserLoading } = useUser();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -32,7 +32,7 @@ export function Header() {
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-end space-x-2">
-          {loading ? (
+          {isUserLoading ? (
             <div className="flex items-center space-x-2">
               <Skeleton className="h-8 w-20" />
               <Skeleton className="h-8 w-20" />

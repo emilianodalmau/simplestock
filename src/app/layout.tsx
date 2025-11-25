@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { AuthProvider } from '@/context/auth-context';
 import { Toaster } from '@/components/ui/toaster';
 import { Header } from '@/components/layout/header';
+import { FirebaseClientProvider } from '@/firebase';
 
 export const metadata: Metadata = {
   title: 'Firebase Blank Slate',
@@ -25,13 +25,13 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-background font-body antialiased">
-        <AuthProvider>
+        <FirebaseClientProvider>
           <div className="relative flex min-h-screen flex-col">
             <Header />
             <main className="flex-1">{children}</main>
           </div>
           <Toaster />
-        </AuthProvider>
+        </FirebaseClientProvider>
       </body>
     </html>
   );
