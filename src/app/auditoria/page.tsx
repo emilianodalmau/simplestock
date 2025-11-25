@@ -57,16 +57,19 @@ export default function AuditoriaPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingUser } = useDoc<UserProfile>(userDocRef);
 
+  const canViewPage =
+    currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
+
   const movementsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'stockMovements') : null),
-    [firestore]
+    () => (firestore && canViewPage ? collection(firestore, 'stockMovements') : null),
+    [firestore, canViewPage]
   );
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsCollection);
 
   const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
+    () => (firestore && canViewPage ? collection(firestore, 'users') : null),
+    [firestore, canViewPage]
   );
   const { data: users, isLoading: isLoadingUsers } =
     useCollection<UserProfile>(usersCollection);
@@ -76,18 +79,19 @@ export default function AuditoriaPage() {
     return new Map(users.map((user) => [user.id, user.displayName || user.email]));
   }, [users]);
   
-  const canViewPage =
-    currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
-
   const isLoading = isLoadingMovements || isLoadingUsers || isLoadingUser;
 
-  if (!isLoading && !canViewPage) {
+  if (!isLoadingUser && !canViewPage) {
      return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8">
-            <h1 className="text-2xl font-bold tracking-tight text-destructive">Acceso Denegado</h1>
-            <p className="text-muted-foreground">
-                No tienes los permisos necesarios para ver esta página.
-            </p>
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-destructive">Acceso Denegado</CardTitle>
+                    <CardDescription>
+                        No tienes los permisos necesarios para ver esta página.
+                    </CardDescription>
+                </CardHeader>
+            </Card>
         </div>
     );
   }

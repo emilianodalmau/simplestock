@@ -99,6 +99,7 @@ export default function MovimientosPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingUser } = useDoc<UserProfile>(userDocRef);
 
+  const canManageMovements = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
 
   const productsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'products') : null, [firestore]);
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
@@ -106,7 +107,7 @@ export default function MovimientosPage() {
   const depositsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'deposits') : null, [firestore]);
   const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
 
-  const movementsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'stockMovements') : null, [firestore]);
+  const movementsCollection = useMemoFirebase(() => (firestore && canManageMovements) ? collection(firestore, 'stockMovements') : null, [firestore, canManageMovements]);
   const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
 
   const form = useForm<MovementFormValues>({
@@ -202,17 +203,19 @@ export default function MovimientosPage() {
     }
   };
 
-  const canManageMovements = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
-
   const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingUser;
   
-  if (!canManageMovements && !isLoading) {
+  if (!isLoadingUser && !canManageMovements) {
     return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8">
-            <h1 className="text-2xl font-bold tracking-tight text-destructive">Acceso Denegado</h1>
-            <p className="text-muted-foreground">
-                No tienes los permisos necesarios para gestionar movimientos de stock.
-            </p>
+             <Card>
+                <CardHeader>
+                    <CardTitle className="text-destructive">Acceso Denegado</CardTitle>
+                    <CardDescription>
+                        No tienes los permisos necesarios para gestionar movimientos de stock.
+                    </CardDescription>
+                </CardHeader>
+            </Card>
         </div>
     );
   }
