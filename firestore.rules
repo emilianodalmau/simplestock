@@ -20,9 +20,9 @@ service cloud.firestore {
 
     function isEditorOrAdmin() {
       // Combines the existence check and role check into a single valid expression.
+      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
       return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador' || 
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor');
+             (userRole == 'administrador' || userRole == 'editor');
     }
     
     // ------------------------------------------------------------------------
