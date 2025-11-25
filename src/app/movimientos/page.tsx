@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -24,7 +25,6 @@ import {
   increment,
   DocumentSnapshot,
   DocumentReference,
-  WriteBatch,
   writeBatch,
 } from 'firebase/firestore';
 import {
@@ -205,61 +205,59 @@ export default function MovimientosPage() {
     try {
       await runTransaction(firestore, async (transaction) => {
         const movementItemsForDoc: StockMovementItem[] = [];
-        const stockChecks: {
-          ref: DocumentReference;
-          snapshot: DocumentSnapshot;
-          change: number;
-          productName: string;
-        }[] = [];
   
-        // PHASE 1: READS - Read all documents and prepare checks.
+        // --- AGGREGATION (THE FIX) ---
+        // Aggregate quantities for each product ID
+        const aggregatedQuantities = new Map<string, number>();
         for (const item of data.items) {
-          const product = productsMap.get(item.productId);
+          const currentQty = aggregatedQuantities.get(item.productId) || 0;
+          aggregatedQuantities.set(item.productId, currentQty + item.quantity);
+        }
+  
+        // --- PHASE 1: READS ---
+        // Read all necessary documents first.
+        const stockChecks = [];
+        for (const [productId, totalQuantity] of aggregatedQuantities.entries()) {
+          const product = productsMap.get(productId);
           if (!product) {
-            throw new Error(`Producto con ID ${item.productId} no encontrado.`);
+            throw new Error(`Producto con ID ${productId} no encontrado.`);
           }
   
-          const inventoryDocId = `${item.productId}_${data.depositId}`;
+          const inventoryDocId = `${productId}_${data.depositId}`;
           const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
+          
           const stockDocSnap = await transaction.get(inventoryDocRef);
   
           stockChecks.push({
             ref: inventoryDocRef,
             snapshot: stockDocSnap,
-            change: data.type === 'salida' ? -item.quantity : item.quantity,
+            change: data.type === 'salida' ? -totalQuantity : totalQuantity,
             productName: product.name,
-          });
-  
-          movementItemsForDoc.push({
             productId: product.id,
-            productName: product.name,
-            quantity: item.quantity,
             unit: product.unit,
+            quantity: totalQuantity
           });
         }
   
-        // PHASE 2: VALIDATIONS - Check for sufficient stock for all items.
+        // --- PHASE 2: VALIDATIONS ---
+        // Perform all validations using the read data.
         if (data.type === 'salida') {
           for (const check of stockChecks) {
-            const currentQuantity = check.snapshot.exists()
-              ? check.snapshot.data().quantity
-              : 0;
-            if (currentQuantity < -check.change) { // -check.change is positive quantity
-              throw new Error(
-                `Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}.`
-              );
+            const currentQuantity = check.snapshot.exists() ? check.snapshot.data().quantity : 0;
+            if (currentQuantity < -check.change) { // -check.change is the positive requested quantity
+              throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}.`);
             }
           }
         }
   
-        // PHASE 3: WRITES - If all validations pass, perform all writes.
+        // --- PHASE 3: WRITES ---
+        // If all validations pass, perform all writes.
         for (const check of stockChecks) {
           if (!check.snapshot.exists()) {
-             // If document doesn't exist, it must be an 'entrada' (checked implicitly by validation phase)
             transaction.set(check.ref, {
-              productId: check.ref.id.split('_')[0],
+              productId: check.productId,
               depositId: data.depositId,
-              quantity: check.change, // This is the initial quantity
+              quantity: check.change,
               lastUpdated: serverTimestamp(),
             });
           } else {
@@ -268,6 +266,13 @@ export default function MovimientosPage() {
               lastUpdated: serverTimestamp(),
             });
           }
+          // Add to the final movement document
+          movementItemsForDoc.push({
+            productId: check.productId,
+            productName: check.productName,
+            quantity: check.quantity, // Use the aggregated quantity
+            unit: check.unit,
+          });
         }
   
         // Final write: create the movement document
@@ -462,3 +467,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
