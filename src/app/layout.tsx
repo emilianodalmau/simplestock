@@ -36,15 +36,16 @@ import { type AppSettings, getSettings } from '@/lib/settings';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 
-function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayout({
+  children,
+  settings,
+}: {
+  children: React.ReactNode;
+  settings: AppSettings | null;
+}) {
   const pathname = usePathname();
   const auth = useAuth();
   const router = useRouter();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-
-  useEffect(() => {
-    getSettings().then(setSettings);
-  }, []);
 
   const handleLogout = async () => {
     if (auth) {
@@ -135,6 +136,33 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+function RootLayoutContent({ children }: { children: React.ReactNode }) {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadSettings() {
+      const fetchedSettings = await getSettings();
+      setSettings(fetchedSettings);
+      setIsLoading(false);
+    }
+    loadSettings();
+  }, []);
+
+  if (isLoading) {
+    // You can return a loading spinner here if you want
+    return null; 
+  }
+  
+  return (
+    <FirebaseClientProvider>
+      <AppLayout settings={settings}>{children}</AppLayout>
+      <Toaster />
+    </FirebaseClientProvider>
+  );
+}
+
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -155,10 +183,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-background font-body antialiased">
-        <FirebaseClientProvider>
-          <AppLayout>{children}</AppLayout>
-          <Toaster />
-        </FirebaseClientProvider>
+         <RootLayoutContent>{children}</RootLayoutContent>
       </body>
     </html>
   );
