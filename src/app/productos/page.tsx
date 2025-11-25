@@ -89,10 +89,13 @@ const formSchema = z.object({
     .string()
     .min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
+  supplierId: z.string().min(1, { message: 'El proveedor es requerido.' }),
   minStock: z.coerce
     .number()
     .min(0, { message: 'El stock mínimo no puede ser negativo.' }),
-  unit: z.enum(unitTypes, { required_error: 'El tipo de unidad es requerido.' }),
+  unit: z.enum(unitTypes, {
+    required_error: 'El tipo de unidad es requerido.',
+  }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -102,11 +105,17 @@ type Category = {
   name: string;
 };
 
+type Supplier = {
+  id: string;
+  name: string;
+};
+
 type Product = {
   id: string;
   code: string;
   name: string;
   categoryId: string;
+  supplierId: string;
   minStock: number;
   unit: (typeof unitTypes)[number];
 };
@@ -143,6 +152,13 @@ export default function ProductosPage() {
   const { data: categories, isLoading: isLoadingCategories } =
     useCollection<Category>(categoriesCollection);
 
+  const suppliersCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'suppliers') : null),
+    [firestore]
+  );
+  const { data: suppliers, isLoading: isLoadingSuppliers } =
+    useCollection<Supplier>(suppliersCollection);
+
   const productsCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'products') : null),
     [firestore]
@@ -155,6 +171,7 @@ export default function ProductosPage() {
     defaultValues: {
       name: '',
       categoryId: '',
+      supplierId: '',
       minStock: 0,
     },
   });
@@ -168,6 +185,7 @@ export default function ProductosPage() {
       editForm.reset({
         name: editingProduct.name,
         categoryId: editingProduct.categoryId,
+        supplierId: editingProduct.supplierId,
         minStock: editingProduct.minStock,
         unit: editingProduct.unit,
       });
@@ -255,6 +273,12 @@ export default function ProductosPage() {
     return categories?.find((c) => c.id === categoryId)?.name || 'N/A';
   };
 
+  const getSupplierName = (supplierId: string) => {
+    return suppliers?.find((s) => s.id === supplierId)?.name || 'N/A';
+  };
+
+  const isLoading = isLoadingProducts || isLoadingCategories || isLoadingSuppliers;
+
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
@@ -277,13 +301,13 @@ export default function ProductosPage() {
               <Form {...createForm}>
                 <form
                   onSubmit={createForm.handleSubmit(onCreateSubmit)}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
                 >
                   <FormField
                     control={createForm.control}
                     name="name"
                     render={({ field }) => (
-                      <FormItem className="lg:col-span-1 xl:col-span-1">
+                      <FormItem>
                         <FormLabel>Nombre del Producto</FormLabel>
                         <FormControl>
                           <Input
@@ -319,6 +343,39 @@ export default function ProductosPage() {
                               categories?.map((cat) => (
                                 <SelectItem key={cat.id} value={cat.id}>
                                   {cat.name}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={createForm.control}
+                    name="supplierId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Proveedor</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona un proveedor" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {isLoadingSuppliers ? (
+                              <SelectItem value="loading" disabled>
+                                Cargando...
+                              </SelectItem>
+                            ) : (
+                              suppliers?.map((sup) => (
+                                <SelectItem key={sup.id} value={sup.id}>
+                                  {sup.name}
                                 </SelectItem>
                               ))
                             )}
@@ -399,6 +456,7 @@ export default function ProductosPage() {
                       <TableHead>Código</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Categoría</TableHead>
+                      <TableHead>Proveedor</TableHead>
                       <TableHead>Tipo de Unidad</TableHead>
                       <TableHead>Stock Mínimo</TableHead>
                       {canManageProducts && (
@@ -407,7 +465,7 @@ export default function ProductosPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(isLoadingProducts || isLoadingCategories) &&
+                    {isLoading &&
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
                           <TableCell>
@@ -415,6 +473,9 @@ export default function ProductosPage() {
                           </TableCell>
                           <TableCell>
                             <Skeleton className="h-4 w-40" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-32" />
                           </TableCell>
                           <TableCell>
                             <Skeleton className="h-4 w-32" />
@@ -432,17 +493,17 @@ export default function ProductosPage() {
                           )}
                         </TableRow>
                       ))}
-                    {!isLoadingProducts && products?.length === 0 && (
+                    {!isLoading && products?.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={canManageProducts ? 6 : 5}
+                          colSpan={canManageProducts ? 7 : 6}
                           className="text-center"
                         >
                           No hay productos creados.
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isLoadingProducts &&
+                    {!isLoading &&
                       products?.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell className="font-mono">
@@ -453,6 +514,9 @@ export default function ProductosPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {getCategoryName(product.categoryId)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {getSupplierName(product.supplierId)}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {product.unit}
@@ -573,6 +637,33 @@ export default function ProductosPage() {
               />
               <FormField
                 control={editForm.control}
+                name="supplierId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Proveedor</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un proveedor" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {suppliers?.map((sup) => (
+                          <SelectItem key={sup.id} value={sup.id}>
+                            {sup.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
                 name="unit"
                 render={({ field }) => (
                   <FormItem>
@@ -630,3 +721,4 @@ export default function ProductosPage() {
   );
 }
 
+    
