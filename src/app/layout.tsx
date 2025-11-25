@@ -29,6 +29,7 @@ import {
   Building2,
   LogOut,
   Replace,
+  Settings,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -56,6 +57,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     { href: '/clientes', label: 'Clientes', icon: Building },
     { href: '/depositos', label: 'Depósitos', icon: Archive },
     { href: '/usuarios', label: 'Usuarios', icon: Users },
+    { href: '/configuracion', label: 'Configuración', icon: Settings },
   ];
 
   const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
