@@ -17,14 +17,16 @@ service cloud.firestore {
 
     function isAdmin() {
       // Securely check for admin role from the user's own document.
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
     }
 
     function isEditorOrAdmin() {
       // Securely check for editor or admin role.
+      if (!isSignedIn()) {
+        return false;
+      }
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             (userRole == 'administrador' || userRole == 'editor');
+      return userRole == 'administrador' || userRole == 'editor';
     }
     
     // ------------------------------------------------------------------------
