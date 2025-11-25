@@ -279,74 +279,6 @@
         "quantity",
         "lastUpdated"
       ]
-    },
-    "StockMovement": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "StockMovement",
-      "type": "object",
-      "description": "Represents a single stock movement event, like a delivery or a withdrawal.",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["entrada", "salida"]
-        },
-        "date": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "reason": {
-          "type": "string"
-        },
-        "userId": {
-          "type": "string"
-        },
-        "clientId": {
-          "type": "string"
-        },
-        "supplierId": {
-          "type": "string"
-        },
-        "productId": {
-          "type": "string"
-        },
-        "depositId": {
-          "type": "string"
-        },
-        "quantity": {
-          "type": "number"
-        },
-        "productName": {
-          "type": "string"
-        },
-        "depositName": {
-          "type": "string"
-        }
-      },
-      "required": ["id", "type", "date", "reason", "userId", "productId", "depositId", "quantity", "productName", "depositName"]
-    },
-    "StockMovementItem": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "StockMovementItem",
-      "type": "object",
-      "description": "Represents a line item within a stock movement.",
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "productId": {
-          "type": "string"
-        },
-        "quantity": {
-          "type": "number"
-        },
-        "depositId": {
-          "type": "string"
-        }
-      },
-      "required": ["id", "productId", "quantity", "depositId"]
     }
   },
   "auth": {
@@ -486,29 +418,6 @@
               "name": "inventoryStockId",
               "description": "The unique identifier for the stock record."
             }
-          ]
-        }
-      },
-      {
-        "path": "/stockMovements/{movementId}",
-        "definition": {
-          "entityName": "StockMovement",
-          "schema": { "$ref": "#/backend/entities/StockMovement" },
-          "description": "Stores stock movement events.",
-          "params": [
-            { "name": "movementId", "description": "The unique identifier of the movement." }
-          ]
-        }
-      },
-      {
-        "path": "/stockMovements/{movementId}/items/{itemId}",
-        "definition": {
-          "entityName": "StockMovementItem",
-          "schema": { "$ref": "#/backend/entities/StockMovementItem" },
-          "description": "Stores items for a stock movement.",
-          "params": [
-            { "name": "movementId", "description": "The movement ID." },
-            { "name": "itemId", "description": "The item ID." }
           ]
         }
       }

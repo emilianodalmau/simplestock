@@ -21,13 +21,11 @@ import {
   FileText,
   Warehouse,
   Box,
-  ArrowRightLeft,
   Users,
   Building,
   Archive,
   Tags,
   Truck,
-  BookCheck,
   Building2,
   LogOut,
 } from 'lucide-react';
@@ -50,8 +48,6 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const menuItems = [
     { href: '/dashboard', label: 'Panel de Control', icon: Home },
     { href: '/inventario', label: 'Inventario', icon: Warehouse },
-    { href: '/movimientos', label: 'Movimientos', icon: ArrowRightLeft },
-    { href: '/auditoria', label: 'Auditoría', icon: BookCheck },
     { href: '/solicitudes', label: 'Solicitudes', icon: FileText },
     { href: '/productos', label: 'Productos', icon: Box },
     { href: '/categorias', label: 'Categorías', icon: Tags },
