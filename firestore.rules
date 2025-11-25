@@ -17,16 +17,13 @@ service cloud.firestore {
 
     function isAdmin() {
       // Securely check for admin role from the user's own document.
-      // This requires the user document to exist.
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
     }
 
     function isEditorOrAdmin() {
-      if (!isSignedIn()) {
-        return false;
-      }
+      // Securely check for editor or admin role.
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return userRole == 'administrador' || userRole == 'editor';
+      return isSignedIn() && (userRole == 'administrador' || userRole == 'editor');
     }
     
     // ------------------------------------------------------------------------
