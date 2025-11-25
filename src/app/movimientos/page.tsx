@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -22,9 +23,7 @@ import {
   serverTimestamp,
   query,
   where,
-  getDocs,
   increment,
-  DocumentReference,
 } from 'firebase/firestore';
 import {
   Card,
@@ -193,25 +192,11 @@ export default function MovimientosPage() {
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
   const movementType = form.watch('type');
-  const selectedProductId = form.watch('items.0.productId');
-
 
   // --- Data Memoization for UI ---
   const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
   const actors = useMemo(() => (movementType === 'salida' ? clients : suppliers), [movementType, clients, suppliers]);
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
-
-  const stockByDeposit = useMemo(() => {
-    if (!inventory || !selectedProductId) return new Map<string, number>();
-
-    const stockMap = new Map<string, number>();
-    inventory
-      .filter(item => item.productId === selectedProductId)
-      .forEach(item => {
-        stockMap.set(item.depositId, item.quantity);
-      });
-    return stockMap;
-  }, [inventory, selectedProductId]);
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
@@ -223,17 +208,20 @@ export default function MovimientosPage() {
         const movementRef = doc(collection(firestore, 'stockMovements'));
         const movementItems: StockMovementItem[] = [];
 
+        // Use a standard for...of loop for async operations
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
-          if (!product) throw new Error(`Producto no encontrado.`);
+          if (!product) {
+            throw new Error(`Producto con ID ${item.productId} no encontrado.`);
+          }
 
-          // 1. Build the query for the specific stock document INSIDE the transaction
+          // 1. Build the query for the specific stock document INSIDE the transaction loop
           const inventoryQuery = query(
             collection(firestore, 'inventory'),
             where('depositId', '==', data.depositId),
             where('productId', '==', item.productId)
           );
-          
+
           // 2. Get the document snapshot using the transaction
           const inventorySnap = await transaction.get(inventoryQuery);
           const stockDoc = inventorySnap.docs[0];
@@ -253,13 +241,19 @@ export default function MovimientosPage() {
               lastUpdated: serverTimestamp() 
             });
           } else {
-             const newStockRef = doc(collection(firestore, 'inventory'));
-             transaction.set(newStockRef, { 
-               depositId: data.depositId, 
-               productId: item.productId, 
-               quantity: item.quantity, 
-               lastUpdated: serverTimestamp() 
-             });
+             // If it's an entry and the doc doesn't exist, we create it.
+             if (data.type === 'entrada') {
+                const newStockRef = doc(collection(firestore, 'inventory'));
+                transaction.set(newStockRef, { 
+                    depositId: data.depositId, 
+                    productId: item.productId, 
+                    quantity: item.quantity, 
+                    lastUpdated: serverTimestamp() 
+                });
+             } else {
+                // This case should be caught by the stock check above, but it's a safeguard.
+                throw new Error(`No se puede dar salida a ${product.name} porque no hay registro de stock en este depósito.`);
+             }
           }
           
           // 5. Add item to the movement document
@@ -449,3 +443,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
