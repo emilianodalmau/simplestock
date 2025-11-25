@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +11,14 @@ import {
   useMemoFirebase,
   useUser,
 } from '@/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -38,9 +45,29 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Edit, Trash2 } from 'lucide-react';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -62,6 +89,8 @@ type UserProfile = {
 
 export default function CategoriasPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
@@ -79,7 +108,7 @@ export default function CategoriasPage() {
   const { data: categories, isLoading } =
     useCollection<Category>(categoriesCollection);
 
-  const form = useForm<FormValues>({
+  const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
@@ -87,7 +116,20 @@ export default function CategoriasPage() {
     },
   });
 
-  const onSubmit: SubmitHandler<FormValues> = async (data) => {
+  const editForm = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+  });
+
+  useEffect(() => {
+    if (editingCategory) {
+      editForm.reset({
+        name: editingCategory.name,
+        description: editingCategory.description || '',
+      });
+    }
+  }, [editingCategory, editForm]);
+
+  const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
     try {
@@ -99,7 +141,7 @@ export default function CategoriasPage() {
         title: 'Categoría Creada',
         description: `La categoría "${data.name}" ha sido agregada.`,
       });
-      form.reset();
+      createForm.reset();
     } catch (error) {
       console.error('Error creating category:', error);
       toast({
@@ -110,6 +152,50 @@ export default function CategoriasPage() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
+    if (!firestore || !editingCategory) return;
+    setIsEditSubmitting(true);
+    try {
+      const categoryRef = doc(firestore, 'categories', editingCategory.id);
+      await updateDoc(categoryRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+      });
+      toast({
+        title: 'Categoría Actualizada',
+        description: `La categoría "${data.name}" ha sido actualizada.`,
+      });
+      setEditingCategory(null);
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error al actualizar la categoría.',
+      });
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    if (!firestore) return;
+    try {
+      await deleteDoc(doc(firestore, 'categories', categoryId));
+      toast({
+        title: 'Categoría Eliminada',
+        description: 'La categoría ha sido eliminada correctamente.',
+      });
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error al eliminar la categoría.',
+      });
     }
   };
 
@@ -137,13 +223,13 @@ export default function CategoriasPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Form {...form}>
+              <Form {...createForm}>
                 <form
-                  onSubmit={form.handleSubmit(onSubmit)}
+                  onSubmit={createForm.handleSubmit(onCreateSubmit)}
                   className="space-y-6"
                 >
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
@@ -156,7 +242,7 @@ export default function CategoriasPage() {
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="description"
                     render={({ field }) => (
                       <FormItem>
@@ -195,6 +281,9 @@ export default function CategoriasPage() {
                     <TableRow>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Descripción</TableHead>
+                      {canManageCategories && (
+                        <TableHead className="text-right">Acciones</TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -207,11 +296,19 @@ export default function CategoriasPage() {
                           <TableCell>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
+                          {canManageCategories && (
+                            <TableCell>
+                              <Skeleton className="h-8 w-20 ml-auto" />
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     {!isLoading && categories?.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={2} className="text-center">
+                        <TableCell
+                          colSpan={canManageCategories ? 3 : 2}
+                          className="text-center"
+                        >
                           No hay categorías creadas.
                         </TableCell>
                       </TableRow>
@@ -221,10 +318,55 @@ export default function CategoriasPage() {
                         <TableRow key={category.id}>
                           <TableCell className="font-medium">
                             {category.name}
-                          </TableCell>                          
+                          </TableCell>
                           <TableCell className="text-muted-foreground">
                             {category.description || '-'}
                           </TableCell>
+                          {canManageCategories && (
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setEditingCategory(category)}
+                              >
+                                <Edit className="h-4 w-4" />
+                                <span className="sr-only">Editar</span>
+                              </Button>
+
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                    <span className="sr-only">Eliminar</span>
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      ¿Estás seguro?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Esta acción no se puede deshacer. Esto
+                                      eliminará permanentemente la categoría.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                      Cancelar
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handleDeleteCategory(category.id)
+                                      }
+                                      className="bg-destructive hover:bg-destructive/90"
+                                    >
+                                      Eliminar
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                   </TableBody>
@@ -234,7 +376,65 @@ export default function CategoriasPage() {
           </Card>
         </div>
       </div>
+
+      {/* Edit Category Dialog */}
+      <Dialog
+        open={!!editingCategory}
+        onOpenChange={(isOpen) => !isOpen && setEditingCategory(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Categoría</DialogTitle>
+            <DialogDescription>
+              Modifica los detalles de la categoría.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form
+              onSubmit={editForm.handleSubmit(onEditSubmit)}
+              className="space-y-6"
+            >
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descripción</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancelar</Button>
+                </DialogClose>
+                <Button type="submit" disabled={isEditSubmitting}>
+                  {isEditSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Guardar Cambios
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
