@@ -85,7 +85,7 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
           <h3 className="text-lg font-semibold border-b pb-1 mb-2 text-gray-700">
             {movement.type === 'entrada'
               ? 'Origen (Proveedor)'
-              : 'Destino (Cliente)'}
+              : 'Destino (Usuario)'}
           </h3>
           <p>{movement.actorName || 'No especificado'}</p>
         </div>

@@ -87,9 +87,13 @@ export type Product = {
   isArchived?: boolean;
 };
 export type Deposit = { id: string; name: string };
-export type Client = { id: string; name: string };
 export type Supplier = { id: string; name: string };
-export type UserProfile = { role?: 'administrador' | 'editor' | 'visualizador' };
+export type UserProfile = { 
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  role?: 'administrador' | 'editor' | 'visualizador' 
+};
 export type StockMovementItem = {
   productId: string;
   productName: string;
@@ -193,11 +197,11 @@ export default function MovimientosPage() {
   }, []);
 
   // --- Data Loading ---
-  const userDocRef = useMemoFirebase(
+  const currentUserDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
     [firestore, user]
   );
-  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
 
   const productsCollection = useMemoFirebase(
     () =>
@@ -216,12 +220,12 @@ export default function MovimientosPage() {
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
 
-  const clientsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'clients') : null),
+  const usersCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'users') : null),
     [firestore]
   );
-  const { data: clients, isLoading: isLoadingClients } =
-    useCollection<Client>(clientsCollection);
+  const { data: users, isLoading: isLoadingUsers } =
+    useCollection<UserProfile>(usersCollection);
 
   const suppliersCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'suppliers') : null),
@@ -247,7 +251,7 @@ export default function MovimientosPage() {
   const isLoading =
     isLoadingProducts ||
     isLoadingDeposits ||
-    isLoadingClients ||
+    isLoadingUsers ||
     isLoadingSuppliers ||
     isLoadingMovements ||
     isLoadingInventory;
@@ -287,11 +291,12 @@ export default function MovimientosPage() {
   const productsMap = useMemo(() => new Map(products?.map((p) => [p.id, p])), [
     products,
   ]);
+  
   const actors = useMemo(
-    () => (movementType === 'salida' ? clients : suppliers),
-    [movementType, clients, suppliers]
+    () => (movementType === 'salida' ? users : suppliers),
+    [movementType, users, suppliers]
   );
-  const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
+  const actorLabel = movementType === 'salida' ? 'Usuario' : 'Proveedor';
 
   const availableProductsForMovement = useMemo(() => {
     if (!products) return [];
@@ -415,6 +420,17 @@ export default function MovimientosPage() {
 
         const deposit = deposits?.find((d) => d.id === data.depositId);
         const actor = actors?.find((a) => a.id === data.actorId);
+        let actorName = null;
+        if(actor) {
+            if(data.type === 'salida') {
+                const userActor = actor as UserProfile;
+                actorName = `${userActor.firstName || ''} ${userActor.lastName || ''}`.trim();
+            } else {
+                const supplierActor = actor as Supplier;
+                actorName = supplierActor.name;
+            }
+        }
+
         const movementRef = doc(collection(firestore, 'stockMovements'));
 
         transaction.set(movementRef, {
@@ -424,10 +440,10 @@ export default function MovimientosPage() {
           depositId: data.depositId,
           depositName: deposit?.name || 'N/A',
           actorId: data.actorId || null,
-          actorName: actor?.name || null,
+          actorName: actorName,
           actorType: data.actorId
             ? data.type === 'salida'
-              ? 'client'
+              ? 'user'
               : 'supplier'
             : null,
           createdAt: serverTimestamp(),
@@ -598,7 +614,7 @@ export default function MovimientosPage() {
                           <SelectContent>
                             {actors?.map((a) => (
                               <SelectItem key={a.id} value={a.id}>
-                                {a.name}
+                                {movementType === 'salida' ? `${(a as UserProfile).firstName} ${(a as UserProfile).lastName}` : (a as Supplier).name}
                               </SelectItem>
                             ))}
                           </SelectContent>

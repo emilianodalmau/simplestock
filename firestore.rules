@@ -32,10 +32,7 @@ service cloud.firestore {
 
     match /users/{userId} {
       // READ: Users can get their own profile. Admins can get any profile.
-      allow get: if isOwner(userId) || isAdmin();
-      
-      // LIST: Only admins can list all users.
-      allow list: if isAdmin();
+      allow get, list: if isSignedIn();
       
       // CREATE: A user can only create their own user document.
       allow create: if isOwner(userId);
@@ -76,14 +73,6 @@ service cloud.firestore {
       allow get, list: if isSignedIn();
 
       // WRITE: Only editors or admins can create, update, or delete suppliers.
-      allow write: if isEditorOrAdmin();
-    }
-
-    match /clients/{clientId} {
-      // READ: Any signed-in user can get or list clients.
-      allow get, list: if isSignedIn();
-
-      // WRITE: Only editors or admins can create, update, or delete clients.
       allow write: if isEditorOrAdmin();
     }
 

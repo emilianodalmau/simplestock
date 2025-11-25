@@ -2,7 +2,7 @@
 
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
-import { FirebaseClientProvider, useAuth } from '@/firebase';
+import { FirebaseClientProvider } from '@/firebase';
 import {
   Sidebar,
   SidebarContent,
@@ -45,7 +45,7 @@ function AppLayout({
   settings: AppSettings | null;
 }) {
   const pathname = usePathname();
-  const auth = useAuth();
+  const { auth } = useFirebase();
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -63,7 +63,6 @@ function AppLayout({
     { href: '/productos', label: 'Productos', icon: Box },
     { href: '/categorias', label: 'Categorías', icon: Tags },
     { href: '/proveedores', label: 'Proveedores', icon: Truck },
-    { href: '/clientes', label: 'Clientes', icon: Building },
     { href: '/depositos', label: 'Depósitos', icon: Archive },
     { href: '/usuarios', label: 'Usuarios', icon: Users },
     { href: '/configuracion', label: 'Configuración', icon: Settings },
