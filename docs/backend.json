@@ -248,6 +248,10 @@
           "type": "string",
           "description": "Unique identifier for the StockMovement document."
         },
+        "remitoNumber": {
+            "type": "string",
+            "description": "A user-defined unique number for the delivery note (remito)."
+        },
         "type": {
           "type": "string",
           "description": "The type of movement.",
