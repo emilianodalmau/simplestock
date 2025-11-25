@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -22,9 +21,9 @@ import {
   doc,
   serverTimestamp,
   query,
-  where,
   increment,
-  writeBatch,
+  DocumentSnapshot,
+  DocumentReference,
 } from 'firebase/firestore';
 import {
   Card,
@@ -196,7 +195,7 @@ export default function MovimientosPage() {
   const actors = useMemo(() => (movementType === 'salida' ? clients : suppliers), [movementType, clients, suppliers]);
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
 
-  // --- [THE NEW SOLUTION] Form Submission Logic ---
+  // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user) return;
     setIsSubmitting(true);
@@ -204,62 +203,71 @@ export default function MovimientosPage() {
     try {
       await runTransaction(firestore, async (transaction) => {
         const movementItemsForDoc: StockMovementItem[] = [];
+        const stockUpdateData: { 
+          ref: DocumentReference, 
+          change: number, 
+          snapshot: DocumentSnapshot 
+        }[] = [];
 
-        // Use a standard for...of loop for async operations
+        // PHASE 1: READS
+        // Perform all reads first to comply with Firestore transaction rules.
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
           if (!product) {
             throw new Error(`Producto con ID ${item.productId} no encontrado.`);
           }
-
-          // **NEW APPROACH**: Construct the PREDICTABLE document ID and get a direct reference.
+          
           const inventoryDocId = `${item.productId}_${data.depositId}`;
           const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
           
+          // Read the document inside the transaction.
           const stockDocSnap = await transaction.get(inventoryDocRef);
-          const currentStockData = stockDocSnap.data() as InventoryStock | undefined;
-          const currentQuantity = currentStockData?.quantity || 0;
-
-          // For 'salida', verify stock inside the transaction for atomicity
+          
           if (data.type === 'salida') {
-            if (!stockDocSnap.exists() || currentQuantity < item.quantity) {
-              throw new Error(`Stock insuficiente para ${product.name} en el depósito seleccionado. Stock actual: ${currentQuantity}.`);
+            const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
+            if (currentQuantity < item.quantity) {
+              throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}.`);
             }
           }
-          
-          // Prepare update/set operation
-          const change = data.type === 'salida' ? -item.quantity : item.quantity;
 
-          if (stockDocSnap.exists()) {
-            transaction.update(inventoryDocRef, { 
-              quantity: increment(change),
-              lastUpdated: serverTimestamp() 
-            });
-          } else {
-             // If the doc doesn't exist, we create it.
-             // This is safe for 'salida' because the check above would have already failed.
-            transaction.set(inventoryDocRef, { 
-                productId: item.productId, 
-                depositId: data.depositId, 
-                quantity: item.quantity, 
-                lastUpdated: serverTimestamp() 
-            });
-          }
-          
-          // Add item to the movement document
-          movementItemsForDoc.push({ 
-            productId: product.id, 
-            productName: product.name, 
-            quantity: item.quantity, 
-            unit: product.unit 
+          // Save the necessary data for the write phase.
+          stockUpdateData.push({
+            ref: inventoryDocRef,
+            change: data.type === 'salida' ? -item.quantity : item.quantity,
+            snapshot: stockDocSnap,
+          });
+
+          // Prepare the item for the final movement document.
+          movementItemsForDoc.push({
+            productId: product.id,
+            productName: product.name,
+            quantity: item.quantity,
+            unit: product.unit,
           });
         }
+
+        // PHASE 2: WRITES
+        // Now, perform all writes.
+        for (const update of stockUpdateData) {
+          if (update.snapshot.exists()) {
+            transaction.update(update.ref, { quantity: increment(update.change) });
+          } else {
+            // This case should only happen for 'entrada' if the doc doesn't exist.
+            // The check for 'salida' above prevents it from reaching here if stock is insufficient.
+            transaction.set(update.ref, {
+              productId: update.ref.id.split('_')[0],
+              depositId: data.depositId,
+              quantity: update.change, // This is the initial quantity.
+              lastUpdated: serverTimestamp(),
+            });
+          }
+        }
         
+        // Final write: create the movement document.
         const deposit = deposits?.find(d => d.id === data.depositId);
         const actor = actors?.find(a => a.id === data.actorId);
-
-        // Create the final movement document
         const movementRef = doc(collection(firestore, 'stockMovements'));
+        
         transaction.set(movementRef, {
           id: movementRef.id,
           type: data.type,
