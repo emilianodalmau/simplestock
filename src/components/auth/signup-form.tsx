@@ -57,15 +57,15 @@ export function SignupForm() {
     }
 
     try {
-      const isAdmin = values.email === "emilianodalmau@gmail.com";
-      const role = isAdmin ? "administrador" : "visualizador";
-
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         values.email,
         values.password
       );
       const user = userCredential.user;
+      
+      const isAdmin = values.email === "emilianodalmau@gmail.com";
+      const role = isAdmin ? "administrador" : "visualizador";
 
       const userDocRef = doc(firestore, "users", user.uid);
       await setDoc(userDocRef, {
@@ -77,15 +77,21 @@ export function SignupForm() {
       });
 
       router.push("/dashboard");
+
     } catch (error: any) {
-      toast({
-        title: "Sign Up Failed",
-        description:
-          error.code === "auth/email-already-in-use"
-            ? "This email is already in use."
-            : "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
+      if (error.code === 'auth/email-already-in-use') {
+        toast({
+          title: "Email already in use",
+          description: "This email is already registered. Try logging in.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Sign Up Failed",
+          description: "An unexpected error occurred. Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
