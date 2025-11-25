@@ -62,6 +62,14 @@ export function SignupForm() {
       const usersSnapshot = await getDocs(usersCollectionRef);
       const isFirstUser = usersSnapshot.empty;
 
+      // Determine the role
+      let role = "visualizador";
+      if (values.email === "emilianodalmau@gmail.com") {
+        role = "administrador";
+      } else if (isFirstUser) {
+        role = "administrador";
+      }
+
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         values.email,
@@ -76,8 +84,7 @@ export function SignupForm() {
         email: user.email,
         displayName: user.displayName || "",
         photoURL: user.photoURL || "",
-        // Assign 'administrador' role to the first user, 'visualizador' to others
-        role: isFirstUser ? "administrador" : "visualizador",
+        role: role,
       });
 
       router.push("/dashboard");
