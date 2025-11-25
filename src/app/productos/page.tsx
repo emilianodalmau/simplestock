@@ -176,6 +176,7 @@ export default function ProductosPage() {
       categoryId: '',
       supplierId: '',
       minStock: 0,
+      unit: undefined,
     },
   });
 
@@ -210,7 +211,12 @@ export default function ProductosPage() {
         title: 'Producto Creado',
         description: `El producto "${data.name}" con código "${productCode}" ha sido agregado.`,
       });
-      createForm.reset();
+      // Smart form reset
+      createForm.reset({
+        ...data, // Keep previous data
+        name: '', // Clear only name
+        minStock: 0, // Reset minStock
+      });
     } catch (error) {
       console.error('Error creating product:', error);
       toast({
@@ -332,7 +338,7 @@ export default function ProductosPage() {
                         <FormLabel>Categoría</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -365,7 +371,7 @@ export default function ProductosPage() {
                         <FormLabel>Proveedor</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -398,7 +404,7 @@ export default function ProductosPage() {
                         <FormLabel>Tipo de Unidad</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger>
