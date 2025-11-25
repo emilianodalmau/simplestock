@@ -212,93 +212,87 @@ export default function MovimientosPage() {
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user) return;
     setIsSubmitting(true);
-  
+
     try {
       // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
-      const productWithdrawals = new Map<string, number>();
-      if (data.type === 'salida') {
-        for (const item of data.items) {
-          if (item.productId) {
-            productWithdrawals.set(
-              item.productId,
-              (productWithdrawals.get(item.productId) || 0) + item.quantity
-            );
-          }
+      // This is the key change to correctly handle multiple lines for the same product.
+      const productChanges = new Map<string, number>();
+      for (const item of data.items) {
+        if (item.productId) {
+          const change = data.type === 'salida' ? -item.quantity : item.quantity;
+          productChanges.set(
+            item.productId,
+            (productChanges.get(item.productId) || 0) + change
+          );
         }
       }
 
       await runTransaction(firestore, async (transaction) => {
-        const movementItemsForDoc: StockMovementItem[] = [];
+        const stockChecks = [];
+
+        // --- PHASE 2.1: READ all necessary documents ---
+        for (const [productId, change] of productChanges.entries()) {
+          const product = productsMap.get(productId);
+          if (!product) throw new Error(`Producto con ID ${productId} no encontrado.`);
+
+          const inventoryDocId = `${productId}_${data.depositId}`;
+          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+          const stockDocSnap = await transaction.get(stockDocRef);
+          
+          stockChecks.push({
+            ref: stockDocRef,
+            snap: stockDocSnap,
+            change: change,
+            productName: product.name,
+            productId: product.id
+          });
+        }
         
-        // --- PHASE 2: READS & VALIDATIONS ---
-        const stockChecks: {
-            ref: any;
-            product: Product;
-            change: number;
-        }[] = [];
+        // --- PHASE 2.2: VALIDATE all reads ---
+        if (data.type === 'salida') {
+            for (const check of stockChecks) {
+                const currentQuantity = check.snap.exists() ? check.snap.data().quantity : 0;
+                const quantityToWithdraw = -check.change; // change is negative for salidas
 
-        // Create a unique set of product IDs to read
-        const uniqueProductIds = Array.from(new Set(data.items.map(i => i.productId)));
-
-        for (const productId of uniqueProductIds) {
-            const product = productsMap.get(productId);
-            if (!product) throw new Error(`Producto con ID ${productId} no encontrado.`);
-
-            const inventoryDocId = `${productId}_${data.depositId}`;
-            const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
-            const stockDocSnap = await transaction.get(stockDocRef);
-
-            if (data.type === 'salida') {
-                const totalToWithdraw = productWithdrawals.get(productId) || 0;
-                const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
-                
-                if (currentQuantity < totalToWithdraw) {
-                    throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${totalToWithdraw}.`);
+                if (currentQuantity < quantityToWithdraw) {
+                    throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`);
                 }
             }
-             // Get all items for this product
-            const itemsForThisProduct = data.items.filter(i => i.productId === productId);
-            const totalChange = itemsForThisProduct.reduce((acc, item) => acc + (data.type === 'salida' ? -item.quantity : item.quantity), 0);
-            
-            stockChecks.push({
-                ref: stockDocRef,
-                product: product,
-                change: totalChange,
-            });
         }
-
-        // --- PHASE 3: GET NEW REMITO NUMBER ---
+        
+        // --- PHASE 2.3: GET NEW REMITO NUMBER ---
         const counterRef = doc(firestore, 'counters', 'remitoCounter');
         const counterSnap = await transaction.get(counterRef);
         const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
         const newRemitoNumber = lastNumber + 1;
         const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
-        
-        // --- PHASE 4: WRITES ---
+
+        // --- PHASE 3: WRITE all changes ---
         transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
-        // Write all stock updates
         for (const check of stockChecks) {
-            transaction.set(check.ref, { 
-                quantity: increment(check.change),
-                lastUpdated: serverTimestamp(),
-                productId: check.product.id,
-                depositId: data.depositId,
-            }, { merge: true });
+          transaction.set(
+            check.ref,
+            {
+              quantity: increment(check.change),
+              lastUpdated: serverTimestamp(),
+              productId: check.productId,
+              depositId: data.depositId,
+            },
+            { merge: true }
+          );
         }
-        
-        // Prepare final movement document data
-        for (const item of data.items) {
+
+        // Prepare final movement document data from original form data
+        const movementItemsForDoc: StockMovementItem[] = data.items.map(item => {
             const product = productsMap.get(item.productId);
-            if(product) {
-                movementItemsForDoc.push({
-                    productId: item.productId,
-                    productName: product.name,
-                    quantity: item.quantity,
-                    unit: product.unit,
-                });
-            }
-        }
+            return {
+                productId: item.productId,
+                productName: product?.name || 'N/A',
+                quantity: item.quantity,
+                unit: product?.unit || 'N/A',
+            };
+        });
 
         const deposit = deposits?.find((d) => d.id === data.depositId);
         const actor = actors?.find((a) => a.id === data.actorId);
@@ -581,3 +575,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
