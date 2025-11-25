@@ -129,12 +129,14 @@ export default function MovimientosPage() {
       await runTransaction(firestore, async (transaction) => {
         const { productId, depositId, quantity, type, reason } = data;
 
-        // 1. Find the specific inventory stock document
+        // 1. Define la referencia al documento de inventario.
         const inventoryQuery = query(
           collection(firestore, 'inventory'),
           where('productId', '==', productId),
           where('depositId', '==', depositId)
         );
+
+        // 2. Lee el documento de stock DENTRO de la transacción.
         const inventorySnap = await getDocs(inventoryQuery);
         const stockDoc = inventorySnap.docs[0];
 
@@ -143,12 +145,12 @@ export default function MovimientosPage() {
             currentStock = stockDoc.data().quantity;
         }
 
-        // 2. Check for sufficient stock on 'salida'
+        // 3. Verifica el stock si es una salida.
         if (type === 'salida' && currentStock < quantity) {
           throw new Error('Stock insuficiente para realizar la salida.');
         }
 
-        // 3. Create the stock movement record
+        // 4. Crea el registro del movimiento.
         const movementRef = doc(collection(firestore, 'stockMovements'));
         const productName = products?.find(p => p.id === productId)?.name || 'Desconocido';
         const depositName = deposits?.find(d => d.id === depositId)?.name || 'Desconocido';
@@ -165,22 +167,22 @@ export default function MovimientosPage() {
             depositId,
         });
 
-        // 4. Update the inventory stock document
-        const stockAmount = type === 'entrada' ? quantity : -quantity;
+        // 5. Actualiza (o crea) el documento de inventario.
+        const stockChange = type === 'entrada' ? quantity : -quantity;
         if (stockDoc && stockDoc.exists()) {
-          // If stock record exists, update it
+          // Si el registro de stock existe, actualízalo.
           transaction.update(stockDoc.ref, {
-            quantity: increment(stockAmount),
+            quantity: increment(stockChange),
             lastUpdated: serverTimestamp(),
           });
         } else {
-          // If not, create it (only for 'entrada')
+          // Si no existe, créalo (solo para entradas).
           if (type === 'salida') throw new Error('No se puede dar salida a un producto sin stock inicial.');
           const newStockRef = doc(collection(firestore, 'inventory'));
           transaction.set(newStockRef, {
             productId,
             depositId,
-            quantity,
+            quantity, // Empieza con la cantidad de entrada
             lastUpdated: serverTimestamp(),
           });
         }
@@ -398,5 +400,3 @@ export default function MovimientosPage() {
     </div>
   );
 }
-
-    
