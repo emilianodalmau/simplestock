@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -15,11 +16,12 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      // Securely check for admin role from the user's own document.
+      // This requires the user document to exist.
       return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
     }
 
     function isEditorOrAdmin() {
-      // Combines the existence check and role check into a single valid expression.
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
       return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
              (userRole == 'administrador' || userRole == 'editor');
