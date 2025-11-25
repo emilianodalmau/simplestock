@@ -19,6 +19,13 @@ import {
   TableBody,
   TableCell,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -45,9 +52,15 @@ type Category = {
   name: string;
 };
 
+type Deposit = {
+  id: string;
+  name: string;
+};
+
 type InventoryStock = {
   id: string;
   productId: string;
+  depositId: string;
   quantity: number;
 };
 
@@ -58,6 +71,7 @@ type InventoryItem = {
   productId: string;
   productName: string;
   productCode: string;
+  categoryId: string;
   categoryName: string;
   totalStock: number;
   minStock: number;
@@ -72,6 +86,9 @@ export default function InventarioPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState<StockStatus | 'all'>('all');
+
+  // State for detail modal
+  const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
 
   // Fetch all necessary collections
   const productsCollection = useMemoFirebase(
@@ -88,6 +105,13 @@ export default function InventarioPage() {
   const { data: categories, isLoading: isLoadingCategories } =
     useCollection<Category>(categoriesCollection);
 
+  const depositsCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'deposits') : null),
+    [firestore]
+  );
+  const { data: deposits, isLoading: isLoadingDeposits } =
+    useCollection<Deposit>(depositsCollection);
+
   const inventoryCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'inventory') : null),
     [firestore]
@@ -96,9 +120,9 @@ export default function InventarioPage() {
     useCollection<InventoryStock>(inventoryCollection);
 
   const isLoading =
-    isLoadingProducts || isLoadingCategories || isLoadingInventory;
-
-  // Memoize the data processing logic, including filtering and searching
+    isLoadingProducts || isLoadingCategories || isLoadingInventory || isLoadingDeposits;
+    
+  // Memoize the data processing for the main table
   const filteredInventoryData = useMemo(() => {
     if (!products || !categories || !inventory) {
       return [];
@@ -106,6 +130,7 @@ export default function InventarioPage() {
 
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
     const stockMap = new Map<string, number>();
+
     for (const stockItem of inventory) {
       const currentStock = stockMap.get(stockItem.productId) || 0;
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
@@ -125,7 +150,7 @@ export default function InventarioPage() {
         productId: product.id,
         productName: product.name,
         productCode: product.code,
-        categoryId: product.categoryId, // Keep id for filtering
+        categoryId: product.categoryId,
         categoryName: categoryMap.get(product.categoryId) || 'Sin categoría',
         totalStock: totalStock,
         minStock: minStock,
@@ -156,6 +181,20 @@ export default function InventarioPage() {
     selectedStatus,
   ]);
 
+  // Memoize data for the detail modal
+  const productStockDetails = useMemo(() => {
+    if (!selectedProduct || !inventory || !deposits) return [];
+
+    const depositMap = new Map(deposits.map((dep) => [dep.id, dep.name]));
+
+    return inventory
+      .filter((stock) => stock.productId === selectedProduct.productId)
+      .map((stockItem) => ({
+        depositName: depositMap.get(stockItem.depositId) || 'Depósito desconocido',
+        quantity: stockItem.quantity,
+      }));
+  }, [selectedProduct, inventory, deposits]);
+
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
@@ -169,7 +208,7 @@ export default function InventarioPage() {
         <CardHeader>
           <CardTitle>Estado del Inventario</CardTitle>
           <CardDescription>
-            Utiliza los filtros para refinar la búsqueda de productos.
+            Utiliza los filtros para refinar la búsqueda de productos. Haz clic en una fila para ver el detalle por depósito.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -197,7 +236,7 @@ export default function InventarioPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <Select value={selectedStatus} onValueChange={(value) => setSelectedStatus(value as StockStatus | 'all')}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Filtrar por estado" />
               </SelectTrigger>
@@ -251,7 +290,7 @@ export default function InventarioPage() {
                 )}
                 {!isLoading &&
                   filteredInventoryData.map((item) => (
-                    <TableRow key={item.productId}>
+                    <TableRow key={item.productId} onClick={() => setSelectedProduct(item)} className="cursor-pointer">
                       <TableCell>
                         <div className="font-medium">{item.productName}</div>
                         <div className="text-sm text-muted-foreground font-mono">
@@ -277,7 +316,42 @@ export default function InventarioPage() {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Detail Modal */}
+      <Dialog open={!!selectedProduct} onOpenChange={(isOpen) => !isOpen && setSelectedProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selectedProduct?.productName}</DialogTitle>
+            <DialogDescription>
+              Desglose de stock por depósito. Stock total: {selectedProduct?.totalStock} {selectedProduct?.unit}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+             {productStockDetails.length > 0 ? (
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Depósito</TableHead>
+                            <TableHead className="text-right">Cantidad</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {productStockDetails.map((detail, index) => (
+                            <TableRow key={index}>
+                                <TableCell className="font-medium">{detail.depositName}</TableCell>
+                                <TableCell className="text-right">{`${detail.quantity} ${selectedProduct?.unit}`}</TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+             ) : (
+                <p className="text-center text-muted-foreground py-4">
+                    Este producto no tiene stock registrado en ningún depósito.
+                </p>
+             )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
