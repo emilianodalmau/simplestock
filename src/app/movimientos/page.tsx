@@ -2,11 +2,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import {
-  useForm,
-  useFieldArray,
-  type SubmitHandler,
-} from 'react-hook-form';
+import { useForm, useFieldArray, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -77,20 +73,30 @@ import {
 } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { ProductComboBox } from '@/components/ui/product-combobox';
+import { RemitoActions } from '@/components/remito-actions';
+import type { AppSettings } from '@/lib/settings';
+import { getSettings } from '@/lib/settings';
 
 // --- Data Types ---
-type Product = { id: string; name: string; unit: string; code: string, isArchived?: boolean };
-type Deposit = { id: string; name: string };
-type Client = { id: string; name: string };
-type Supplier = { id: string; name: string };
-type UserProfile = { role?: 'administrador' | 'editor' | 'visualizador' };
-type StockMovementItem = {
+export type Product = {
+  id: string;
+  name: string;
+  unit: string;
+  code: string;
+  isArchived?: boolean;
+};
+export type Deposit = { id: string; name: string };
+export type Client = { id: string; name: string };
+export type Supplier = { id: string; name: string };
+export type UserProfile = { role?: 'administrador' | 'editor' | 'visualizador' };
+export type StockMovementItem = {
   productId: string;
   productName: string;
   quantity: number;
   unit: string;
 };
-type StockMovement = {
+export type StockMovement = {
   id: string;
   remitoNumber?: string;
   type: 'entrada' | 'salida';
@@ -102,7 +108,7 @@ type StockMovement = {
   };
   items: StockMovementItem[];
 };
-type InventoryStock = {
+export type InventoryStock = {
   id: string;
   productId: string;
   depositId: string;
@@ -159,10 +165,10 @@ function MovementPageSkeleton() {
       </Card>
       <Card>
         <CardHeader>
-            <Skeleton className="h-7 w-1/3" />
+          <Skeleton className="h-7 w-1/3" />
         </CardHeader>
         <CardContent>
-            <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
         </CardContent>
       </Card>
     </div>
@@ -172,46 +178,100 @@ function MovementPageSkeleton() {
 // --- Main Page Component ---
 export default function MovimientosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
 
+  // --- Settings Loading ---
+  useEffect(() => {
+    async function loadSettings() {
+      const settings = await getSettings();
+      setAppSettings(settings);
+    }
+    loadSettings();
+  }, []);
+
   // --- Data Loading ---
-  const userDocRef = useMemoFirebase(() => (firestore && user ? doc(firestore, 'users', user.uid) : null), [firestore, user]);
+  const userDocRef = useMemoFirebase(
+    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
-  
-  const productsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'products'), where('isArchived', '!=', true)) : null, [firestore]);
-  const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
 
-  const depositsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'deposits') : null, [firestore]);
-  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
+  const productsCollection = useMemoFirebase(
+    () =>
+      firestore
+        ? query(collection(firestore, 'products'), where('isArchived', '!=', true))
+        : null,
+    [firestore]
+  );
+  const { data: products, isLoading: isLoadingProducts } =
+    useCollection<Product>(productsCollection);
 
-  const clientsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'clients') : null, [firestore]);
-  const { data: clients, isLoading: isLoadingClients } = useCollection<Client>(clientsCollection);
+  const depositsCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'deposits') : null),
+    [firestore]
+  );
+  const { data: deposits, isLoading: isLoadingDeposits } =
+    useCollection<Deposit>(depositsCollection);
 
-  const suppliersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'suppliers') : null, [firestore]);
-  const { data: suppliers, isLoading: isLoadingSuppliers } = useCollection<Supplier>(suppliersCollection);
+  const clientsCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'clients') : null),
+    [firestore]
+  );
+  const { data: clients, isLoading: isLoadingClients } =
+    useCollection<Client>(clientsCollection);
 
-  const movementsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'stockMovements')) : null, [firestore]);
-  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
-  
-  const inventoryCollection = useMemoFirebase(() => (firestore ? collection(firestore, 'inventory') : null), [firestore]);
-  const { data: inventory, isLoading: isLoadingInventory } = useCollection<InventoryStock>(inventoryCollection);
+  const suppliersCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'suppliers') : null),
+    [firestore]
+  );
+  const { data: suppliers, isLoading: isLoadingSuppliers } =
+    useCollection<Supplier>(suppliersCollection);
 
+  const movementsCollection = useMemoFirebase(
+    () => (firestore ? query(collection(firestore, 'stockMovements')) : null),
+    [firestore]
+  );
+  const { data: movements, isLoading: isLoadingMovements } =
+    useCollection<StockMovement>(movementsCollection);
 
-  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements || isLoadingInventory;
+  const inventoryCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'inventory') : null),
+    [firestore]
+  );
+  const { data: inventory, isLoading: isLoadingInventory } =
+    useCollection<InventoryStock>(inventoryCollection);
+
+  const isLoading =
+    isLoadingProducts ||
+    isLoadingDeposits ||
+    isLoadingClients ||
+    isLoadingSuppliers ||
+    isLoadingMovements ||
+    isLoadingInventory;
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementFormSchema),
-    defaultValues: { type: 'salida', depositId: '', remitoNumber: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
+    defaultValues: {
+      type: 'salida',
+      depositId: '',
+      remitoNumber: '',
+      actorId: '',
+      items: [{ productId: '', quantity: 1 }],
+    },
   });
 
-  const { fields, append, remove, replace } = useFieldArray({ control: form.control, name: 'items' });
+  const { fields, append, remove, replace } = useFieldArray({
+    control: form.control,
+    name: 'items',
+  });
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
 
-    // --- Effects ---
+  // --- Effects ---
   useEffect(() => {
     // When the selected deposit changes, reset the items array
     // to force re-evaluation of available products.
@@ -223,188 +283,231 @@ export default function MovimientosPage() {
     replace([{ productId: '', quantity: 1 }]);
   }, [movementType, replace]);
 
-
   // --- Data Memoization for UI ---
-  const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
-  const actors = useMemo(() => (movementType === 'salida' ? clients : suppliers), [movementType, clients, suppliers]);
+  const productsMap = useMemo(() => new Map(products?.map((p) => [p.id, p])), [
+    products,
+  ]);
+  const actors = useMemo(
+    () => (movementType === 'salida' ? clients : suppliers),
+    [movementType, clients, suppliers]
+  );
   const actorLabel = movementType === 'salida' ? 'Cliente' : 'Proveedor';
 
   const availableProductsForMovement = useMemo(() => {
     if (!products) return [];
     if (movementType === 'entrada' || !selectedDepositId || !inventory) {
-      return products.filter(p => !p.isArchived);
+      return products.filter((p) => !p.isArchived);
     }
-    
+
     // For "salida", filter products that have stock > 0 in the selected deposit
     const productsWithStock = new Set(
       inventory
         ?.filter(
-          (stock) =>
-            stock.depositId === selectedDepositId && stock.quantity > 0
+          (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
         )
         .map((stock) => stock.productId)
     );
 
-    return products.filter((product) => !product.isArchived && productsWithStock.has(product.id));
+    return products.filter(
+      (product) => !product.isArchived && productsWithStock.has(product.id)
+    );
   }, [movementType, selectedDepositId, products, inventory]);
 
-// --- Form Submission Logic ---
-const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
+  // --- Form Submission Logic ---
+  const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size) return;
     setIsSubmitting(true);
 
     const productChanges = new Map<string, number>();
 
     for (const item of data.items) {
-        if (item.productId) {
-            const change = data.type === 'salida' ? -item.quantity : item.quantity;
-            productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
-        }
+      if (item.productId) {
+        const change = data.type === 'salida' ? -item.quantity : item.quantity;
+        productChanges.set(
+          item.productId,
+          (productChanges.get(item.productId) || 0) + change
+        );
+      }
     }
 
     try {
-        await runTransaction(firestore, async (transaction) => {
-            const stockChecks: any[] = [];
-            const counterRef = doc(firestore, 'counters', 'remitoCounter');
-            const counterSnap = await transaction.get(counterRef);
+      await runTransaction(firestore, async (transaction) => {
+        // --- 1. READ PHASE ---
+        const stockDocRefs = new Map<string, any>();
+        const stockDocs = new Map<string, any>();
+        const counterRef = doc(firestore, 'counters', 'remitoCounter');
 
-            for (const [productId, change] of productChanges.entries()) {
-                const inventoryDocId = `${productId}_${data.depositId}`;
-                const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
-                const stockDocSnap = await transaction.get(stockDocRef);
-                stockChecks.push({
-                    productId,
-                    change,
-                    stockDocRef,
-                    stockDocSnap,
-                    productName: productsMap.get(productId)?.name || 'N/A'
-                });
-            }
-
-            for (const check of stockChecks) {
-                if (check.change < 0) {
-                    const currentQuantity = check.stockDocSnap.exists() ? check.stockDocSnap.data().quantity : 0;
-                    const quantityToWithdraw = -check.change;
-
-                    if (currentQuantity < quantityToWithdraw) {
-                        throw new Error(`Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`);
-                    }
-                }
-            }
-            
-            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-            const newRemitoNumber = lastNumber + 1;
-            const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
-            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
-
-            for (const check of stockChecks) {
-                transaction.set(
-                    check.stockDocRef,
-                    {
-                        quantity: increment(check.change),
-                        lastUpdated: serverTimestamp(),
-                        productId: check.productId,
-                        depositId: data.depositId,
-                    },
-                    { merge: true }
-                );
-            }
-
-            const movementItemsForDoc: StockMovementItem[] = data.items.map(item => {
-                const product = productsMap.get(item.productId);
-                return {
-                    productId: item.productId,
-                    productName: product?.name || 'N/A',
-                    quantity: item.quantity,
-                    unit: product?.unit || 'N/A',
-                };
-            });
-
-            const deposit = deposits?.find((d) => d.id === data.depositId);
-            const actor = actors?.find((a) => a.id === data.actorId);
-            const movementRef = doc(collection(firestore, 'stockMovements'));
-
-            transaction.set(movementRef, {
-                id: movementRef.id,
-                remitoNumber: data.remitoNumber || formattedRemitoNumber,
-                type: data.type,
-                depositId: data.depositId,
-                depositName: deposit?.name || 'N/A',
-                actorId: data.actorId || null,
-                actorName: actor?.name || null,
-                actorType: data.actorId ? (data.type === 'salida' ? 'client' : 'supplier') : null,
-                createdAt: serverTimestamp(),
-                userId: user.uid,
-                items: movementItemsForDoc,
-            });
+        // Pre-fetch all necessary stock documents
+        for (const [productId] of productChanges.entries()) {
+          const inventoryDocId = `${productId}_${data.depositId}`;
+          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+          stockDocRefs.set(productId, stockDocRef);
+        }
+        const stockSnaps = await Promise.all(
+          Array.from(stockDocRefs.values()).map((ref) => transaction.get(ref))
+        );
+        stockSnaps.forEach((snap, index) => {
+          const productId = Array.from(stockDocRefs.keys())[index];
+          stockDocs.set(productId, snap);
         });
 
-        toast({
-            title: 'Movimiento Registrado',
-            description: 'El remito ha sido registrado exitosamente.',
+        const counterSnap = await transaction.get(counterRef);
+
+        // --- 2. VALIDATION PHASE ---
+        for (const [productId, change] of productChanges.entries()) {
+          if (change < 0) {
+            // Only validate stock for 'salidas'
+            const stockDoc = stockDocs.get(productId);
+            const currentQuantity = stockDoc.exists()
+              ? stockDoc.data().quantity
+              : 0;
+            const quantityToWithdraw = -change;
+
+            if (currentQuantity < quantityToWithdraw) {
+              throw new Error(
+                `Stock insuficiente para ${
+                  productsMap.get(productId)?.name
+                }. Stock actual: ${currentQuantity}, se necesitan: ${quantityToWithdraw}.`
+              );
+            }
+          }
+        }
+
+        // --- 3. WRITE PHASE ---
+        // Increment counter
+        const lastNumber = counterSnap.exists()
+          ? counterSnap.data().lastNumber
+          : 0;
+        const newRemitoNumber = lastNumber + 1;
+        const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(
+          5,
+          '0'
+        )}`;
+        transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+
+        // Update inventory
+        for (const [productId, change] of productChanges.entries()) {
+          const stockDocRef = stockDocRefs.get(productId);
+          transaction.set(
+            stockDocRef,
+            {
+              quantity: increment(change),
+              lastUpdated: serverTimestamp(),
+              productId: productId,
+              depositId: data.depositId,
+            },
+            { merge: true }
+          );
+        }
+
+        // Create movement record
+        const movementItemsForDoc: StockMovementItem[] = data.items.map(
+          (item) => {
+            const product = productsMap.get(item.productId);
+            return {
+              productId: item.productId,
+              productName: product?.name || 'N/A',
+              quantity: item.quantity,
+              unit: product?.unit || 'N/A',
+            };
+          }
+        );
+
+        const deposit = deposits?.find((d) => d.id === data.depositId);
+        const actor = actors?.find((a) => a.id === data.actorId);
+        const movementRef = doc(collection(firestore, 'stockMovements'));
+
+        transaction.set(movementRef, {
+          id: movementRef.id,
+          remitoNumber: data.remitoNumber || formattedRemitoNumber,
+          type: data.type,
+          depositId: data.depositId,
+          depositName: deposit?.name || 'N/A',
+          actorId: data.actorId || null,
+          actorName: actor?.name || null,
+          actorType: data.actorId
+            ? data.type === 'salida'
+              ? 'client'
+              : 'supplier'
+            : null,
+          createdAt: serverTimestamp(),
+          userId: user.uid,
+          items: movementItemsForDoc,
         });
-        form.reset({
-            type: 'salida',
-            depositId: '',
-            remitoNumber: '',
-            actorId: '',
-            items: [{ productId: '', quantity: 1 }],
-        });
+      });
+
+      toast({
+        title: 'Movimiento Registrado',
+        description: 'El remito ha sido registrado exitosamente.',
+      });
+      form.reset({
+        type: 'salida',
+        depositId: '',
+        remitoNumber: '',
+        actorId: '',
+        items: [{ productId: '', quantity: 1 }],
+      });
     } catch (error: any) {
-        console.error('Error procesando el movimiento:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Error en el movimiento',
-            description: error.message || 'Ocurrió un error al procesar el remito.',
-        });
+      console.error('Error procesando el movimiento:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error en el movimiento',
+        description:
+          error.message || 'Ocurrió un error al procesar el remito.',
+      });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
-};
+  };
 
   const handleDeleteMovement = async (movement: StockMovement) => {
     if (!firestore) return;
 
     try {
-        await runTransaction(firestore, async (transaction) => {
-            // 1. Revert stock for each item in the movement
-            for (const item of movement.items) {
-                const inventoryDocId = `${item.productId}_${movement.depositId}`;
-                const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
-                
-                // The change is the opposite of the original movement type
-                const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
-                
-                transaction.set(stockDocRef, {
-                    quantity: increment(change),
-                    lastUpdated: serverTimestamp(),
-                }, { merge: true });
-            }
+      await runTransaction(firestore, async (transaction) => {
+        // 1. Revert stock for each item in the movement
+        for (const item of movement.items) {
+          const inventoryDocId = `${item.productId}_${movement.depositId}`;
+          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
 
-            // 2. Delete the movement document itself
-            const movementDocRef = doc(firestore, 'stockMovements', movement.id);
-            transaction.delete(movementDocRef);
-        });
+          // The change is the opposite of the original movement type
+          const change =
+            movement.type === 'entrada' ? -item.quantity : item.quantity;
 
-        toast({
-            title: 'Remito Anulado',
-            description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
-        });
+          transaction.set(
+            stockDocRef,
+            {
+              quantity: increment(change),
+              lastUpdated: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
 
+        // 2. Delete the movement document itself
+        const movementDocRef = doc(firestore, 'stockMovements', movement.id);
+        transaction.delete(movementDocRef);
+      });
+
+      toast({
+        title: 'Remito Anulado',
+        description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
+      });
     } catch (error: any) {
-        console.error('Error deleting movement:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Error al Anular',
-            description: error.message || 'No se pudo anular el remito. Revisa los permisos.',
-        });
+      console.error('Error deleting movement:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error al Anular',
+        description:
+          error.message || 'No se pudo anular el remito. Revisa los permisos.',
+      });
     }
-};
+  };
 
-  
-  const canManageMovements = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
+  const canManageMovements =
+    currentUserProfile?.role === 'administrador' ||
+    currentUserProfile?.role === 'editor';
   const isAdmin = currentUserProfile?.role === 'administrador';
-
 
   if (isLoading) {
     return <MovementPageSkeleton />;
@@ -418,53 +521,103 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
             <form onSubmit={form.handleSubmit(onSubmit)}>
               <CardHeader>
                 <CardTitle>Registrar Nuevo Remito</CardTitle>
-                <CardDescription>Completa el formulario para registrar una entrada o salida de productos.</CardDescription>
+                <CardDescription>
+                  Completa el formulario para registrar una entrada o salida de
+                  productos.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <FormField control={form.control} name="type" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tipo de Movimiento</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          <SelectItem value="salida">Salida</SelectItem>
-                          <SelectItem value="entrada">Entrada</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="depositId" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Depósito</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          {deposits?.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                   <FormField control={form.control} name="actorId" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{actorLabel} (Opcional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ''}>
-                        <FormControl><SelectTrigger><SelectValue placeholder={`Selecciona un ${actorLabel.toLowerCase()}`} /></SelectTrigger></FormControl>
-                        <SelectContent>
-                           {actors?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )} />
-                   <FormField
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Movimiento</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="salida">Salida</SelectItem>
+                            <SelectItem value="entrada">Entrada</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="depositId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Depósito</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona un depósito" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {deposits?.map((d) => (
+                              <SelectItem key={d.id} value={d.id}>
+                                {d.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="actorId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{actorLabel} (Opcional)</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || ''}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={`Selecciona un ${actorLabel.toLowerCase()}`}
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {actors?.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
                     control={form.control}
                     name="remitoNumber"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nº Remito (Auto)</FormLabel>
                         <FormControl>
-                          <Input placeholder="Se genera automáticamente" {...field} disabled />
+                          <Input
+                            placeholder="Se genera automáticamente"
+                            {...field}
+                            disabled
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -474,51 +627,101 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
                 <Separator />
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium">Productos del Remito</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={() => append({ productId: '', quantity: 1 })}><PlusCircle className="mr-2 h-4 w-4" />Agregar Producto</Button>
+                    <h3 className="text-lg font-medium">
+                      Productos del Remito
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => append({ productId: '', quantity: 1 })}
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Agregar Producto
+                    </Button>
                   </div>
                   <div className="space-y-4">
                     {fields.map((field, index) => (
-                      <div key={field.id} className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_150px_auto] gap-2 items-start p-4 border rounded-md">
-                        <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="sr-only">Producto</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value} disabled={!selectedDepositId}>
+                      <div
+                        key={field.id}
+                        className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_150px_auto] gap-2 items-start p-4 border rounded-md"
+                      >
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.productId`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="sr-only">
+                                Producto
+                              </FormLabel>
+                              <ProductComboBox
+                                products={availableProductsForMovement}
+                                value={field.value}
+                                onChange={field.onChange}
+                                disabled={!selectedDepositId}
+                                noStockMessage={
+                                  movementType === 'salida' &&
+                                  !!selectedDepositId
+                                    ? 'No hay productos con stock en este depósito.'
+                                    : 'Selecciona un producto'
+                                }
+                              />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.quantity`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="sr-only">
+                                Cantidad
+                              </FormLabel>
                               <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder={!selectedDepositId ? 'Selecciona un depósito primero' : 'Selecciona un producto'} />
-                                </SelectTrigger>
+                                <Input
+                                  type="number"
+                                  placeholder="Cantidad"
+                                  {...field}
+                                />
                               </FormControl>
-                              <SelectContent>
-                                {availableProductsForMovement.length === 0 && movementType === 'salida' && !!selectedDepositId ? (
-                                  <div className="text-center text-sm text-muted-foreground p-4">No hay productos con stock en este depósito.</div>
-                                ) : (
-                                  availableProductsForMovement.map((p) => <SelectItem key={p.id} value={p.id}>{`${p.name} (${p.code})`}</SelectItem>)
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="sr-only">Cantidad</FormLabel>
-                            <FormControl><Input type="number" placeholder="Cantidad" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                         <div className="hidden sm:flex items-center justify-center h-10 px-3 text-sm text-muted-foreground font-medium bg-muted rounded-md">
-                          {productsMap.get(form.watch(`items.${index}.productId`))?.unit || '-'}
+                          {productsMap.get(
+                            form.watch(`items.${index}.productId`)
+                          )?.unit || '-'}
                         </div>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          className="text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
-                    {form.formState.errors.items && <p className="text-sm font-medium text-destructive mt-2">{typeof form.formState.errors.items === 'string' ? form.formState.errors.items : (form.formState.errors.items as any).root?.message}</p>}
+                    {form.formState.errors.items && (
+                      <p className="text-sm font-medium text-destructive mt-2">
+                        {typeof form.formState.errors.items === 'string'
+                          ? form.formState.errors.items
+                          : (form.formState.errors.items as any).root?.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
               <CardFooter>
-                <Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Registrar Remito</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Registrar Remito
+                </Button>
               </CardFooter>
             </form>
           </Form>
@@ -535,86 +738,96 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
-                   <TableHead>Remito Nº</TableHead>
+                  <TableHead>Remito Nº</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Depósito</TableHead>
                   <TableHead>Origen/Destino</TableHead>
                   <TableHead>Productos</TableHead>
-                  {canManageMovements && <TableHead className="text-right">Acciones</TableHead>}
+                  {canManageMovements && (
+                    <TableHead className="text-right">Acciones</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoadingMovements && [...Array(3)].map((_, i) => (
+                {isLoadingMovements &&
+                  [...Array(3)].map((_, i) => (
                     <TableRow key={i}>
-                        <TableCell><Skeleton className="h-4 w-36" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-10" /></TableCell>
-                        {canManageMovements && <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>}
-                    </TableRow>
-                ))}
-                {!isLoadingMovements && movements?.length === 0 && (
-                    <TableRow><TableCell colSpan={canManageMovements ? 7 : 6} className="text-center h-24">No hay movimientos registrados.</TableCell></TableRow>
-                )}
-                {!isLoadingMovements && movements?.sort((a,b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()).map((mov) => (
-                  <TableRow key={mov.id}>
-                    <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
-                    <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
-                    <TableCell>
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${mov.type === 'entrada' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}
-                        </span>
-                    </TableCell>
-                    <TableCell>{mov.depositName}</TableCell>
-                    <TableCell>{mov.actorName || '-'}</TableCell>
-                    <TableCell>{mov.items.length}</TableCell>
-                    {canManageMovements && (
-                        <TableCell className="text-right">
-                             <Button
-                                variant="ghost"
-                                size="icon"
-                                disabled={true} // La edición es compleja y riesgosa, se prioriza anular y recrear.
-                                title="La edición de remitos está deshabilitada para mantener la integridad del historial."
-                              >
-                                <Edit className="h-4 w-4" />
-                                <span className="sr-only">Editar</span>
-                              </Button>
-
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" disabled={!isAdmin} title={!isAdmin ? "Solo los administradores pueden anular remitos" : "Anular Remito"}>
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                        <span className="sr-only">Eliminar</span>
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                      ¿Estás seguro de que quieres anular este remito?
-                                    </AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Esta acción no se puede deshacer. Se anulará el remito <strong>{mov.remitoNumber}</strong> y se revertirán los cambios de stock asociados a él.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>
-                                      Cancelar
-                                    </AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteMovement(mov)}
-                                      className="bg-destructive hover:bg-destructive/90"
-                                    >
-                                      Sí, anular remito
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                      <TableCell>
+                        <Skeleton className="h-4 w-36" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-16 rounded-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-10" />
+                      </TableCell>
+                      {canManageMovements && (
+                        <TableCell>
+                          <Skeleton className="h-8 w-20 ml-auto" />
                         </TableCell>
-                    )}
+                      )}
+                    </TableRow>
+                  ))}
+                {!isLoadingMovements && movements?.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={canManageMovements ? 7 : 6} className="text-center h-24">
+                      No hay movimientos registrados.
+                    </TableCell>
                   </TableRow>
-                ))}
+                )}
+                {!isLoadingMovements &&
+                  movements
+                    ?.sort(
+                      (a, b) =>
+                        b.createdAt.toDate().getTime() -
+                        a.createdAt.toDate().getTime()
+                    )
+                    .map((mov) => (
+                      <TableRow key={mov.id}>
+                        <TableCell className="font-medium">
+                          {format(mov.createdAt.toDate(), 'PPpp', {
+                            locale: es,
+                          })}
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {mov.remitoNumber || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              mov.type === 'entrada'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {mov.type.charAt(0).toUpperCase() +
+                              mov.type.slice(1)}
+                          </span>
+                        </TableCell>
+                        <TableCell>{mov.depositName}</TableCell>
+                        <TableCell>{mov.actorName || '-'}</TableCell>
+                        <TableCell>{mov.items.length}</TableCell>
+                        {canManageMovements && (
+                          <TableCell className="text-right">
+                           <RemitoActions 
+                             movement={mov}
+                             settings={appSettings}
+                             canDelete={isAdmin}
+                             onDelete={() => handleDeleteMovement(mov)}
+                           />
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
               </TableBody>
             </Table>
           </div>
