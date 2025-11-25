@@ -103,5 +103,13 @@ service cloud.firestore {
       // No updates or deletes for now to preserve audit trail.
       allow update, delete: if false;
     }
+
+    match /counters/{counterId} {
+      // READ: Signed-in users can read counters (though not strictly necessary for client).
+      allow get: if isSignedIn();
+      // WRITE: Only authenticated users performing transactions (server-side logic is key) should update.
+      // We lock this down to editors/admins for safety.
+      allow write: if isEditorOrAdmin();
+    }
   }
 }

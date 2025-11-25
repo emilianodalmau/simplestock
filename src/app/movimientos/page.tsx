@@ -23,8 +23,6 @@ import {
   serverTimestamp,
   query,
   increment,
-  DocumentSnapshot,
-  DocumentReference,
   writeBatch,
 } from 'firebase/firestore';
 import {
@@ -90,7 +88,6 @@ type StockMovement = {
   };
   items: StockMovementItem[];
 };
-// Note: InventoryStock ID is now predictable: `${productId}_${depositId}`
 type InventoryStock = {
   productId: string;
   depositId: string;
@@ -106,7 +103,6 @@ const movementItemSchema = z.object({
 const movementFormSchema = z.object({
   type: z.enum(['entrada', 'salida']),
   depositId: z.string().min(1, 'Selecciona un depósito.'),
-  remitoNumber: z.string().optional(),
   actorId: z.string().optional(),
   items: z.array(movementItemSchema).min(1, 'Debes agregar al menos un producto.'),
 });
@@ -188,7 +184,7 @@ export default function MovimientosPage() {
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementFormSchema),
-    defaultValues: { type: 'salida', depositId: '', remitoNumber: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
+    defaultValues: { type: 'salida', depositId: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
   });
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
@@ -207,17 +203,19 @@ export default function MovimientosPage() {
     try {
         await runTransaction(firestore, async (transaction) => {
             const movementItemsForDoc: StockMovementItem[] = [];
+            const aggregatedQuantities = new Map<string, number>();
 
-            // Aggregate quantities for each product ID to handle multiple lines for the same product
-            const aggregatedQuantities = data.items.reduce((acc, item) => {
+            // --- PHASE 1: AGGREGATE QUANTITIES ---
+            for (const item of data.items) {
                 if (item.productId) {
-                    acc.set(item.productId, (acc.get(item.productId) || 0) + item.quantity);
+                    aggregatedQuantities.set(
+                        item.productId,
+                        (aggregatedQuantities.get(item.productId) || 0) + item.quantity
+                    );
                 }
-                return acc;
-            }, new Map<string, number>());
+            }
 
-            // --- PHASE 1: READS ---
-            // Read all necessary documents first.
+            // --- PHASE 2: READS & VALIDATIONS ---
             const stockChecks = [];
             for (const [productId, totalQuantity] of aggregatedQuantities.entries()) {
                 const product = productsMap.get(productId);
@@ -227,47 +225,42 @@ export default function MovimientosPage() {
                 const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
                 const stockDocSnap = await transaction.get(inventoryDocRef);
 
+                if (data.type === 'salida') {
+                    const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
+                    if (currentQuantity < totalQuantity) {
+                        throw new Error(
+                            `Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${totalQuantity}.`
+                        );
+                    }
+                }
                 stockChecks.push({
                     ref: inventoryDocRef,
-                    snapshot: stockDocSnap,
                     change: data.type === 'salida' ? -totalQuantity : totalQuantity,
                     productName: product.name,
                     productId: product.id,
                     unit: product.unit,
-                    quantity: totalQuantity, // The aggregated quantity for this product
+                    quantity: totalQuantity,
                 });
             }
 
-            // --- PHASE 2: VALIDATIONS ---
-            // Perform all validations using the read data.
-            if (data.type === 'salida') {
-                for (const check of stockChecks) {
-                    const currentQuantity = check.snapshot.exists() ? check.snapshot.data().quantity : 0;
-                    if (currentQuantity < -check.change) { // -check.change is the positive requested quantity
-                        throw new Error(
-                            `Stock insuficiente para ${check.productName}. Stock actual: ${currentQuantity}.`
-                        );
-                    }
-                }
-            }
+            // --- PHASE 3: GET NEW REMITO NUMBER ---
+            const counterRef = doc(firestore, 'counters', 'remitoCounter');
+            const counterSnap = await transaction.get(counterRef);
+            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+            const newRemitoNumber = lastNumber + 1;
+            const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
 
-            // --- PHASE 3: WRITES ---
-            // If all validations pass, perform all writes.
+            // --- PHASE 4: WRITES ---
+            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+
             for (const check of stockChecks) {
-                if (!check.snapshot.exists()) {
-                    transaction.set(check.ref, {
-                        productId: check.productId,
-                        depositId: data.depositId,
-                        quantity: check.change,
-                        lastUpdated: serverTimestamp(),
-                    });
-                } else {
-                    transaction.update(check.ref, {
-                        quantity: increment(check.change),
-                        lastUpdated: serverTimestamp(),
-                    });
-                }
-                // Add to the final movement document
+                transaction.set(check.ref, { 
+                  quantity: increment(check.change),
+                  lastUpdated: serverTimestamp(),
+                  productId: check.productId,
+                  depositId: data.depositId,
+                }, { merge: true });
+                
                 movementItemsForDoc.push({
                     productId: check.productId,
                     productName: check.productName,
@@ -276,16 +269,15 @@ export default function MovimientosPage() {
                 });
             }
 
-            // Final write: create the movement document
             const deposit = deposits?.find((d) => d.id === data.depositId);
             const actor = actors?.find((a) => a.id === data.actorId);
             const movementRef = doc(collection(firestore, 'stockMovements'));
 
             transaction.set(movementRef, {
                 id: movementRef.id,
+                remitoNumber: formattedRemitoNumber,
                 type: data.type,
                 depositId: data.depositId,
-                remitoNumber: data.remitoNumber || null,
                 depositName: deposit?.name || 'N/A',
                 actorId: data.actorId || null,
                 actorName: actor?.name || null,
@@ -298,12 +290,11 @@ export default function MovimientosPage() {
 
         toast({
             title: 'Movimiento Registrado',
-            description: `El remito de ${data.type} ha sido registrado.`,
+            description: `El remito ha sido registrado exitosamente.`,
         });
         form.reset({
             type: 'salida',
             depositId: '',
-            remitoNumber: '',
             actorId: '',
             items: [{ productId: '', quantity: 1 }],
         });
@@ -336,7 +327,7 @@ export default function MovimientosPage() {
                 <CardDescription>Completa el formulario para registrar una entrada o salida de productos.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <FormField control={form.control} name="type" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tipo de Movimiento</FormLabel>
@@ -372,19 +363,6 @@ export default function MovimientosPage() {
                       </Select>
                     </FormItem>
                   )} />
-                   <FormField
-                    control={form.control}
-                    name="remitoNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nº de Remito (Opcional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Ej: R-00123" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
                 <Separator />
                 <div>
@@ -420,7 +398,7 @@ export default function MovimientosPage() {
                         <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     ))}
-                    {form.formState.errors.items && <p className="text-sm font-medium text-destructive mt-2">{typeof form.formState.errors.items === 'string' ? form.formState.errors.items : form.formState.errors.items.root?.message}</p>}
+                    {form.formState.errors.items && <p className="text-sm font-medium text-destructive mt-2">{typeof form.formState.errors.items === 'string' ? form.formState.errors.items : (form.formState.errors.items as any).root?.message}</p>}
                   </div>
                 </div>
               </CardContent>
