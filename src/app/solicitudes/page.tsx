@@ -371,7 +371,7 @@ export default function SolicitudesPage() {
         // --- 3. WRITE PHASE ---
         const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
         const newRemitoNumber = lastNumber + 1;
-        const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
+        const formattedRemitoNumber = `S-${String(newRemitoNumber).padStart(5, '0')}`;
         transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
         for (const [productId, change] of productChanges.entries()) {
