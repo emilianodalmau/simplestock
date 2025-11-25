@@ -22,6 +22,7 @@ import {
   useCollection,
   useMemoFirebase,
   useUser,
+  useDoc,
 } from '@/firebase';
 import { collection, doc, updateDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -50,6 +51,12 @@ export default function UsuariosPage() {
   );
   const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
 
+  const currentUserDocRef = useMemoFirebase(
+    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    [firestore, currentUser]
+  );
+  const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
+
   const handleRoleChange = async (userId: string, role: string) => {
     if (!firestore) return;
     const userDocRef = doc(firestore, 'users', userId);
@@ -69,7 +76,7 @@ export default function UsuariosPage() {
       .toUpperCase();
   };
 
-  const currentUserIsAdmin = users?.find(u => u.id === currentUser?.uid)?.role === 'administrador';
+  const currentUserIsAdmin = currentUserProfile?.role === 'administrador';
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
