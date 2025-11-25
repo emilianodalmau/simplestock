@@ -36,6 +36,8 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StockStatusBadge } from '@/components/ui/stock-status-badge';
+import { Button } from '@/components/ui/button';
+import { ArrowUpDown } from 'lucide-react';
 
 // Data types from Firestore
 type Product = {
@@ -79,6 +81,12 @@ type InventoryItem = {
   status: StockStatus;
 };
 
+type SortConfig = {
+  key: keyof InventoryItem | null;
+  direction: 'ascending' | 'descending';
+};
+
+
 export default function InventarioPage() {
   const firestore = useFirestore();
 
@@ -86,6 +94,8 @@ export default function InventarioPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState<StockStatus | 'all'>('all');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'productName', direction: 'ascending' });
+
 
   // State for detail modal
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
@@ -123,7 +133,7 @@ export default function InventarioPage() {
     isLoadingProducts || isLoadingCategories || isLoadingInventory || isLoadingDeposits;
     
   // Memoize the data processing for the main table
-  const filteredInventoryData = useMemo(() => {
+  const processedInventoryData = useMemo(() => {
     if (!products || !categories || !inventory) {
       return [];
     }
@@ -160,7 +170,7 @@ export default function InventarioPage() {
     });
 
     // Apply filters and search
-    return combinedData.filter((item) => {
+    let filteredData = combinedData.filter((item) => {
       const matchesCategory =
         selectedCategory === 'all' || item.categoryId === selectedCategory;
       const matchesStatus =
@@ -172,6 +182,35 @@ export default function InventarioPage() {
 
       return matchesCategory && matchesStatus && matchesSearch;
     });
+
+    // Apply sorting
+    if (sortConfig.key !== null) {
+      const statusOrder: Record<StockStatus, number> = {
+        'Sin Stock': 1,
+        'Stock Bajo': 2,
+        'En Stock': 3,
+      };
+
+      filteredData.sort((a, b) => {
+        const aValue = a[sortConfig.key!];
+        const bValue = b[sortConfig.key!];
+
+        let comparison = 0;
+
+        if (sortConfig.key === 'status') {
+            comparison = statusOrder[aValue as StockStatus] - statusOrder[bValue as StockStatus];
+        } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+            comparison = aValue - bValue;
+        } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+            comparison = aValue.localeCompare(bValue);
+        }
+
+        return sortConfig.direction === 'ascending' ? comparison : -comparison;
+      });
+    }
+
+    return filteredData;
+
   }, [
     products,
     categories,
@@ -179,6 +218,7 @@ export default function InventarioPage() {
     searchTerm,
     selectedCategory,
     selectedStatus,
+    sortConfig,
   ]);
 
   // Memoize data for the detail modal
@@ -194,6 +234,24 @@ export default function InventarioPage() {
         quantity: stockItem.quantity,
       }));
   }, [selectedProduct, inventory, deposits]);
+  
+  const requestSort = (key: keyof InventoryItem) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIndicator = (key: keyof InventoryItem) => {
+    if (sortConfig.key !== key) {
+      return <ArrowUpDown className="ml-2 h-4 w-4 opacity-0 group-hover:opacity-50" />;
+    }
+    if (sortConfig.direction === 'ascending') {
+      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+    }
+    return <ArrowUpDown className="ml-2 h-4 w-4" />;
+  };
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -253,11 +311,36 @@ export default function InventarioPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Producto</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead className="text-right">Stock Total</TableHead>
-                  <TableHead className="text-right">Stock Mínimo</TableHead>
-                  <TableHead className="text-center">Estado</TableHead>
+                    <TableHead>
+                        <Button variant="ghost" onClick={() => requestSort('productName')} className="group px-0">
+                        Producto
+                        {getSortIndicator('productName')}
+                        </Button>
+                    </TableHead>
+                    <TableHead>
+                        <Button variant="ghost" onClick={() => requestSort('categoryName')} className="group px-0">
+                        Categoría
+                        {getSortIndicator('categoryName')}
+                        </Button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                        <Button variant="ghost" onClick={() => requestSort('totalStock')} className="group px-0">
+                        Stock Total
+                        {getSortIndicator('totalStock')}
+                        </Button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                        <Button variant="ghost" onClick={() => requestSort('minStock')} className="group px-0">
+                        Stock Mínimo
+                        {getSortIndicator('minStock')}
+                        </Button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                        <Button variant="ghost" onClick={() => requestSort('status')} className="group px-0">
+                        Estado
+                        {getSortIndicator('status')}
+                        </Button>
+                    </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -281,7 +364,7 @@ export default function InventarioPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                {!isLoading && filteredInventoryData.length === 0 && (
+                {!isLoading && processedInventoryData.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center h-24">
                       No se encontraron productos con los filtros aplicados.
@@ -289,7 +372,7 @@ export default function InventarioPage() {
                   </TableRow>
                 )}
                 {!isLoading &&
-                  filteredInventoryData.map((item) => (
+                  processedInventoryData.map((item) => (
                     <TableRow key={item.productId} onClick={() => setSelectedProduct(item)} className="cursor-pointer">
                       <TableCell>
                         <div className="font-medium">{item.productName}</div>
