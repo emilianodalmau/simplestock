@@ -1,4 +1,3 @@
-
 'use client';
 
 import './globals.css';
@@ -18,7 +17,6 @@ import {
 } from '@/components/ui/sidebar';
 import {
   Home,
-  FileText,
   Warehouse,
   Box,
   Users,
@@ -34,11 +32,19 @@ import {
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
+import { type AppSettings, getSettings } from '@/lib/settings';
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const auth = useAuth();
   const router = useRouter();
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+    getSettings().then(setSettings);
+  }, []);
 
   const handleLogout = async () => {
     if (auth) {
@@ -72,10 +78,22 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         <SidebarHeader>
           <div className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Building2 />
+              {settings?.logoUrl ? (
+                <Image
+                  src={settings.logoUrl}
+                  alt="Logo"
+                  width={24}
+                  height={24}
+                  className="rounded-sm"
+                />
+              ) : (
+                <Building2 />
+              )}
             </div>
             <div className="flex flex-col">
-              <span className="font-semibold">Inventario</span>
+              <span className="font-semibold">
+                {settings?.appName || 'Inventario'}
+              </span>
               <span className="text-sm text-sidebar-foreground/80">App</span>
             </div>
           </div>
