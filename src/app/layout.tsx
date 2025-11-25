@@ -91,7 +91,7 @@ export default function RootLayout({
                   <SidebarMenu>
                     {menuItems.map((item) => (
                       <SidebarMenuItem key={item.label}>
-                        <Link href={item.href} legacyBehavior passHref>
+                        <Link href={item.href} passHref>
                           <SidebarMenuButton
                             isActive={pathname === item.href}
                             icon={<item.icon />}
