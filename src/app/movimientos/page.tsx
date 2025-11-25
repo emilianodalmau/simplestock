@@ -151,7 +151,6 @@ function MovementPageSkeleton() {
 // --- Main Page Component ---
 export default function MovimientosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedMovement, setSelectedMovement] = useState<StockMovement | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
@@ -172,7 +171,7 @@ export default function MovimientosPage() {
   const suppliersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'suppliers') : null, [firestore]);
   const { data: suppliers, isLoading: isLoadingSuppliers } = useCollection<Supplier>(suppliersCollection);
 
-  const movementsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'stockMovements') : null, [firestore]);
+  const movementsCollection = useMemoFirebase(() => firestore ? query(collection(firestore, 'stockMovements')) : null, [firestore]);
   const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
 
   const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingClients || isLoadingSuppliers || isLoadingMovements;
@@ -201,28 +200,43 @@ export default function MovimientosPage() {
         const movementRef = doc(collection(firestore, 'stockMovements'));
         const movementItems: StockMovementItem[] = [];
 
+        // Pre-fetch all necessary inventory documents
+        const inventoryRefs: { [key: string]: DocumentReference } = {};
+        const productChecks: Promise<any>[] = data.items.map(async (item) => {
+            const inventoryQuery = query(
+                collection(firestore, 'inventory'),
+                where('depositId', '==', data.depositId),
+                where('productId', '==', item.productId)
+            );
+            const inventorySnap = await getDocs(inventoryQuery);
+            const stockDoc = inventorySnap.docs[0];
+            if (data.type === 'salida' && (!stockDoc || stockDoc.data().quantity < item.quantity)) {
+                const product = productsMap.get(item.productId);
+                throw new Error(`Stock insuficiente para ${product?.name || 'un producto'}.`);
+            }
+            if (stockDoc) {
+                inventoryRefs[item.productId] = stockDoc.ref;
+            }
+        });
+
+        await Promise.all(productChecks);
+
+
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
           if (!product) throw new Error(`Producto no encontrado.`);
           
           movementItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, unit: product.unit });
 
-          const inventoryQuery = query(collection(firestore, 'inventory'), where('depositId', '==', data.depositId), where('productId', '==', item.productId));
-          const inventorySnap = await getDocs(inventoryQuery);
-          const stockDoc = inventorySnap.docs[0];
-
-          if (data.type === 'salida') {
-            if (!stockDoc || stockDoc.data().quantity < item.quantity) {
-              throw new Error(`Stock insuficiente para ${product.name}.`);
-            }
-            transaction.update(stockDoc.ref, { quantity: increment(-item.quantity) });
+          const stockDocRef = inventoryRefs[item.productId];
+          const change = data.type === 'salida' ? -item.quantity : item.quantity;
+          
+          if (stockDocRef) {
+            transaction.update(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() });
           } else {
-            if (stockDoc) {
-              transaction.update(stockDoc.ref, { quantity: increment(item.quantity) });
-            } else {
-              const newStockRef = doc(collection(firestore, 'inventory'));
-              transaction.set(newStockRef, { depositId: data.depositId, productId: item.productId, quantity: item.quantity, lastUpdated: serverTimestamp() });
-            }
+            // This case should only happen for 'entrada' as 'salida' would have failed the pre-check
+             const newStockRef = doc(collection(firestore, 'inventory'));
+             transaction.set(newStockRef, { depositId: data.depositId, productId: item.productId, quantity: item.quantity, lastUpdated: serverTimestamp() });
           }
         }
         
@@ -230,6 +244,7 @@ export default function MovimientosPage() {
         const actor = actors?.find(a => a.id === data.actorId);
 
         transaction.set(movementRef, {
+          id: movementRef.id,
           type: data.type,
           depositId: data.depositId,
           depositName: deposit?.name || 'N/A',
@@ -297,9 +312,10 @@ export default function MovimientosPage() {
                   <FormField control={form.control} name="actorId" render={({ field }) => (
                     <FormItem>
                       <FormLabel>{actorLabel} (Opcional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={!actors}>
+                      <Select onValueChange={field.onChange} value={field.value || ''} disabled={!actors}>
                         <FormControl><SelectTrigger><SelectValue placeholder={`Selecciona un ${actorLabel.toLowerCase()}`} /></SelectTrigger></FormControl>
                         <SelectContent>
+                          <SelectItem value="">Ninguno</SelectItem>
                           {actors?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
@@ -369,8 +385,19 @@ export default function MovimientosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {movements?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center h-24">No hay movimientos registrados.</TableCell></TableRow>}
-                {movements?.map((mov) => (
+                {isLoadingMovements && [...Array(3)].map((_, i) => (
+                    <TableRow key={i}>
+                        <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                        <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                    </TableRow>
+                ))}
+                {!isLoadingMovements && movements?.length === 0 && (
+                    <TableRow><TableCell colSpan={5} className="text-center h-24">No hay movimientos registrados.</TableCell></TableRow>
+                )}
+                {!isLoadingMovements && movements?.sort((a,b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()).map((mov) => (
                   <TableRow key={mov.id}>
                     <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
                     <TableCell>
@@ -391,4 +418,3 @@ export default function MovimientosPage() {
     </div>
   );
 }
-
