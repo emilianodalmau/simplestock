@@ -17,17 +17,9 @@ export default function MovimientosPage() {
           Movimientos de Stock
         </h1>
         <p className="text-muted-foreground">
-          Esta página ha sido desactivada temporalmente.
+          Esta página está lista para ser implementada.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-destructive">Funcionalidad Desactivada</CardTitle>
-          <CardDescription>
-            La gestión de movimientos de stock se está rediseñando para mejorar la estabilidad y será restaurada en una futura actualización.
-          </CardDescription>
-        </CardHeader>
-      </Card>
     </div>
   );
 }
