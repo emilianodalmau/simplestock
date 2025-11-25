@@ -24,7 +24,12 @@ service cloud.firestore {
       if (!isSignedIn()) {
         return false;
       }
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      // Ensure the document exists before trying to access its data.
+      if (!exists(/databases/$(database)/documents/users/$(request.auth.uid))) {
+          return false;
+      }
+      let userRole = userDoc.data.role;
       return userRole == 'administrador' || userRole == 'editor';
     }
     
@@ -54,7 +59,10 @@ service cloud.firestore {
     }
 
     match /categories/{categoryId} {
-      allow read: if isSignedIn();
+      // READ: Any signed-in user can get a single category or list all categories.
+      allow get, list: if isSignedIn();
+      
+      // WRITE: Only editors or admins can create, update, or delete categories.
       allow write: if isEditorOrAdmin();
     }
   }
