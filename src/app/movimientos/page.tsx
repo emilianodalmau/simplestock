@@ -24,6 +24,7 @@ import {
   query,
   increment,
   writeBatch,
+  deleteDoc,
 } from 'firebase/firestore';
 import {
   Card,
@@ -33,6 +34,17 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -53,7 +65,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, Edit } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -81,6 +93,7 @@ type StockMovement = {
   id: string;
   remitoNumber?: string;
   type: 'entrada' | 'salida';
+  depositId: string;
   depositName: string;
   actorName?: string;
   createdAt: {
@@ -203,47 +216,51 @@ export default function MovimientosPage() {
     try {
         await runTransaction(firestore, async (transaction) => {
             const movementItemsForDoc: StockMovementItem[] = [];
-            const aggregatedQuantities = new Map<string, number>();
-
-            // --- PHASE 1: AGGREGATE QUANTITIES ---
-            for (const item of data.items) {
-                if (item.productId) {
-                    aggregatedQuantities.set(
-                        item.productId,
-                        (aggregatedQuantities.get(item.productId) || 0) + item.quantity
-                    );
-                }
-            }
-
-            // --- PHASE 2: READS & VALIDATIONS ---
-            const stockChecks = [];
-            for (const [productId, totalQuantity] of aggregatedQuantities.entries()) {
-                const product = productsMap.get(productId);
-                if (!product) throw new Error(`Producto con ID ${productId} no encontrado.`);
-
-                const inventoryDocId = `${productId}_${data.depositId}`;
-                const inventoryDocRef = doc(firestore, 'inventory', inventoryDocId);
-                const stockDocSnap = await transaction.get(inventoryDocRef);
-
-                if (data.type === 'salida') {
-                    const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
-                    if (currentQuantity < totalQuantity) {
-                        throw new Error(
-                            `Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${totalQuantity}.`
+            
+            // PHASE 1: Aggregate quantities to be withdrawn
+            const productWithdrawals = new Map<string, number>();
+            if (data.type === 'salida') {
+                for (const item of data.items) {
+                    if (item.productId) {
+                        productWithdrawals.set(
+                            item.productId,
+                            (productWithdrawals.get(item.productId) || 0) + item.quantity
                         );
                     }
                 }
+            }
+
+            // PHASE 2: READS & VALIDATIONS
+            const stockChecks: any[] = [];
+            for (const [index, item] of data.items.entries()) {
+                const product = productsMap.get(item.productId);
+                if (!product) throw new Error(`Producto en la línea ${index + 1} no encontrado.`);
+
+                const inventoryDocId = `${item.productId}_${data.depositId}`;
+                const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+                const stockDocSnap = await transaction.get(stockDocRef);
+                
+                if (data.type === 'salida') {
+                    const totalToWithdraw = productWithdrawals.get(item.productId);
+                    const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
+                    
+                    // The check is now against the total withdrawal for that product
+                    if (currentQuantity < (totalToWithdraw || 0)) {
+                        throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${totalToWithdraw}.`);
+                    }
+                }
+
                 stockChecks.push({
-                    ref: inventoryDocRef,
-                    change: data.type === 'salida' ? -totalQuantity : totalQuantity,
+                    ref: stockDocRef,
+                    change: data.type === 'salida' ? -item.quantity : item.quantity,
                     productName: product.name,
                     productId: product.id,
                     unit: product.unit,
-                    quantity: totalQuantity,
+                    quantity: item.quantity,
                 });
             }
 
-            // --- PHASE 3: GET NEW REMITO NUMBER ---
+             // --- PHASE 3: GET NEW REMITO NUMBER ---
             const counterRef = doc(firestore, 'counters', 'remitoCounter');
             const counterSnap = await transaction.get(counterRef);
             const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
@@ -290,7 +307,7 @@ export default function MovimientosPage() {
 
         toast({
             title: 'Movimiento Registrado',
-            description: `El remito ha sido registrado exitosamente.`,
+            description: `El remito ${form.getValues('remitoNumber')} ha sido registrado exitosamente.`,
         });
         form.reset({
             type: 'salida',
@@ -309,8 +326,50 @@ export default function MovimientosPage() {
         setIsSubmitting(false);
     }
   };
+
+  const handleDeleteMovement = async (movement: StockMovement) => {
+    if (!firestore) return;
+
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            // 1. Revert stock for each item in the movement
+            for (const item of movement.items) {
+                const inventoryDocId = `${item.productId}_${movement.depositId}`;
+                const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+                
+                // The change is the opposite of the original movement type
+                const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
+                
+                transaction.set(stockDocRef, {
+                    quantity: increment(change),
+                    lastUpdated: serverTimestamp(),
+                }, { merge: true });
+            }
+
+            // 2. Delete the movement document itself
+            const movementDocRef = doc(firestore, 'stockMovements', movement.id);
+            transaction.delete(movementDocRef);
+        });
+
+        toast({
+            title: 'Remito Eliminado',
+            description: `El remito ${movement.remitoNumber} ha sido eliminado y el stock ha sido revertido.`,
+        });
+
+    } catch (error: any) {
+        console.error('Error deleting movement:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Error al Eliminar',
+            description: error.message || 'No se pudo eliminar el remito. Revisa los permisos.',
+        });
+    }
+};
+
   
   const canManageMovements = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
+  const isAdmin = currentUserProfile?.role === 'administrador';
+
 
   if (isLoading) {
     return <MovementPageSkeleton />;
@@ -425,6 +484,7 @@ export default function MovimientosPage() {
                   <TableHead>Depósito</TableHead>
                   <TableHead>Origen/Destino</TableHead>
                   <TableHead>Productos</TableHead>
+                  {canManageMovements && <TableHead className="text-right">Acciones</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -436,10 +496,11 @@ export default function MovimientosPage() {
                         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                        {canManageMovements && <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>}
                     </TableRow>
                 ))}
                 {!isLoadingMovements && movements?.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center h-24">No hay movimientos registrados.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={canManageMovements ? 7 : 6} className="text-center h-24">No hay movimientos registrados.</TableCell></TableRow>
                 )}
                 {!isLoadingMovements && movements?.sort((a,b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()).map((mov) => (
                   <TableRow key={mov.id}>
@@ -453,6 +514,49 @@ export default function MovimientosPage() {
                     <TableCell>{mov.depositName}</TableCell>
                     <TableCell>{mov.actorName || '-'}</TableCell>
                     <TableCell>{mov.items.length}</TableCell>
+                    {canManageMovements && (
+                        <TableCell className="text-right">
+                             <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={true} // La edición es compleja y riesgosa, se prioriza anular y recrear.
+                                title="La edición de remitos está deshabilitada para mantener la integridad del historial."
+                              >
+                                <Edit className="h-4 w-4" />
+                                <span className="sr-only">Editar</span>
+                              </Button>
+
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" disabled={!isAdmin} title={!isAdmin ? "Solo los administradores pueden eliminar remitos" : "Eliminar Remito"}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                        <span className="sr-only">Eliminar</span>
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      ¿Estás seguro de que quieres anular este remito?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Esta acción no se puede deshacer. Se anulará el remito <strong>{mov.remitoNumber}</strong> y se revertirán los cambios de stock asociados a él.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                      Cancelar
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteMovement(mov)}
+                                      className="bg-destructive hover:bg-destructive/90"
+                                    >
+                                      Sí, anular remito
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                        </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

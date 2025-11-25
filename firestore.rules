@@ -92,6 +92,7 @@ service cloud.firestore {
       allow get, list: if isSignedIn();
 
       // WRITE: Only editors or admins can modify stock levels.
+      // This is handled via transactions in the stockMovements logic.
       allow write: if isEditorOrAdmin();
     }
 
@@ -100,8 +101,10 @@ service cloud.firestore {
       allow get, list: if isSignedIn();
       // WRITE: Editors and Admins can create movements.
       allow create: if isEditorOrAdmin();
-      // No updates or deletes for now to preserve audit trail.
-      allow update, delete: if false;
+      // UPDATE: Disallowed to preserve audit trail. Annul (delete) and recreate is the pattern.
+      allow update: if false;
+      // DELETE: Only Admins can delete (annul) a movement to correct errors.
+      allow delete: if isAdmin();
     }
 
     match /counters/{counterId} {
