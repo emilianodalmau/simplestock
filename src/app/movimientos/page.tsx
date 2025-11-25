@@ -20,6 +20,7 @@ import {
   where,
   runTransaction,
   increment,
+  getDocs,
 } from 'firebase/firestore';
 import {
   Card,
@@ -334,58 +335,61 @@ export default function MovimientosPage() {
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !currentUser) {
-       toast({
+      toast({
         variant: 'destructive',
         title: 'Error',
         description: 'Usuario no autenticado o base de datos no disponible.',
       });
       return;
     }
-    
+
     setIsSubmitting(true);
 
     const { productId, depositId, quantity, type, reason } = data;
-    
+
     // Quick validation for salidas to give fast feedback
     if (type === 'salida') {
-        const q = query(
-          collection(firestore, 'inventory'),
-          where('productId', '==', productId),
-          where('depositId', '==', depositId)
-        );
-        const { getDocs } = await import('firebase/firestore');
-        const inventorySnap = await getDocs(q);
-        const stockDoc = inventorySnap.docs[0];
-        const currentStock = stockDoc?.data()?.quantity || 0;
+      const q = query(
+        collection(firestore, 'inventory'),
+        where('productId', '==', productId),
+        where('depositId', '==', depositId)
+      );
+      const inventorySnap = await getDocs(q);
+      const stockDoc = inventorySnap.docs[0];
+      const currentStock = stockDoc?.data()?.quantity || 0;
 
-        if (currentStock < quantity) {
-          toast({
-            variant: 'destructive',
-            title: 'Stock Insuficiente',
-            description: `No hay suficientes unidades en el depósito para realizar la salida. Stock actual: ${currentStock}.`,
-          });
-          setIsSubmitting(false);
-          return;
-        }
+      if (currentStock < quantity) {
+        toast({
+          variant: 'destructive',
+          title: 'Stock Insuficiente',
+          description: `No hay suficientes unidades en el depósito para realizar la salida. Stock actual: ${currentStock}.`,
+        });
+        setIsSubmitting(false);
+        return;
+      }
     }
-
 
     try {
       await runTransaction(firestore, async (transaction) => {
+        const productDocRef = doc(firestore, 'products', productId);
+        const depositDocRef = doc(firestore, 'deposits', depositId);
         
-        const productsRef = collection(firestore, 'products');
-        const depositsRef = collection(firestore, 'deposits');
+        const [productDoc, depositDoc] = await Promise.all([
+            transaction.get(productDocRef),
+            transaction.get(depositDocRef),
+        ]);
         
-        const productDoc = await transaction.get(doc(productsRef, productId));
-        const depositDoc = await transaction.get(doc(depositsRef, depositId));
-
-        if (!productDoc.exists() || !depositDoc.exists()) {
-            throw new Error("El producto o depósito seleccionado ya no existe.");
+        if (!productDoc.exists()) {
+          throw new Error('El producto seleccionado ya no existe.');
+        }
+        if (!depositDoc.exists()) {
+          throw new Error('El depósito seleccionado ya no existe.');
         }
 
         const productName = productDoc.data().name;
         const depositName = depositDoc.data().name;
 
+        // Create the query for the inventory document inside the transaction
         const inventoryQuery = query(
           collection(firestore, 'inventory'),
           where('productId', '==', productId),
@@ -397,10 +401,12 @@ export default function MovimientosPage() {
         
         // For salidas, re-verify stock inside the transaction for atomicity
         if (type === 'salida') {
-            const currentStock = stockDoc?.data()?.quantity || 0;
-            if (currentStock < quantity) {
-                throw new Error('Stock insuficiente. La operación ha sido cancelada.');
-            }
+          const currentStock = stockDoc?.data()?.quantity || 0;
+          if (currentStock < quantity) {
+            throw new Error(
+              'Stock insuficiente. La operación ha sido cancelada.'
+            );
+          }
         }
 
         const movementRef = doc(collection(firestore, 'stockMovements'));
@@ -424,9 +430,11 @@ export default function MovimientosPage() {
             lastUpdated: serverTimestamp(),
           });
         } else {
-           if (type === 'salida') {
-                throw new Error("No se puede dar salida a un producto que nunca ha tenido stock en este depósito.");
-           }
+          if (type === 'salida') {
+            throw new Error(
+              'No se puede dar salida a un producto que nunca ha tenido stock en este depósito.'
+            );
+          }
           // The document is created with a new random ID by Firestore.
           const newStockRef = doc(collection(firestore, 'inventory'));
           transaction.set(newStockRef, {
