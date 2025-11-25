@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -254,10 +255,6 @@
       "type": "object",
       "description": "Represents the stock of a specific product in a specific deposit.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the inventory stock record."
-        },
         "productId": {
           "type": "string",
           "description": "Reference to the Product."
@@ -277,7 +274,6 @@
         }
       },
       "required": [
-        "id",
         "productId",
         "depositId",
         "quantity",
@@ -312,9 +308,24 @@
         },
         "supplierId": {
           "type": "string"
+        },
+        "productId": {
+          "type": "string"
+        },
+        "depositId": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "productName": {
+          "type": "string"
+        },
+        "depositName": {
+          "type": "string"
         }
       },
-      "required": ["id", "type", "date", "reason", "userId"]
+      "required": ["id", "type", "date", "reason", "userId", "productId", "depositId", "quantity", "productName", "depositName"]
     },
     "StockMovementItem": {
       "$schema": "http://json-schema.org/draft-07/schema#",
