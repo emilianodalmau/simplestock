@@ -204,7 +204,7 @@ export default function MovimientosPage() {
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementFormSchema),
-    defaultValues: { type: 'salida', depositId: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
+    defaultValues: { type: 'salida', depositId: '', remitoNumber: '', actorId: '', items: [{ productId: '', quantity: 1 }] },
   });
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'items' });
@@ -218,10 +218,10 @@ export default function MovimientosPage() {
 
   const availableProductsForMovement = useMemo(() => {
     if (!products) return [];
-    if (movementType === 'entrada' || !selectedDepositId) {
-      return products;
+    if (movementType === 'entrada' || !selectedDepositId || !inventory) {
+      return products.filter(p => !p.isArchived);
     }
-
+    
     // For "salida", filter products that have stock > 0 in the selected deposit
     const productsWithStock = new Set(
       inventory
@@ -232,7 +232,7 @@ export default function MovimientosPage() {
         .map((stock) => stock.productId)
     );
 
-    return products.filter((product) => productsWithStock.has(product.id));
+    return products.filter((product) => !product.isArchived && productsWithStock.has(product.id));
   }, [movementType, selectedDepositId, products, inventory]);
 
 // --- Form Submission Logic ---
@@ -272,7 +272,7 @@ const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
 
             // --- PHASE 2: VALIDATE all reads ---
             for (const check of stockChecks) {
-                 // This validation should ONLY run for salidas (negative change)
+                // This validation should ONLY run for salidas (negative change)
                 if (check.change < 0) {
                     const currentQuantity = check.stockDocSnap.exists() ? check.stockDocSnap.data().quantity : 0;
                     const quantityToWithdraw = -check.change; // make it a positive number for comparison
