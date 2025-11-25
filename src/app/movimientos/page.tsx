@@ -214,107 +214,121 @@ export default function MovimientosPage() {
     setIsSubmitting(true);
   
     try {
-        await runTransaction(firestore, async (transaction) => {
-            const movementItemsForDoc: StockMovementItem[] = [];
-            
-            // PHASE 1: Aggregate quantities to be withdrawn
-            const productWithdrawals = new Map<string, number>();
+      // --- PHASE 1: AGGREGATE QUANTITIES (outside transaction) ---
+      const productWithdrawals = new Map<string, number>();
+      if (data.type === 'salida') {
+        for (const item of data.items) {
+          if (item.productId) {
+            productWithdrawals.set(
+              item.productId,
+              (productWithdrawals.get(item.productId) || 0) + item.quantity
+            );
+          }
+        }
+      }
+
+      await runTransaction(firestore, async (transaction) => {
+        const movementItemsForDoc: StockMovementItem[] = [];
+        
+        // --- PHASE 2: READS & VALIDATIONS ---
+        const stockChecks: {
+            ref: any;
+            product: Product;
+            change: number;
+        }[] = [];
+
+        // Create a unique set of product IDs to read
+        const uniqueProductIds = Array.from(new Set(data.items.map(i => i.productId)));
+
+        for (const productId of uniqueProductIds) {
+            const product = productsMap.get(productId);
+            if (!product) throw new Error(`Producto con ID ${productId} no encontrado.`);
+
+            const inventoryDocId = `${productId}_${data.depositId}`;
+            const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+            const stockDocSnap = await transaction.get(stockDocRef);
+
             if (data.type === 'salida') {
-                for (const item of data.items) {
-                    if (item.productId) {
-                        productWithdrawals.set(
-                            item.productId,
-                            (productWithdrawals.get(item.productId) || 0) + item.quantity
-                        );
-                    }
+                const totalToWithdraw = productWithdrawals.get(productId) || 0;
+                const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
+                
+                if (currentQuantity < totalToWithdraw) {
+                    throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${totalToWithdraw}.`);
                 }
             }
-
-            // PHASE 2: READS & VALIDATIONS
-            const stockChecks: any[] = [];
-            for (const [index, item] of data.items.entries()) {
-                const product = productsMap.get(item.productId);
-                if (!product) throw new Error(`Producto en la línea ${index + 1} no encontrado.`);
-
-                const inventoryDocId = `${item.productId}_${data.depositId}`;
-                const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
-                const stockDocSnap = await transaction.get(stockDocRef);
-                
-                if (data.type === 'salida') {
-                    const totalToWithdraw = productWithdrawals.get(item.productId);
-                    const currentQuantity = stockDocSnap.exists() ? stockDocSnap.data().quantity : 0;
-                    
-                    // The check is now against the total withdrawal for that product
-                    if (currentQuantity < (totalToWithdraw || 0)) {
-                        throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${totalToWithdraw}.`);
-                    }
-                }
-
-                stockChecks.push({
-                    ref: stockDocRef,
-                    change: data.type === 'salida' ? -item.quantity : item.quantity,
-                    productName: product.name,
-                    productId: product.id,
-                    unit: product.unit,
-                    quantity: item.quantity,
-                });
-            }
-
-             // --- PHASE 3: GET NEW REMITO NUMBER ---
-            const counterRef = doc(firestore, 'counters', 'remitoCounter');
-            const counterSnap = await transaction.get(counterRef);
-            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-            const newRemitoNumber = lastNumber + 1;
-            const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
-
-            // --- PHASE 4: WRITES ---
-            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
-
-            for (const check of stockChecks) {
-                transaction.set(check.ref, { 
-                  quantity: increment(check.change),
-                  lastUpdated: serverTimestamp(),
-                  productId: check.productId,
-                  depositId: data.depositId,
-                }, { merge: true });
-                
-                movementItemsForDoc.push({
-                    productId: check.productId,
-                    productName: check.productName,
-                    quantity: check.quantity,
-                    unit: check.unit,
-                });
-            }
-
-            const deposit = deposits?.find((d) => d.id === data.depositId);
-            const actor = actors?.find((a) => a.id === data.actorId);
-            const movementRef = doc(collection(firestore, 'stockMovements'));
-
-            transaction.set(movementRef, {
-                id: movementRef.id,
-                remitoNumber: formattedRemitoNumber,
-                type: data.type,
-                depositId: data.depositId,
-                depositName: deposit?.name || 'N/A',
-                actorId: data.actorId || null,
-                actorName: actor?.name || null,
-                actorType: data.actorId ? (data.type === 'salida' ? 'client' : 'supplier') : null,
-                createdAt: serverTimestamp(),
-                userId: user.uid,
-                items: movementItemsForDoc,
+             // Get all items for this product
+            const itemsForThisProduct = data.items.filter(i => i.productId === productId);
+            const totalChange = itemsForThisProduct.reduce((acc, item) => acc + (data.type === 'salida' ? -item.quantity : item.quantity), 0);
+            
+            stockChecks.push({
+                ref: stockDocRef,
+                product: product,
+                change: totalChange,
             });
-        });
+        }
 
-        toast({
-            title: 'Movimiento Registrado',
-            description: `El remito ${form.getValues('remitoNumber')} ha sido registrado exitosamente.`,
+        // --- PHASE 3: GET NEW REMITO NUMBER ---
+        const counterRef = doc(firestore, 'counters', 'remitoCounter');
+        const counterSnap = await transaction.get(counterRef);
+        const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+        const newRemitoNumber = lastNumber + 1;
+        const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
+        
+        // --- PHASE 4: WRITES ---
+        transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+
+        // Write all stock updates
+        for (const check of stockChecks) {
+            transaction.set(check.ref, { 
+                quantity: increment(check.change),
+                lastUpdated: serverTimestamp(),
+                productId: check.product.id,
+                depositId: data.depositId,
+            }, { merge: true });
+        }
+        
+        // Prepare final movement document data
+        for (const item of data.items) {
+            const product = productsMap.get(item.productId);
+            if(product) {
+                movementItemsForDoc.push({
+                    productId: item.productId,
+                    productName: product.name,
+                    quantity: item.quantity,
+                    unit: product.unit,
+                });
+            }
+        }
+
+        const deposit = deposits?.find((d) => d.id === data.depositId);
+        const actor = actors?.find((a) => a.id === data.actorId);
+        const movementRef = doc(collection(firestore, 'stockMovements'));
+
+        transaction.set(movementRef, {
+            id: movementRef.id,
+            remitoNumber: formattedRemitoNumber,
+            type: data.type,
+            depositId: data.depositId,
+            depositName: deposit?.name || 'N/A',
+            actorId: data.actorId || null,
+            actorName: actor?.name || null,
+            actorType: data.actorId ? (data.type === 'salida' ? 'client' : 'supplier') : null,
+            createdAt: serverTimestamp(),
+            userId: user.uid,
+            items: movementItemsForDoc,
         });
-        form.reset({
-            type: 'salida',
-            depositId: '',
-            actorId: '',
-            items: [{ productId: '', quantity: 1 }],
-        });
+      });
+
+      toast({
+          title: 'Movimiento Registrado',
+          description: `El remito ha sido registrado exitosamente.`,
+      });
+      form.reset({
+          type: 'salida',
+          depositId: '',
+          actorId: '',
+          items: [{ productId: '', quantity: 1 }],
+      });
     } catch (error: any) {
         console.error('Error procesando el movimiento:', error);
         toast({
