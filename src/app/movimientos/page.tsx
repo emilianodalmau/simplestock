@@ -25,6 +25,7 @@ import {
   where,
   getDocs,
   increment,
+  DocumentReference,
 } from 'firebase/firestore';
 import {
   Card,
@@ -200,27 +201,23 @@ export default function MovimientosPage() {
         const movementRef = doc(collection(firestore, 'stockMovements'));
         const movementItems: StockMovementItem[] = [];
 
-        // Pre-fetch all necessary inventory documents
-        const inventoryRefs: { [key: string]: DocumentReference } = {};
-        const productChecks: Promise<any>[] = data.items.map(async (item) => {
+        const stockChecks = data.items.map(async (item) => {
+          if (data.type === 'salida') {
             const inventoryQuery = query(
-                collection(firestore, 'inventory'),
-                where('depositId', '==', data.depositId),
-                where('productId', '==', item.productId)
+              collection(firestore, 'inventory'),
+              where('depositId', '==', data.depositId),
+              where('productId', '==', item.productId)
             );
             const inventorySnap = await getDocs(inventoryQuery);
             const stockDoc = inventorySnap.docs[0];
-            if (data.type === 'salida' && (!stockDoc || stockDoc.data().quantity < item.quantity)) {
-                const product = productsMap.get(item.productId);
-                throw new Error(`Stock insuficiente para ${product?.name || 'un producto'}.`);
+            if (!stockDoc || stockDoc.data().quantity < item.quantity) {
+              const product = productsMap.get(item.productId);
+              throw new Error(`Stock insuficiente para ${product?.name || 'un producto'}.`);
             }
-            if (stockDoc) {
-                inventoryRefs[item.productId] = stockDoc.ref;
-            }
+          }
         });
-
-        await Promise.all(productChecks);
-
+        
+        await Promise.all(stockChecks);
 
         for (const item of data.items) {
           const product = productsMap.get(item.productId);
@@ -228,13 +225,19 @@ export default function MovimientosPage() {
           
           movementItems.push({ productId: product.id, productName: product.name, quantity: item.quantity, unit: product.unit });
 
-          const stockDocRef = inventoryRefs[item.productId];
+          const inventoryQuery = query(
+            collection(firestore, 'inventory'),
+            where('depositId', '==', data.depositId),
+            where('productId', '==', item.productId)
+          );
+
+          const inventorySnap = await transaction.get(inventoryQuery);
+          const stockDoc = inventorySnap.docs[0];
           const change = data.type === 'salida' ? -item.quantity : item.quantity;
           
-          if (stockDocRef) {
-            transaction.update(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() });
+          if (stockDoc) {
+            transaction.update(stockDoc.ref, { quantity: increment(change), lastUpdated: serverTimestamp() });
           } else {
-            // This case should only happen for 'entrada' as 'salida' would have failed the pre-check
              const newStockRef = doc(collection(firestore, 'inventory'));
              transaction.set(newStockRef, { depositId: data.depositId, productId: item.productId, quantity: item.quantity, lastUpdated: serverTimestamp() });
           }
@@ -315,7 +318,6 @@ export default function MovimientosPage() {
                       <Select onValueChange={field.onChange} value={field.value || ''} disabled={!actors}>
                         <FormControl><SelectTrigger><SelectValue placeholder={`Selecciona un ${actorLabel.toLowerCase()}`} /></SelectTrigger></FormControl>
                         <SelectContent>
-                          <SelectItem value="">Ninguno</SelectItem>
                           {actors?.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
@@ -356,7 +358,7 @@ export default function MovimientosPage() {
                         <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     ))}
-                    {form.formState.errors.items && <p className="text-sm font-medium text-destructive mt-2">{form.formState.errors.items.root?.message}</p>}
+                    {form.formState.errors.items && <p className="text-sm font-medium text-destructive mt-2">{typeof form.formState.errors.items === 'string' ? form.formState.errors.items : form.formState.errors.items.root?.message}</p>}
                   </div>
                 </div>
               </CardContent>
