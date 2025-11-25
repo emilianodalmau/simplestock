@@ -10,6 +10,7 @@ import {
   useCollection,
   useMemoFirebase,
   useUser,
+  useDoc,
 } from '@/firebase';
 import {
   collection,
@@ -96,11 +97,11 @@ export default function ProveedoresPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
+  const userDocRef = useMemoFirebase(
+    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    [firestore, currentUser]
   );
-  const { data: users } = useCollection<UserProfile>(usersCollection);
+  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
   const suppliersCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'suppliers') : null),
@@ -202,7 +203,6 @@ export default function ProveedoresPage() {
     }
   };
 
-  const currentUserProfile = users?.find((u) => u.id === currentUser?.uid);
   const canManageSuppliers =
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
@@ -479,3 +479,5 @@ export default function ProveedoresPage() {
     </div>
   );
 }
+
+    

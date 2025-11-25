@@ -10,6 +10,7 @@ import {
   useCollection,
   useMemoFirebase,
   useUser,
+  useDoc,
 } from '@/firebase';
 import {
   collection,
@@ -100,11 +101,11 @@ export default function ClientesPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
+  const userDocRef = useMemoFirebase(
+    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    [firestore, currentUser]
   );
-  const { data: users } = useCollection<UserProfile>(usersCollection);
+  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
   const clientsCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'clients') : null),
@@ -209,7 +210,6 @@ export default function ClientesPage() {
     }
   };
 
-  const currentUserProfile = users?.find((u) => u.id === currentUser?.uid);
   const canManageClients =
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';

@@ -10,6 +10,7 @@ import {
   useCollection,
   useMemoFirebase,
   useUser,
+  useDoc,
 } from '@/firebase';
 import {
   collection,
@@ -95,11 +96,11 @@ export default function CategoriasPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
+  const userDocRef = useMemoFirebase(
+    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    [firestore, currentUser]
   );
-  const { data: users } = useCollection<UserProfile>(usersCollection);
+  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
   const categoriesCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'categories') : null),
@@ -199,7 +200,6 @@ export default function CategoriasPage() {
     }
   };
 
-  const currentUserProfile = users?.find((u) => u.id === currentUser?.uid);
   const canManageCategories =
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
@@ -438,3 +438,5 @@ export default function CategoriasPage() {
     </div>
   );
 }
+
+    

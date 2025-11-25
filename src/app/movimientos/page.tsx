@@ -10,6 +10,7 @@ import {
   useCollection,
   useMemoFirebase,
   useUser,
+  useDoc,
 } from '@/firebase';
 import {
   collection,
@@ -92,8 +93,12 @@ export default function MovimientosPage() {
   const { user: currentUser } = useUser();
 
   // Data fetching
-  const usersCollection = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: users } = useCollection<UserProfile>(usersCollection);
+  const userDocRef = useMemoFirebase(
+    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    [firestore, currentUser]
+  );
+  const { data: currentUserProfile, isLoading: isLoadingUser } = useDoc<UserProfile>(userDocRef);
+
 
   const productsCollection = useMemoFirebase(() => firestore ? collection(firestore, 'products') : null, [firestore]);
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
@@ -197,10 +202,9 @@ export default function MovimientosPage() {
     }
   };
 
-  const currentUserProfile = users?.find((u) => u.id === currentUser?.uid);
   const canManageMovements = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
 
-  const isLoading = isLoadingProducts || isLoadingDeposits;
+  const isLoading = isLoadingProducts || isLoadingDeposits || isLoadingUser;
   
   if (!canManageMovements && !isLoading) {
     return (
@@ -391,3 +395,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
