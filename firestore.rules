@@ -22,9 +22,11 @@ service cloud.firestore {
     }
 
     function isEditorOrAdmin() {
+      if (!isSignedIn()) {
+        return false;
+      }
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             (userRole == 'administrador' || userRole == 'editor');
+      return userRole == 'administrador' || userRole == 'editor';
     }
     
     // ------------------------------------------------------------------------
@@ -67,5 +69,15 @@ service cloud.firestore {
       // WRITE: Only editors or admins can create, update, or delete products.
       allow write: if isEditorOrAdmin();
     }
+
+    match /deposits/{depositId} {
+      // READ: Any signed-in user can get or list deposits.
+      allow get, list: if isSignedIn();
+
+      // WRITE: Only editors or admins can create, update, or delete deposits.
+      allow write: if isEditorOrAdmin();
+    }
   }
 }
+
+    
