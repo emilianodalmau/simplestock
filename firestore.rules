@@ -19,8 +19,9 @@ service cloud.firestore {
     }
 
     function isEditorOrAdmin() {
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (userRole == 'administrador' || userRole == 'editor');
+      let userDocExists = exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      let userRole = userDocExists ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : '';
+      return isSignedIn() && userDocExists && (userRole == 'administrador' || userRole == 'editor');
     }
     
     // ------------------------------------------------------------------------
