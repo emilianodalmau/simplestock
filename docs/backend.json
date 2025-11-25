@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the Firebase Blank Slate application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        }
+      },
+      "required": [
+        "id",
+        "email"
+      ]
+    },
+    "Content": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Content",
+      "type": "object",
+      "description": "Represents content created by a user in the Firebase Blank Slate application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Content entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who created this content. (Relationship: User 1:N Content)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the content."
+        },
+        "body": {
+          "type": "string",
+          "description": "Body/text of the content."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the content was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the content was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "title",
+        "body",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles. User documents are created via Firebase Authentication.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/content/{contentId}",
+        "definition": {
+          "entityName": "Content",
+          "schema": {
+            "$ref": "#/backend/entities/Content"
+          },
+          "description": "Stores content created by a user. Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user, representing the owner of the content."
+            },
+            {
+              "name": "contentId",
+              "description": "The unique identifier of the content document."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This Firestore data structure is designed to support a simple content creation platform, \"Firebase Blank Slate,\" with user authentication and content storage. The structure prioritizes Authorization Independence and QAPs.\n\n*   **Authorization Independence:** The `Content` documents are stored in a subcollection of the `User` document (`/users/{userId}/content/{contentId}`). The `Content` document includes the `userId` of the owner. This design eliminates the need for `get()` calls in security rules to determine ownership.\n*   **QAPs:** Segregation is achieved by storing all content created by a user within their own `users/{userId}/content` subcollection. This ensures that list operations can be secured by checking `request.auth.uid == userId`. Path-based ownership (`/users/{userId}/content/{contentId}`) enables secure and efficient `list` operations.\n\nThe data model uses hierarchical paths to express the relationship between users and their content, making the database easier to understand and implement security rules that protect user data.\n\nAuthentication is handled by Firebase Authentication, and Firestore is used for content storage."
+  }
+}

@@ -1,0 +1,104 @@
+/**
+ * This ruleset enforces a strict user-ownership model for a content creation application.
+ *
+ * Core Philosophy:
+ * The security model ensures that users have complete control over their own data.
+ * All user-generated content is private by default and can only be accessed or modified
+ * by its creator. The rules prevent users from accessing or even listing data that
+ * does not belong to them.
+ *
+ * Data Structure:
+ * The data is organized hierarchically. Each user has a profile document located at
+ * `/users/{userId}`. All content created by that user is stored in a dedicated
+ * subcollection at `/users/{userId}/content/{contentId}`. This structure inherently
+ * links data to its owner via the document path.
+ *
+ * Key Security Decisions:
+ * - User Enumeration Disabled: Listing documents in the top-level `/users` collection
+ *   is explicitly forbidden to protect user privacy and prevent data scraping.
+ * - Strict Ownership: All operations (read, create, update, delete) on a user's
+ *   profile or their content are restricted to the authenticated owner of that data.
+ * - Path-Based Security: The rules heavily leverage the document path to enforce
+ *   ownership, making queries and direct access checks simple and performant.
+ * - Authorization-Focused Validation: Data validation is limited to fields essential
+ *   for maintaining ownership links (e.g., `userId`), allowing for flexible data
+ *   shapes during development.
+ *
+ * Denormalization for Authorization:
+ * The `Content` documents at `/users/{userId}/content/{contentId}` contain a
+ * denormalized `userId` field. This allows rules to verify ownership on document
+ * creation and updates without needing to perform extra reads, which simplifies
+ * logic and improves performance.
+ *
+ * Structural Segregation:
+ * User content is segregated into user-specific subcollections. This design pattern
+ * is inherently secure for list operations, as a query for a user's content can
+ * be authorized simply by checking if the authenticated user matches the user ID
+ * in the collection path.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------------
+    // Helper Functions
+    // ------------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the currently authenticated user's UID matches the provided userId.
+     * This is the primary function for enforcing data ownership.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Checks if the document exists and if the authenticated user is the owner.
+     * Used for safe update and delete operations.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    // ------------------------------------------------------------------------
+    // Collection Rules
+    // ------------------------------------------------------------------------
+
+    /**
+     * @description Controls access to user profile documents.
+     * @path /users/{userId}
+     * @allow (get) An authenticated user retrieves their own profile document.
+     * @deny (list) An authenticated user tries to list all documents in the `/users` collection.
+     * @principle Restricts access to a user's own data tree and prevents user enumeration.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+
+      /**
+       * @description Controls access to a user's private content subcollection.
+       * @path /users/{userId}/content/{contentId}
+       * @allow (create) An authenticated user creates a new content document within their own subcollection.
+       * @deny (get) A user attempts to read a content document belonging to another user.
+       * @principle Enforces strict document ownership for all operations within a user's private data subcollection.
+       */
+      match /content/{contentId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+      }
+    }
+  }
+}
