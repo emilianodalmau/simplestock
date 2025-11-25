@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -250,10 +251,23 @@ export default function SolicitudesPage() {
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !canCreateRequest) return;
+    
+    // --- 1. Client-side Validation ---
+    for (const item of data.items) {
+      const availableStock = inventoryByProduct.get(item.productId) || 0;
+      if (item.quantity > availableStock) {
+        toast({
+          variant: 'destructive',
+          title: 'Stock Insuficiente',
+          description: `No hay stock suficiente para ${productsMap.get(item.productId)?.name}. Solicitados: ${item.quantity}, Disponible: ${availableStock}.`,
+        });
+        return; // Stop the submission
+      }
+    }
+
     setIsSubmitting(true);
 
     const productChanges = new Map<string, number>();
-
     for (const item of data.items) {
       if (item.productId) {
         const change = -item.quantity; // All requests are 'salida'
@@ -266,12 +280,11 @@ export default function SolicitudesPage() {
 
     try {
       await runTransaction(firestore, async (transaction) => {
-        // --- 1. READ & VALIDATION ---
+        // --- 2. Server-side Read & Validation (as a safeguard) ---
         const stockDocRefs = new Map<string, any>();
-        const stockDocs = new Map<string, any>();
         const counterRef = doc(firestore, 'counters', 'remitoCounter');
 
-        // Pre-fetch all necessary stock documents and validate
+        // Pre-fetch all necessary stock documents
         for (const [productId] of productChanges.entries()) {
           const inventoryDocId = `${productId}_${data.depositId}`;
           const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
@@ -282,24 +295,21 @@ export default function SolicitudesPage() {
           Array.from(stockDocRefs.values()).map((ref) => transaction.get(ref))
         );
 
+        // This validation is a final check. The main feedback is given on the client.
         stockSnaps.forEach((snap, index) => {
           const productId = Array.from(stockDocRefs.keys())[index];
-          stockDocs.set(productId, snap);
-          
           const change = productChanges.get(productId)!;
           const currentQuantity = snap.exists() ? snap.data().quantity : 0;
-          const quantityToWithdraw = -change;
-
-          if (currentQuantity < quantityToWithdraw) {
+          if (currentQuantity < -change) {
             throw new Error(
-              `Stock insuficiente para ${productsMap.get(productId)?.name}. Stock actual: ${currentQuantity}, solicitados: ${quantityToWithdraw}.`
+              `Stock insuficiente para ${productsMap.get(productId)?.name}.`
             );
           }
         });
 
         const counterSnap = await transaction.get(counterRef);
 
-        // --- 2. WRITE PHASE ---
+        // --- 3. WRITE PHASE ---
         const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
         const newRemitoNumber = lastNumber + 1;
         const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
@@ -362,7 +372,7 @@ export default function SolicitudesPage() {
       console.error('Error procesando la solicitud:', error);
       toast({
         variant: 'destructive',
-        title: 'Error en la solicitud',
+        title: 'Error en la transacción',
         description: error.message || 'Ocurrió un error al procesar el pedido.',
       });
     } finally {
