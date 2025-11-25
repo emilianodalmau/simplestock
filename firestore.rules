@@ -5,7 +5,7 @@
  * The security model ensures that users have complete control over their own data.
  * All user-generated content is private by default and can only be accessed or modified
  * by its creator. The rules prevent users from accessing or even listing data that
- * does not belong to them.
+ * does not belong to them, with an exception for administrators.
  *
  * Data Structure:
  * The data is organized hierarchically. Each user has a profile document located at
@@ -14,8 +14,8 @@
  * links data to its owner via the document path.
  *
  * Key Security Decisions:
- * - User Enumeration Disabled: Listing documents in the top-level `/users` collection
- *   is explicitly forbidden to protect user privacy and prevent data scraping.
+ * - Role-Based Access for Listing Users: Listing users is restricted to authenticated
+ *   users with the 'administrador' role to protect user privacy.
  * - Strict Ownership: All operations (read, create, update, delete) on a user's
  *   profile or their content are restricted to the authenticated owner of that data.
  * - Path-Based Security: The rules heavily leverage the document path to enforce
@@ -67,6 +67,14 @@ service cloud.firestore {
       return isOwner(userId) && resource != null;
     }
 
+    /**
+     * Checks if the requesting user has the 'administrador' role.
+     * It fetches the user's own profile document to check their role.
+     */
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
+    }
+
     // ------------------------------------------------------------------------
     // Collection Rules
     // ------------------------------------------------------------------------
@@ -75,15 +83,15 @@ service cloud.firestore {
      * @description Controls access to user profile documents.
      * @path /users/{userId}
      * @allow (get) An authenticated user retrieves their own profile document.
-     * @deny (list) An authenticated user tries to list all documents in the `/users` collection.
-     * @principle Restricts access to a user's own data tree and prevents user enumeration.
+     * @allow (list) An administrator lists all documents in the `/users` collection.
+     * @principle Restricts access to a user's own data tree and prevents user enumeration, except for admins.
      */
     match /users/{userId} {
       allow get: if isOwner(userId);
-      allow list: if false;
+      allow list: if isAdmin();
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
 
       /**
        * @description Controls access to a user's private content subcollection.
