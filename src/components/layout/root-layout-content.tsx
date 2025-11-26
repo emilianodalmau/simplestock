@@ -75,24 +75,28 @@ function AppLayout({
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   
+  // Conditionally fetch workspace data only if workspaceId exists
   const workspaceDocRef = useMemoFirebase(
     () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
-    [firestore, currentUserProfile]
+    [firestore, currentUserProfile?.workspaceId]
   );
-  const { data: workspaceData } = useDoc<Workspace>(workspaceDocRef);
+  const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
   // --- Workspace Redirection Logic ---
   useEffect(() => {
-    if (!isUserLoading && !isLoadingProfile && user) {
+    // Wait until we have a definitive user profile
+    if (!isLoadingProfile && user && currentUserProfile) {
+      // If user is an admin without a workspace, force them to the dashboard
+      // The dashboard itself will handle rendering the creation form.
       if (
-        currentUserProfile?.role === 'administrador' &&
+        currentUserProfile.role === 'administrador' &&
         !currentUserProfile.workspaceId &&
-        pathname !== '/dashboard' // Only redirect if they aren't already on the correct page
+        pathname !== '/dashboard'
       ) {
         router.replace('/dashboard');
       }
     }
-  }, [isUserLoading, isLoadingProfile, user, currentUserProfile, pathname, router]);
+  }, [isLoadingProfile, user, currentUserProfile, pathname, router]);
 
 
   const handleLogout = async () => {
@@ -125,10 +129,11 @@ function AppLayout({
 
   const isLoading = isUserLoading || isLoadingProfile;
   const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
-  const isBeingRedirected = !isLoading && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
+  
+  // This flag determines if we are in a state where a redirection is expected to happen.
+  const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
 
-
-  if (isLoading || isBeingRedirected) {
+  if (isLoading || isPendingRedirect) {
     return (
         <div className="flex h-screen items-center justify-center">
             <Loader2 className="h-12 w-12 animate-spin" />

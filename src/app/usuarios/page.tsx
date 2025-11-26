@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -204,7 +204,7 @@ export default function UsuariosPage() {
               <TableHead>Teléfono</TableHead>
               <TableHead>Dirección</TableHead>
               <TableHead>Rol</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+              {currentUserIsAdmin && <TableHead className="text-right">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -231,9 +231,9 @@ export default function UsuariosPage() {
                   <TableCell>
                     <Skeleton className="h-6 w-24 rounded-full" />
                   </TableCell>
-                  <TableCell className="text-right">
+                  {currentUserIsAdmin && <TableCell className="text-right">
                     <Skeleton className="h-10 w-48 ml-auto" />
-                  </TableCell>
+                  </TableCell>}
                 </TableRow>
               ))}
             {!isLoading &&
@@ -270,9 +270,8 @@ export default function UsuariosPage() {
                       <span className="text-muted-foreground">Sin rol</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
-                     {currentUserIsAdmin && (
-                       <>
+                  {currentUserIsAdmin && <TableCell className="text-right">
+                     <>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -302,8 +301,7 @@ export default function UsuariosPage() {
                           </SelectContent>
                         </Select>
                       </>
-                    )}
-                  </TableCell>
+                  </TableCell>}
                 </TableRow>
               ))}
           </TableBody>
