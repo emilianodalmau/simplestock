@@ -253,12 +253,15 @@ export default function MovimientosPage() {
     }
   }, [isJefeDeposito, deposits, user]);
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore && workspaceId ? query(collection(firestore, `users`), where('workspaceId', '==', workspaceId)) : null),
-    [firestore, workspaceId]
-  );
-  const { data: users, isLoading: isLoadingUsers } =
-    useCollection<UserProfile>(usersCollection);
+  const usersCollectionQuery = useMemoFirebase(() => {
+    // Only fetch users if the current user is an admin or editor, as they are the only ones who can list users.
+    if (firestore && workspaceId && (currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor')) {
+      return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
+    }
+    return null; // Return null for other roles to prevent permission errors.
+  }, [firestore, workspaceId, currentUserProfile?.role]);
+
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
   const suppliersCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/suppliers`) : null),
@@ -335,7 +338,8 @@ export default function MovimientosPage() {
   useEffect(() => {
     // Also reset when movement type changes
     replace([{ productId: '', quantity: 1 }]);
-  }, [movementType, replace]);
+    form.setValue('actorId', ''); // Reset actor when type changes
+  }, [movementType, replace, form]);
 
   // --- Data Memoization for UI ---
   const productsMap = useMemo(() => new Map(products?.map((p) => [p.id, p])), [
@@ -477,17 +481,27 @@ export default function MovimientosPage() {
         );
 
         const deposit = deposits?.find((d) => d.id === data.depositId);
-        const actor = actors?.find((a) => a.id === data.actorId);
-        let actorName = null;
-        if(actor) {
-            if(data.type === 'salida') {
-                const userActor = actor as UserProfile;
-                actorName = `${userActor.firstName || ''} ${userActor.lastName || ''}`.trim();
-            } else {
-                const supplierActor = actor as Supplier;
-                actorName = supplierActor.name;
-            }
+        let actorName: string | null = null;
+        let actorType: 'user' | 'supplier' | null = null;
+        let finalActorId = data.actorId;
+
+        if (data.type === 'salida') {
+          actorType = 'user';
+          // If the user is a jefe_deposito, they are the actor.
+          if (isJefeDeposito) {
+            finalActorId = user.uid;
+            actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
+          } else {
+            // For admins/editors, find the selected user.
+            const actor = users?.find((u) => u.id === data.actorId);
+            actorName = actor ? `${actor.firstName || ''} ${actor.lastName || ''}`.trim() : null;
+          }
+        } else { // 'entrada'
+          actorType = 'supplier';
+          const actor = suppliers?.find((s) => s.id === data.actorId);
+          actorName = actor ? actor.name : null;
         }
+
 
         const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
 
@@ -497,13 +511,9 @@ export default function MovimientosPage() {
           type: data.type,
           depositId: data.depositId,
           depositName: deposit?.name || 'N/A',
-          actorId: data.actorId || null,
+          actorId: finalActorId || null,
           actorName: actorName,
-          actorType: data.actorId
-            ? data.type === 'salida'
-              ? 'user'
-              : 'supplier'
-            : null,
+          actorType: finalActorId ? actorType : null,
           createdAt: serverTimestamp(),
           userId: user.uid,
           items: movementItemsForDoc,
@@ -659,34 +669,36 @@ export default function MovimientosPage() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="actorId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{actorLabel} (Opcional)</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value || ''}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue
-                                placeholder={`Selecciona un ${actorLabel.toLowerCase()}`}
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {actors?.map((a) => (
-                              <SelectItem key={a.id} value={a.id}>
-                                {movementType === 'salida' ? `${(a as UserProfile).firstName} ${(a as UserProfile).lastName}` : (a as Supplier).name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
+                  {!(isJefeDeposito && movementType === 'salida') && (
+                    <FormField
+                      control={form.control}
+                      name="actorId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{actorLabel} (Opcional)</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value || ''}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue
+                                  placeholder={`Selecciona un ${actorLabel.toLowerCase()}`}
+                                />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {actors?.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {movementType === 'salida' ? `${(a as UserProfile).firstName} ${(a as UserProfile).lastName}` : (a as Supplier).name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   <FormField
                     control={form.control}
                     name="remitoNumber"
