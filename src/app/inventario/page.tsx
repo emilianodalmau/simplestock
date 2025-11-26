@@ -150,10 +150,14 @@ export default function InventarioPage() {
 
   const inventoryQuery = useMemoFirebase(() => {
     if (!firestore) return null;
+    // For Jefe de Deposito, we filter the inventory later in the processing logic,
+    // so we fetch all inventory they have access to first. If they have an assigned
+    // deposit, the query is already filtered. If not, we still need all inventory
+    // for other roles.
     if (isJefeDeposito && assignedDepositId) {
         return query(collection(firestore, 'inventory'), where('depositId', '==', assignedDepositId));
     }
-    // Admins/Editors see all inventory
+    // Admins/Editors/Viewers see all inventory.
     return collection(firestore, 'inventory');
   }, [firestore, isJefeDeposito, assignedDepositId]);
 
@@ -173,22 +177,22 @@ export default function InventarioPage() {
 
   // Memoize the data processing for the main table
   const processedInventoryData = useMemo(() => {
-    if (!products || !categories || (!inventory && isJefeDeposito && assignedDepositId)) {
+    if (!products || !categories || !inventory) {
       return [];
     }
 
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
     const stockMap = new Map<string, number>();
     
-    // If inventory is null (because of permissions or no data), treat it as an empty array
-    const inventoryData = inventory || [];
-
-    for (const stockItem of inventoryData) {
+    // The inventory data is pre-filtered by the query for 'jefe_deposito'.
+    // For other roles, it contains all stock.
+    for (const stockItem of inventory) {
       const currentStock = stockMap.get(stockItem.productId) || 0;
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
     }
 
     const combinedData: InventoryItem[] = products.map((product) => {
+      // The stockMap now correctly contains either all stock or just the assigned deposit's stock.
       const totalStock = stockMap.get(product.id) || 0;
       const minStock = product.minStock;
       const totalValue = (product.price || 0) * totalStock;
@@ -212,10 +216,12 @@ export default function InventarioPage() {
         status: status,
       };
     }).filter(item => {
-        // If user is jefe, only show products that exist in their inventory map
+        // If user is jefe, we only want to show products that actually exist in their deposit.
+        // Products with 0 stock but present in other deposits should not be shown to them.
         if (isJefeDeposito) {
             return stockMap.has(item.productId);
         }
+        // Other roles see all products.
         return true;
     });
 
