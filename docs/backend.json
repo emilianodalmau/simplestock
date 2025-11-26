@@ -399,89 +399,45 @@
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": { "$ref": "#/entities/User" },
-          "description": "Stores user profiles. Super-admins are global, other users are scoped to a workspace."
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}",
-        "definition": {
-          "entityName": "Workspace",
-          "schema": { "$ref": "#/entities/Workspace" },
-          "description": "Stores workspace definitions. Each is owned by an 'administrador' user."
-        },
-        "subcollections": [
-          {
-            "path": "/workspaces/{workspaceId}/clients/{clientId}",
-            "definition": {
-              "entityName": "Client",
-              "schema": { "$ref": "#/entities/Client" },
-              "description": "Stores clients for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/categories/{categoryId}",
-            "definition": {
-              "entityName": "Category",
-              "schema": { "$ref": "#/entities/Category" },
-              "description": "Stores product categories for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/products/{productId}",
-            "definition": {
-              "entityName": "Product",
-              "schema": { "$ref": "#/entities/Product" },
-              "description": "Stores products for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/deposits/{depositId}",
-            "definition": {
-              "entityName": "Deposit",
-              "schema": { "$ref": "#/entities/Deposit" },
-              "description": "Stores inventory locations for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/suppliers/{supplierId}",
-            "definition": {
-              "entityName": "Supplier",
-              "schema": { "$ref": "#/entities/Supplier" },
-              "description": "Stores suppliers for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/inventory/{inventoryStockId}",
-            "definition": {
-              "entityName": "InventoryStock",
-              "schema": { "$ref": "#/entities/InventoryStock" },
-              "description": "Stores stock levels for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/stockMovements/{movementId}",
-            "definition": {
-              "entityName": "StockMovement",
-              "schema": { "$ref": "#/entities/StockMovement" },
-              "description": "Stores stock movements for a specific workspace."
-            }
-          },
-          {
-            "path": "/workspaces/{workspaceId}/counters/{counterId}",
-            "definition": {
-              "entityName": "Counter",
-              "schema": { "$ref": "#/entities/Counter" },
-              "description": "Stores atomic counters for a specific workspace."
-            }
-          }
-        ]
-      }
-    ]
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles. Super-admins are global, other users are scoped to a workspace."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Stores workspace definitions. Each is owned by an 'administrador' user."
+    },
+    "/workspaces/{workspaceId}/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Stores clients for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Stores product categories for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Stores products for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/Deposit" },
+      "description": "Stores inventory locations for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/suppliers/{supplierId}": {
+      "schema": { "$ref": "#/entities/Supplier" },
+      "description": "Stores suppliers for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/inventory/{inventoryStockId}": {
+      "schema": { "$ref": "#/entities/InventoryStock" },
+      "description": "Stores stock levels for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/stockMovements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Stores stock movements for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/counters/{counterId}": {
+      "schema": { "$ref": "#/entities/Counter" },
+      "description": "Stores atomic counters for a specific workspace."
+    }
   }
 }

@@ -1,10 +1,11 @@
+
 'use client';
 
 import { useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, useDoc, useMemoFirebase } from '@/firebase';
 import {
   collection,
   doc,
@@ -41,6 +42,11 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+type UserProfile = {
+  role?: 'administrador';
+  workspaceId?: string | null;
+};
+
 export default function CrearWorkspacePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -48,12 +54,28 @@ export default function CrearWorkspacePage() {
   const { user } = useUser();
   const router = useRouter();
 
+  const userDocRef = useMemoFirebase(
+    () => (user ? doc(firestore, 'users', user.uid) : null),
+    [user, firestore]
+  );
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
     },
   });
+
+  // Redirect if user is not an orphan admin or already has a workspace
+  if (!isLoadingProfile && (!user || currentUserProfile?.role !== 'administrador' || currentUserProfile?.workspaceId)) {
+    router.replace('/dashboard');
+    return (
+        <div className="container flex min-h-screen items-center justify-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+    );
+  }
 
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore || !user) {
@@ -97,12 +119,20 @@ export default function CrearWorkspacePage() {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Ocurrió un error al crear el workspace.',
+        description: 'Ocurrió un error al crear el workspace. Revisa los permisos de la base de datos.',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoadingProfile) {
+    return (
+        <div className="container flex min-h-screen items-center justify-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+    );
+  }
 
   return (
     <div className="container flex min-h-screen items-center justify-center py-12">

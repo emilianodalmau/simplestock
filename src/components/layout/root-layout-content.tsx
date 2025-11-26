@@ -41,14 +41,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import type { AppSettings } from '@/types/settings';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { doc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
-  workspaceId?: string;
+  workspaceId?: string | null; // Allow null
 };
 
 type Workspace = {
@@ -84,13 +84,13 @@ function AppLayout({
   // --- Workspace Redirection Logic ---
   useEffect(() => {
     if (!isUserLoading && !isLoadingProfile && user) {
-        if (
-            currentUserProfile?.role === 'administrador' &&
-            !currentUserProfile.workspaceId &&
-            pathname !== '/crear-workspace'
-        ) {
-            router.replace('/crear-workspace');
-        }
+      if (
+        currentUserProfile?.role === 'administrador' &&
+        !currentUserProfile.workspaceId &&
+        pathname !== '/crear-workspace'
+      ) {
+        router.replace('/crear-workspace');
+      }
     }
   }, [isUserLoading, isLoadingProfile, user, currentUserProfile, pathname, router]);
 
@@ -122,35 +122,24 @@ function AppLayout({
     return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
   }, [currentUserProfile?.role]);
 
-
+  const isLoading = isUserLoading || isLoadingProfile;
   const hideSidebar = ['/login', '/signup', '/', '/crear-workspace'].includes(pathname);
+  const isBeingRedirected = !isLoading && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/crear-workspace';
 
-  if (isUserLoading || isLoadingProfile) {
+  if (isLoading || isBeingRedirected) {
     return (
         <div className="flex h-screen items-center justify-center">
             <Loader2 className="h-12 w-12 animate-spin" />
         </div>
     );
   }
-  
-  // If user is being redirected, show a loading state
-  if (user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/crear-workspace') {
-     return (
-        <div className="flex h-screen items-center justify-center">
-            <Loader2 className="h-12 w-12 animate-spin" />
-            <p className="ml-4">Redirigiendo a la creación de workspace...</p>
-        </div>
-    );
-  }
 
-
-  if (hideSidebar) {
+  if (hideSidebar || !user) {
     return <main className="flex-1">{children}</main>;
   }
   
   const appName = workspaceData?.appName || globalSettings?.appName || 'Inventario';
   const logoUrl = workspaceData?.logoUrl || globalSettings?.logoUrl;
-
 
   return (
     <SidebarProvider>

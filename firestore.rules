@@ -14,7 +14,7 @@ service cloud.firestore {
     function getUserData(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data;
     }
-
+    
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -34,33 +34,46 @@ service cloud.firestore {
     function isWorkspaceAdmin(workspaceId) {
         return hasWorkspaceRole(workspaceId, 'administrador');
     }
-    
+
+    // An 'orphan' admin is one who has the 'administrador' role but no workspace assigned yet.
     function isOrphanAdmin() {
       let userData = getUserData(request.auth.uid);
       return userData.role == 'administrador' && userData.workspaceId == null;
     }
 
     // ------------------------------------------------------------------------
-    // Collection Rules
+    // Collection: /users
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      // READ: Super-admin reads any user. Workspace admin reads users in their workspace. A user reads their own profile.
-      allow get: if isSuperAdmin() || isOwner(userId) || isWorkspaceAdmin(getUserData(userId).workspaceId);
-      
-      // LIST: Super-admin lists all users. Workspace admin lists users in their workspace.
-      allow list: if isSuperAdmin() || (request.query.workspaceId != null && isWorkspaceAdmin(request.query.workspaceId));
+      // READ: Super-admin reads any user. Workspace admin reads users in their workspace. User reads their own profile.
+      allow get: if isSuperAdmin() 
+                   || isOwner(userId) 
+                   || (isWorkspaceAdmin(getUserData(userId).workspaceId));
 
-      // CREATE: Anyone can create their own user document (sign-up). Admin can create users for their workspace.
-      allow create: if isOwner(userId) || isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
+      // LIST: Super-admin lists all. Workspace admin lists users in their workspace.
+      allow list: if isSuperAdmin() 
+                    || (request.query.workspaceId != null && isWorkspaceAdmin(request.query.workspaceId));
+
+      // CREATE: Anyone can create their own user document (sign-up). Admins can create users for their workspace.
+      allow create: if isOwner(userId) 
+                      || isSuperAdmin() 
+                      || isWorkspaceAdmin(request.resource.data.workspaceId);
       
-      // UPDATE: A user can update their own profile. Admins can update users in their workspace.
-      // An orphan admin must be able to update their own workspaceId after workspace creation.
-      allow update: if isOwner(userId) || isSuperAdmin() || isWorkspaceAdmin(getUserData(userId).workspaceId);
+      // UPDATE: A user can update their own profile (e.g., name). Admins can update users in their workspace.
+      // An 'orphan' admin must be able to update their own workspaceId after workspace creation.
+      allow update: if isOwner(userId) 
+                      || isSuperAdmin() 
+                      || isWorkspaceAdmin(getUserData(userId).workspaceId);
       
       // DELETE: Only admins can delete users.
-      allow delete: if isSuperAdmin() || isWorkspaceAdmin(getUserData(userId).workspaceId);
+      allow delete: if isSuperAdmin() 
+                      || isWorkspaceAdmin(getUserData(userId).workspaceId);
     }
+    
+    // ------------------------------------------------------------------------
+    // Collection: /workspaces
+    // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId} {
         // READ: Super-admins see all workspaces. A user can only see the workspace they belong to.
@@ -70,8 +83,9 @@ service cloud.firestore {
         allow list: if isSuperAdmin();
         
         // CREATE: A super-admin can create any workspace.
-        // An 'administrador' without a workspace can create one (and only one) for themselves.
-        allow create: if isSuperAdmin() || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
+        // An 'administrador' without a workspace (orphan) can create one (and only one) for themselves.
+        allow create: if isSuperAdmin() 
+                        || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
 
         // UPDATE: Super-admin can update any workspace. A workspace admin can update their own.
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
@@ -80,17 +94,22 @@ service cloud.firestore {
         allow delete: if isSuperAdmin();
         
         // --- Subcollection Rules ---
-        // These rules apply to all subcollections within a workspace
-        match /{subcollection}/{docId} {
-            // General access rule: allow read/write if the user is in the workspace or is a super-admin.
+        
+        // General access rule for most subcollections.
+        match /{subcollection}/{docId} 
+          where subcollection in ['clients', 'categories', 'products', 'deposits', 'suppliers', 'inventory', 'counters'] {
             allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
         }
         
-         // Specific rule for stock movements to allow jefe_deposito to create
+        // Specific rule for stock movements to allow 'jefe_deposito' to create movements.
         match /stockMovements/{movementId} {
-             allow create: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador') || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'jefe_deposito');
+             allow create: if isSuperAdmin() 
+                            || hasWorkspaceRole(workspaceId, 'administrador') 
+                            || hasWorkspaceRole(workspaceId, 'editor') 
+                            || hasWorkspaceRole(workspaceId, 'jefe_deposito');
+             
              // Reading/deleting movements remains restricted to admins/super-admins
-             allow read, update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
+             allow read, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
     }
   }
