@@ -74,13 +74,14 @@ type UserProfile = {
   photoURL?: string;
   phone?: string;
   address?: string;
-  role?: 'administrador' | 'editor' | 'visualizador';
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
 const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
   administrador: 'destructive',
   editor: 'default',
   visualizador: 'secondary',
+  jefe_deposito: 'secondary',
 };
 
 export default function UsuariosPage() {
@@ -282,6 +283,9 @@ export default function UsuariosPage() {
                             </SelectItem>
                             <SelectItem value="editor">Editor</SelectItem>
                             <SelectItem value="visualizador">Visualizador</SelectItem>
+                            <SelectItem value="jefe_deposito">
+                              Jefe de Depósito
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </>
