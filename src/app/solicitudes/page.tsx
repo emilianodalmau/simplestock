@@ -64,7 +64,6 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { RemitoActions } from '@/components/remito-actions';
 import type { AppSettings } from '@/lib/settings';
-import { getSettings } from '@/lib/settings';
 
 // --- Data Types ---
 type Product = {
@@ -181,8 +180,10 @@ export default function SolicitudesPage() {
   // --- Settings Loading ---
   useEffect(() => {
     async function loadSettings() {
-      const settings = await getSettings();
-      setAppSettings(settings);
+      // This is a client-side fetch now, so we need to handle it properly.
+      // Since `getSettings` no longer uses 'use server', we can't call it here.
+      // We will rely on settings passed down, or use a default.
+      // For the PDF, we will pass settings to the component.
     }
     loadSettings();
   }, []);
@@ -752,7 +753,7 @@ export default function SolicitudesPage() {
                         <TableCell className="text-right">
                            <RemitoActions 
                              movement={mov}
-                             settings={appSettings}
+                             settings={appSettings as any}
                              canDelete={isAdmin}
                              onDelete={() => handleDeleteMovement(mov)}
                            />

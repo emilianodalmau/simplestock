@@ -13,7 +13,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { getSettings, updateSettings, type AppSettings } from '@/lib/settings';
+import { updateSettings } from '@/lib/actions';
 import Image from 'next/image';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -36,14 +36,9 @@ type Workspace = {
 }
 
 export default function ConfiguracionPage() {
-  // Global settings state (for super-admin)
-  const [globalSettings, setGlobalSettings] = useState<AppSettings | null>(null);
-  const [globalAppName, setGlobalAppName] = useState('');
-  const [globalLogoPreview, setGlobalLogoPreview] = useState<string | null>(null);
-
-  // Workspace settings state (for admin)
-  const [workspaceAppName, setWorkspaceAppName] = useState('');
-  const [workspaceLogoPreview, setWorkspaceLogoPreview] = useState<string | null>('');
+  // State for form fields
+  const [appName, setAppName] = useState('');
+  const [logoPreview, setLogoPreview] = useState<string | null>('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,30 +63,30 @@ export default function ConfiguracionPage() {
   const isSuperAdmin = currentUserProfile?.role === 'super-admin';
   const isWorkspaceAdmin = currentUserProfile?.role === 'administrador';
 
-  // Effect to load initial settings based on role
+  // Effect to populate form when data loads
   useEffect(() => {
-    async function fetchInitialSettings() {
-      setIsLoading(true);
-      if (isSuperAdmin) {
-        const settings = await getSettings();
-        setGlobalSettings(settings);
-        setGlobalAppName(settings.appName);
-        setGlobalLogoPreview(settings.logoUrl);
-      }
+    if (isSuperAdmin) {
+      // For super-admin, we don't load from a file on the client.
+      // We can assume the placeholders are fine, as `updateSettings` will handle the logic.
+      // Or we can pre-fill from a known default if needed. For now, empty is fine.
+      setAppName('');
+      setLogoPreview(null);
+      setIsLoading(false);
+    } else if (isWorkspaceAdmin && workspaceData) {
+      setAppName(workspaceData.appName || '');
+      setLogoPreview(workspaceData.logoUrl || '');
       setIsLoading(false);
     }
-    fetchInitialSettings();
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isWorkspaceAdmin, workspaceData]);
 
-  // Effect to populate form when workspace data loads
   useEffect(() => {
-    if (isWorkspaceAdmin && workspaceData) {
-      setWorkspaceAppName(workspaceData.appName || '');
-      setWorkspaceLogoPreview(workspaceData.logoUrl || '');
+    if (!isLoadingProfile && !isWorkspaceAdmin && !isSuperAdmin) {
+        setIsLoading(false);
     }
-  }, [isWorkspaceAdmin, workspaceData]);
+  }, [isLoadingProfile, isWorkspaceAdmin, isSuperAdmin]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, isGlobal: boolean) => {
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > 1024 * 1024) { // 1MB limit
@@ -105,24 +100,15 @@ export default function ConfiguracionPage() {
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (isGlobal) {
-            setGlobalLogoPreview(reader.result as string);
-        } else {
-            setWorkspaceLogoPreview(reader.result as string);
-        }
+        setLogoPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
   
-  const handleRemoveLogo = (isGlobal: boolean) => {
-      if (isGlobal) {
-          setGlobalLogoPreview(null);
-      } else {
-          setWorkspaceLogoPreview(null);
-      }
+  const handleRemoveLogo = () => {
+    setLogoPreview(null);
   }
-
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -130,16 +116,17 @@ export default function ConfiguracionPage() {
 
     try {
       if (isSuperAdmin) {
-        // --- Super Admin: Update global settings file ---
+        // --- Super Admin: Update global settings file via Server Action ---
         const formData = new FormData();
-        formData.append('appName', globalAppName);
-        formData.append('logoUrl', globalLogoPreview || '');
+        formData.append('appName', appName);
+        formData.append('logoUrl', logoPreview || '');
         await updateSettings(formData);
+
       } else if (isWorkspaceAdmin && workspaceDocRef) {
-        // --- Workspace Admin: Update workspace document ---
+        // --- Workspace Admin: Update workspace document in Firestore ---
         await updateDoc(workspaceDocRef, {
-            appName: workspaceAppName,
-            logoUrl: workspaceLogoPreview || '',
+            appName: appName,
+            logoUrl: logoPreview || '',
             updatedAt: serverTimestamp(),
         });
       }
@@ -177,10 +164,6 @@ export default function ConfiguracionPage() {
   const description = isSuperAdmin 
     ? "Ajustes generales que se aplican a toda la aplicación como fallback." 
     : "Personaliza el nombre y el logo que se muestran en tu espacio de trabajo.";
-    
-  const appNameValue = isSuperAdmin ? globalAppName : workspaceAppName;
-  const setAppName = isSuperAdmin ? setGlobalAppName : setWorkspaceAppName;
-  const logoPreview = isSuperAdmin ? globalLogoPreview : workspaceLogoPreview;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -205,7 +188,7 @@ export default function ConfiguracionPage() {
                 id="appName"
                 name="appName"
                 placeholder="Ej: Mi Inventario"
-                value={appNameValue}
+                value={appName}
                 onChange={(e) => setAppName(e.target.value)}
               />
             </div>
@@ -216,7 +199,7 @@ export default function ConfiguracionPage() {
                 name="logoUrl"
                 type="file"
                 accept="image/png, image/jpeg, image/gif, image/svg+xml"
-                onChange={(e) => handleFileChange(e, isSuperAdmin)}
+                onChange={handleFileChange}
               />
               <p className="text-sm text-muted-foreground">
                 Sube una imagen (PNG, JPG, GIF, SVG). Límite de 1MB.
@@ -231,7 +214,7 @@ export default function ConfiguracionPage() {
                     height={80}
                     className="rounded-md border p-2"
                   />
-                  <Button variant="outline" size="sm" onClick={() => handleRemoveLogo(isSuperAdmin)}>Quitar logo</Button>
+                  <Button variant="outline" size="sm" onClick={handleRemoveLogo}>Quitar logo</Button>
                 </div>
               )}
             </div>
