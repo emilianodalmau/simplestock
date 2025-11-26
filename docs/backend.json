@@ -277,9 +277,13 @@
           "items": {
              "$ref": "#/entities/StockMovementItem"
           }
+        },
+        "totalValue": {
+          "type": "number",
+          "description": "The total monetary value of the movement."
         }
       },
-      "required": ["id", "type", "depositId", "createdAt", "userId", "items"]
+      "required": ["id", "type", "depositId", "createdAt", "userId", "items", "totalValue"]
     },
     "StockMovementItem": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -290,9 +294,11 @@
         "productId": { "type": "string" },
         "productName": { "type": "string" },
         "quantity": { "type": "number" },
-        "unit": { "type": "string" }
+        "unit": { "type": "string" },
+        "price": { "type": "number" },
+        "total": { "type": "number" }
       },
-      "required": ["productId", "productName", "quantity", "unit"]
+      "required": ["productId", "productName", "quantity", "unit", "price", "total"]
     },
     "Counter": {
       "$schema": "http://json-schema.org/draft-07/schema#",

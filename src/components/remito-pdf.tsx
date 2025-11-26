@@ -12,10 +12,10 @@ interface RemitoPDFProps {
 }
 
 export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
-  const totalQuantity = movement.items.reduce(
-    (sum, item) => sum + item.quantity,
-    0
-  );
+    
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
+  }
 
   return (
     <div
@@ -97,7 +97,7 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
         <table className="w-full text-sm text-left text-gray-500">
           <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b">
             <tr>
-              <th scope="col" className="px-6 py-3 w-3/5">
+              <th scope="col" className="px-6 py-3 w-2/5">
                 Producto
               </th>
               <th scope="col" className="px-6 py-3 text-right">
@@ -105,6 +105,12 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
               </th>
               <th scope="col" className="px-6 py-3 text-right">
                 Unidad
+              </th>
+               <th scope="col" className="px-6 py-3 text-right">
+                Precio Unit.
+              </th>
+               <th scope="col" className="px-6 py-3 text-right">
+                Subtotal
               </th>
             </tr>
           </thead>
@@ -122,15 +128,23 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
                 </th>
                 <td className="px-6 py-4 text-right">{item.quantity}</td>
                 <td className="px-6 py-4 text-right">{item.unit}</td>
+                <td className="px-6 py-4 text-right">{formatPrice(item.price || 0)}</td>
+                <td className="px-6 py-4 text-right">{formatPrice(item.total || 0)}</td>
               </tr>
             ))}
           </tbody>
+           <tfoot className="text-gray-700 bg-gray-100 border-t-2">
+                <tr>
+                    <td colSpan={4} className="px-6 py-3 text-right font-bold text-lg">VALOR TOTAL DEL REMITO</td>
+                    <td className="px-6 py-3 text-right font-bold text-lg">{formatPrice(movement.totalValue || 0)}</td>
+                </tr>
+           </tfoot>
         </table>
       </section>
 
       {/* Footer */}
-      <footer className="mt-8 pt-4 border-t text-right">
-        <p className="text-lg font-bold">Total de Ítems: {totalQuantity}</p>
+      <footer className="mt-8 pt-4 border-t text-center text-xs text-gray-400">
+        <p>Este es un documento generado automáticamente.</p>
       </footer>
     </div>
   );

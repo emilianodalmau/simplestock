@@ -84,6 +84,7 @@ export type Product = {
   name: string;
   unit: string;
   code: string;
+  price: number;
   isArchived?: boolean;
 };
 export type Deposit = { id: string; name: string };
@@ -99,6 +100,8 @@ export type StockMovementItem = {
   productName: string;
   quantity: number;
   unit: string;
+  price: number;
+  total: number;
 };
 export type StockMovement = {
   id: string;
@@ -111,6 +114,7 @@ export type StockMovement = {
     toDate: () => Date;
   };
   items: StockMovementItem[];
+  totalValue: number;
 };
 export type InventoryStock = {
   id: string;
@@ -324,6 +328,7 @@ export default function MovimientosPage() {
     setIsSubmitting(true);
 
     const productChanges = new Map<string, number>();
+    let totalMovementValue = 0;
 
     for (const item of data.items) {
       if (item.productId) {
@@ -332,6 +337,10 @@ export default function MovimientosPage() {
           item.productId,
           (productChanges.get(item.productId) || 0) + change
         );
+        const product = productsMap.get(item.productId);
+        if (product) {
+          totalMovementValue += (product.price || 0) * item.quantity;
+        }
       }
     }
 
@@ -409,11 +418,14 @@ export default function MovimientosPage() {
         const movementItemsForDoc: StockMovementItem[] = data.items.map(
           (item) => {
             const product = productsMap.get(item.productId);
+            const price = product?.price || 0;
             return {
               productId: item.productId,
               productName: product?.name || 'N/A',
               quantity: item.quantity,
               unit: product?.unit || 'N/A',
+              price: price,
+              total: price * item.quantity,
             };
           }
         );
@@ -449,6 +461,7 @@ export default function MovimientosPage() {
           createdAt: serverTimestamp(),
           userId: user.uid,
           items: movementItemsForDoc,
+          totalValue: totalMovementValue,
         });
       });
 
@@ -524,6 +537,10 @@ export default function MovimientosPage() {
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
   const isAdmin = currentUserProfile?.role === 'administrador';
+  
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
+  }
 
   if (isLoading) {
     return <MovementPageSkeleton />;
@@ -759,6 +776,7 @@ export default function MovimientosPage() {
                   <TableHead>Depósito</TableHead>
                   <TableHead>Origen/Destino</TableHead>
                   <TableHead>Productos</TableHead>
+                  <TableHead className='text-right'>Valor Total</TableHead>
                   {canManageMovements && (
                     <TableHead className="text-right">Acciones</TableHead>
                   )}
@@ -780,11 +798,14 @@ export default function MovimientosPage() {
                       <TableCell>
                         <Skeleton className="h-4 w-24" />
                       </TableCell>
-                      <TableCell>
+                       <TableCell>
                         <Skeleton className="h-4 w-24" />
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-4 w-10" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20 ml-auto" />
                       </TableCell>
                       {canManageMovements && (
                         <TableCell>
@@ -795,7 +816,7 @@ export default function MovimientosPage() {
                   ))}
                 {!isLoadingMovements && movements?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={canManageMovements ? 7 : 6} className="text-center h-24">
+                    <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
                       No hay movimientos registrados.
                     </TableCell>
                   </TableRow>
@@ -832,6 +853,9 @@ export default function MovimientosPage() {
                         <TableCell>{mov.depositName}</TableCell>
                         <TableCell>{mov.actorName || '-'}</TableCell>
                         <TableCell>{mov.items.length}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatPrice(mov.totalValue || 0)}
+                        </TableCell>
                         {canManageMovements && (
                           <TableCell className="text-right">
                            <RemitoActions 
