@@ -760,3 +760,5 @@ export default function SolicitudesPage() {
     </div>
   );
 }
+
+    
