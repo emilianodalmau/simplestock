@@ -74,10 +74,11 @@ service cloud.firestore {
       // - A user can update their own profile.
       // - A super-admin can update any user.
       // - A workspace admin can update users within their workspace.
-      // - A new 'orphan' admin can update their OWN profile to add the workspaceId during workspace creation.
-      allow update: if isOwner(userId) 
-                      || isSuperAdmin() 
-                      || isWorkspaceAdmin(getUserData(userId).workspaceId);
+      // - A new 'orphan' admin can update their OWN profile to add the workspaceId.
+      allow update: if isOwner(userId)
+                      || isSuperAdmin()
+                      || isWorkspaceAdmin(getUserData(userId).workspaceId)
+                      || (isOrphanAdmin() && isOwner(userId) && request.resource.data.keys().hasOnly(['workspaceId']));
       
       // DELETE:
       // - Only admins can delete users.
@@ -111,7 +112,6 @@ service cloud.firestore {
         
         // --- Subcollection Rules ---
         
-        // General access rule for most subcollections.
         match /{subcollection}/{docId} 
           where subcollection in ['clients', 'categories', 'products', 'deposits', 'suppliers', 'inventory', 'counters'] {
             allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
