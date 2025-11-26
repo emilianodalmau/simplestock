@@ -19,6 +19,7 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  deleteField,
 } from 'firebase/firestore';
 import {
   Card,
@@ -231,9 +232,12 @@ export default function DepositosPage() {
     if (!firestore) return;
     const depositRef = doc(firestore, 'deposits', depositId);
     try {
-      await updateDoc(depositRef, { jefeId });
+      // If "unassigned" is selected, remove the field, otherwise update it.
+      const updateData =
+        jefeId === 'unassigned' ? { jefeId: deleteField() } : { jefeId };
+      await updateDoc(depositRef, updateData);
       toast({
-        title: 'Jefe de Depósito Asignado',
+        title: 'Jefe de Depósito Actualizado',
         description: 'Se ha actualizado el jefe para este depósito.',
       });
     } catch (error) {
@@ -389,7 +393,7 @@ export default function DepositosPage() {
                                   <SelectValue placeholder="Asignar jefe..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">Sin asignar</SelectItem>
+                                  <SelectItem value="unassigned">Sin asignar</SelectItem>
                                   {jefesDeDeposito?.map(jefe => (
                                     <SelectItem key={jefe.id} value={jefe.id}>
                                       {jefe.firstName} {jefe.lastName}
