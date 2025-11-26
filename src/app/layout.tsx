@@ -126,8 +126,8 @@ function AppLayout({
       <Sidebar>
         <SidebarHeader>
           <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              {logoUrl ? (
+            {logoUrl ? (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Image
                   src={logoUrl}
                   alt="Logo"
@@ -135,10 +135,8 @@ function AppLayout({
                   height={24}
                   className="rounded-sm"
                 />
-              ) : (
-                <Building2 />
-              )}
-            </div>
+              </div>
+            ) : null}
             <div className="flex flex-col">
               <span className="font-semibold">
                 {appName}
