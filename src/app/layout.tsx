@@ -84,7 +84,7 @@ function AppLayout({
 
   // --- Workspace Redirection Logic ---
   useEffect(() => {
-    if (!isLoadingProfile && user) {
+    if (!isUserLoading && !isLoadingProfile && user) {
         if (
             currentUserProfile?.role === 'administrador' &&
             !currentUserProfile.workspaceId &&
@@ -93,7 +93,7 @@ function AppLayout({
             router.replace('/crear-workspace');
         }
     }
-  }, [isLoadingProfile, user, currentUserProfile, pathname, router]);
+  }, [isUserLoading, isLoadingProfile, user, currentUserProfile, pathname, router]);
 
   const handleLogout = async () => {
     if (auth) {
@@ -121,7 +121,7 @@ function AppLayout({
   const menuItems = useMemo(() => {
     if (!currentUserProfile?.role) return [];
     return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
-  }, [currentUserProfile]);
+  }, [currentUserProfile?.role]);
 
 
   const hideSidebar = ['/login', '/signup', '/', '/crear-workspace'].includes(pathname);
@@ -135,7 +135,7 @@ function AppLayout({
   }
   
   // If user is being redirected, show a loading state
-  if (currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/crear-workspace') {
+  if (user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/crear-workspace') {
      return (
         <div className="flex h-screen items-center justify-center">
             <Loader2 className="h-12 w-12 animate-spin" />
@@ -228,8 +228,7 @@ function RootLayoutContent({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (isLoading) {
-    // You can return a loading spinner here if you want
-    return null; 
+    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="animate-spin h-12 w-12" /></div>; 
   }
   
   return (
