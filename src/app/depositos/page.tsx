@@ -35,6 +35,13 @@ import {
   TableBody,
   TableCell,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -81,11 +88,14 @@ type Deposit = {
   id: string;
   name: string;
   description?: string;
+  jefeId?: string;
 };
 
 type UserProfile = {
   id: string;
-  role?: 'administrador' | 'editor' | 'visualizador';
+  firstName?: string;
+  lastName?: string;
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
 export default function DepositosPage() {
@@ -101,13 +111,30 @@ export default function DepositosPage() {
     [firestore, currentUser]
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  
+  const usersCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'users') : null),
+    [firestore]
+  );
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollection);
 
   const depositsCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'deposits') : null),
     [firestore]
   );
-  const { data: deposits, isLoading } =
+  const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
+    
+  const jefesDeDeposito = useMemoFirebase(
+    () => users?.filter((user) => user.role === 'jefe_deposito'),
+    [users]
+  );
+  
+  const userMap = useMemoFirebase(() => {
+    if (!users) return new Map<string, string>();
+    return new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+  }, [users]);
+
 
   const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -199,10 +226,34 @@ export default function DepositosPage() {
       });
     }
   };
+  
+  const handleJefeChange = async (depositId: string, jefeId: string) => {
+    if (!firestore) return;
+    const depositRef = doc(firestore, 'deposits', depositId);
+    try {
+      await updateDoc(depositRef, { jefeId });
+      toast({
+        title: 'Jefe de Depósito Asignado',
+        description: 'Se ha actualizado el jefe para este depósito.',
+      });
+    } catch (error) {
+      console.error('Error assigning jefe:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de Permisos',
+        description: 'No tienes permisos para asignar un jefe de depósito.',
+      });
+    }
+  };
+
 
   const canManageDeposits =
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
+    
+  const isAdmin = currentUserProfile?.role === 'administrador';
+  
+  const isLoading = isLoadingDeposits || isLoadingUsers;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -281,6 +332,7 @@ export default function DepositosPage() {
                     <TableRow>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Descripción</TableHead>
+                       {isAdmin && <TableHead>Jefe Asignado</TableHead>}
                       {canManageDeposits && (
                         <TableHead className="text-right">Acciones</TableHead>
                       )}
@@ -296,6 +348,11 @@ export default function DepositosPage() {
                           <TableCell>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
+                          {isAdmin && (
+                            <TableCell>
+                              <Skeleton className="h-10 w-40" />
+                            </TableCell>
+                          )}
                           {canManageDeposits && (
                             <TableCell>
                               <Skeleton className="h-8 w-20 ml-auto" />
@@ -306,7 +363,7 @@ export default function DepositosPage() {
                     {!isLoading && deposits?.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={canManageDeposits ? 3 : 2}
+                          colSpan={isAdmin ? 4 : (canManageDeposits ? 3 : 2)}
                           className="text-center"
                         >
                           No hay depósitos creados.
@@ -322,6 +379,26 @@ export default function DepositosPage() {
                           <TableCell className="text-muted-foreground">
                             {deposit.description || '-'}
                           </TableCell>
+                          {isAdmin && (
+                            <TableCell>
+                              <Select
+                                value={deposit.jefeId || ''}
+                                onValueChange={(value) => handleJefeChange(deposit.id, value)}
+                              >
+                                <SelectTrigger className="w-[200px]">
+                                  <SelectValue placeholder="Asignar jefe..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">Sin asignar</SelectItem>
+                                  {jefesDeDeposito?.map(jefe => (
+                                    <SelectItem key={jefe.id} value={jefe.id}>
+                                      {jefe.firstName} {jefe.lastName}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          )}
                           {canManageDeposits && (
                             <TableCell className="text-right">
                               <Button
@@ -438,5 +515,3 @@ export default function DepositosPage() {
     </div>
   );
 }
-
-    
