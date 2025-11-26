@@ -48,10 +48,10 @@ service cloud.firestore {
     match /users/{userId} {
       // READ: Super-admin can read any user. Users can read their own profile.
       // An admin can read any user within their own workspace.
-      allow get: if isSuperAdmin() || isOwner(userId) || (isInWorkspace(resource.data.workspaceId));
+      allow get: if isSuperAdmin() || isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId);
       
       // LIST: Super-admin can list all users. Workspace admins can list users in their workspace.
-      allow list: if isSuperAdmin() || (request.query.limit <= 100 && isInWorkspace(request.query.workspaceId));
+      allow list: if isSuperAdmin() || isWorkspaceAdmin(request.query.workspaceId);
 
       // CREATE: A user can create their own user document. This is usually done at sign-up.
       // A workspace admin can also create users for their workspace.
