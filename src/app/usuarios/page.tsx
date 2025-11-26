@@ -29,7 +29,7 @@ import {
   useUser,
   useDoc,
 } from '@/firebase';
-import { collection, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -74,6 +74,7 @@ type UserProfile = {
   photoURL?: string;
   phone?: string;
   address?: string;
+  workspaceId?: string | null;
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
@@ -92,19 +93,27 @@ export default function UsuariosPage() {
   const { user: currentUser } = useUser();
   const { toast } = useToast();
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
-  );
-  const { data: users, isLoading } =
-    useCollection<UserProfile>(usersCollection);
-
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
     [firestore, currentUser]
   );
-  const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   
+  const usersCollectionQuery = useMemoFirebase(() => {
+      if (!firestore || !currentUserProfile) return null;
+      // Super-admin sees all users
+      if (currentUserProfile.role === 'super-admin') {
+          return collection(firestore, 'users');
+      }
+      // Admins see users in their own workspace
+      if (currentUserProfile.workspaceId) {
+          return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
+      }
+      return null;
+  }, [firestore, currentUserProfile]);
+
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
+
   const editForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
   });
@@ -175,13 +184,14 @@ export default function UsuariosPage() {
 
   const currentUserIsAdmin = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'super-admin';
   const currentUserIsSuperAdmin = currentUserProfile?.role === 'super-admin';
+  const isLoading = isLoadingProfile || isLoadingUsers;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Usuarios</h1>
         <p className="text-muted-foreground">
-          Administra los usuarios y sus roles en el sistema.
+          {currentUserIsSuperAdmin ? 'Administra todos los usuarios del sistema.' : 'Administra los usuarios de tu workspace.'}
         </p>
       </div>
 

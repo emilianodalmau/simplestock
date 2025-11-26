@@ -21,7 +21,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, writeBatch, collection } from "firebase/firestore";
 
 const formSchema = z.object({
   firstName: z.string().min(1, { message: "Please enter your first name." }),
@@ -73,18 +73,41 @@ export function SignupForm() {
       await updateProfile(user, { displayName });
 
       const isSuperAdmin = values.email === "emilianodalmau@gmail.com";
-      const isAdmin = values.email === "admin@example.com";
+      const isAdmin = values.email === "admin@example.com" && !isSuperAdmin;
       const role = isSuperAdmin ? "super-admin" : isAdmin ? "administrador" : "visualizador";
 
       const userDocRef = doc(firestore, "users", user.uid);
-      await setDoc(userDocRef, {
+      const userData = {
         id: user.uid,
         email: user.email,
         firstName: values.firstName,
         lastName: values.lastName,
         photoURL: user.photoURL || "",
         role: role,
-      });
+        workspaceId: null,
+      };
+
+      if (isAdmin) {
+        const batch = writeBatch(firestore);
+        
+        // Create workspace
+        const workspaceRef = doc(collection(firestore, 'workspaces'));
+        const workspaceData = {
+            id: workspaceRef.id,
+            name: `Workspace de ${displayName}`,
+            ownerId: user.uid,
+        };
+        batch.set(workspaceRef, workspaceData);
+
+        // Update user with workspaceId
+        userData.workspaceId = workspaceRef.id;
+        batch.set(userDocRef, userData);
+
+        await batch.commit();
+      } else {
+         await setDoc(userDocRef, userData);
+      }
+
 
       if (role === 'super-admin') {
         router.push("/super-admin");
