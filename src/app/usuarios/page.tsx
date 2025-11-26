@@ -106,7 +106,7 @@ export default function UsuariosPage() {
           return collection(firestore, 'users');
       }
       // Admins see users in their own workspace
-      if (currentUserProfile.workspaceId) {
+      if (currentUserProfile.role === 'administrador' && currentUserProfile.workspaceId) {
           return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
       }
       return null;
