@@ -126,12 +126,12 @@ export default function WorkspacesPage() {
   const { data: workspaces, isLoading: isLoadingWorkspaces } =
     useCollection<Workspace>(workspacesCollection);
 
-  // Corrected users query: only fetch if super-admin
+  // CORRECTED: Only create the query if the user is definitively a super-admin.
   const usersCollectionQuery = useMemoFirebase(() => {
     if (firestore && currentUserProfile?.role === 'super-admin') {
       return collection(firestore, 'users');
     }
-    return null; // Don't fetch for other roles
+    return null; // For all other cases, return null to prevent unauthorized queries.
   }, [firestore, currentUserProfile]);
 
   const { data: users, isLoading: isLoadingUsers } =
