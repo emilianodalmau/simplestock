@@ -497,7 +497,7 @@ export default function MovimientosPage() {
       });
       form.reset({
         type: 'salida',
-        depositId: '',
+        depositId: isJefeDeposito ? assignedDepositId || '' : '',
         remitoNumber: '',
         actorId: '',
         items: [{ productId: '', quantity: 1 }],
