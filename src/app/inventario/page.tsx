@@ -47,6 +47,7 @@ type Product = {
   categoryId: string;
   minStock: number;
   unit: string;
+  price: number;
 };
 
 type Category = {
@@ -77,6 +78,7 @@ type InventoryItem = {
   categoryName: string;
   totalStock: number;
   minStock: number;
+  totalValue: number;
   unit: string;
   status: StockStatus;
 };
@@ -132,6 +134,10 @@ export default function InventarioPage() {
   const isLoading =
     isLoadingProducts || isLoadingCategories || isLoadingInventory || isLoadingDeposits;
     
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
+  }
+
   // Memoize the data processing for the main table
   const processedInventoryData = useMemo(() => {
     if (!products || !categories || !inventory) {
@@ -149,6 +155,7 @@ export default function InventarioPage() {
     const combinedData: InventoryItem[] = products.map((product) => {
       const totalStock = stockMap.get(product.id) || 0;
       const minStock = product.minStock;
+      const totalValue = (product.price || 0) * totalStock;
       let status: StockStatus = 'En Stock';
       if (totalStock === 0) {
         status = 'Sin Stock';
@@ -164,6 +171,7 @@ export default function InventarioPage() {
         categoryName: categoryMap.get(product.categoryId) || 'Sin categoría',
         totalStock: totalStock,
         minStock: minStock,
+        totalValue: totalValue,
         unit: product.unit,
         status: status,
       };
@@ -343,6 +351,12 @@ export default function InventarioPage() {
                         {getSortIndicator('minStock')}
                         </Button>
                     </TableHead>
+                    <TableHead className="text-right">
+                        <Button variant="ghost" onClick={() => requestSort('totalValue')} className="group px-0">
+                        Valor Total
+                        {getSortIndicator('totalValue')}
+                        </Button>
+                    </TableHead>
                     <TableHead className="text-center">
                         <Button variant="ghost" onClick={() => requestSort('status')} className="group px-0">
                         Estado
@@ -367,6 +381,9 @@ export default function InventarioPage() {
                       <TableCell className="text-right">
                         <Skeleton className="h-5 w-16 ml-auto" />
                       </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-5 w-20 ml-auto" />
+                      </TableCell>
                       <TableCell className="text-center">
                         <Skeleton className="h-6 w-24 mx-auto" />
                       </TableCell>
@@ -374,7 +391,7 @@ export default function InventarioPage() {
                   ))}
                 {!isLoading && processedInventoryData.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center h-24">
+                    <TableCell colSpan={6} className="text-center h-24">
                       No se encontraron productos con los filtros aplicados.
                     </TableCell>
                   </TableRow>
@@ -396,6 +413,9 @@ export default function InventarioPage() {
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
                         {`${item.minStock} ${item.unit}`}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatPrice(item.totalValue)}
                       </TableCell>
                       <TableCell className="text-center">
                         <StockStatusBadge status={item.status} />
