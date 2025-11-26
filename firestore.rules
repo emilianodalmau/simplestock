@@ -109,7 +109,7 @@ service cloud.firestore {
                             || hasWorkspaceRole(workspaceId, 'jefe_deposito');
              
              // Reading/deleting movements remains restricted to admins/super-admins
-             allow read, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+             allow read, update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
         }
     }
   }
