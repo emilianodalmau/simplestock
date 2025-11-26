@@ -11,6 +11,10 @@
           "type": "string",
           "description": "Unique identifier for the User entity."
         },
+        "workspaceId": {
+            "type": "string",
+            "description": "The ID of the workspace this user belongs to. Null for super-admins."
+        },
         "firstName": {
           "type": "string",
           "description": "The user's first name."
@@ -54,6 +58,27 @@
         "firstName",
         "lastName"
       ]
+    },
+    "Workspace": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Workspace",
+      "type": "object",
+      "description": "Represents an isolated workspace for a single administrator and their team.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Workspace."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the workspace."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The ID of the 'administrador' user who owns this workspace."
+        }
+      },
+      "required": ["id", "name", "ownerId"]
     },
     "Category": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -371,145 +396,83 @@
         "path": "/users/{userId}",
         "definition": {
           "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Stores user profiles. User documents are created via Firebase Authentication.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user."
-            }
-          ]
+          "schema": { "$ref": "#/entities/User" },
+          "description": "Stores user profiles. Super-admins are global, other users are scoped to a workspace."
         }
       },
       {
-        "path": "/clients/{clientId}",
+        "path": "/workspaces/{workspaceId}",
         "definition": {
-          "entityName": "Client",
-          "schema": {
-            "$ref": "#/backend/entities/Client"
-          },
-          "description": "Stores clients or areas.",
-          "params": [
-            {
-              "name": "clientId",
-              "description": "The unique identifier of the client."
+          "entityName": "Workspace",
+          "schema": { "$ref": "#/entities/Workspace" },
+          "description": "Stores workspace definitions. Each is owned by an 'administrador' user."
+        },
+        "subcollections": [
+          {
+            "path": "/workspaces/{workspaceId}/clients/{clientId}",
+            "definition": {
+              "entityName": "Client",
+              "schema": { "$ref": "#/entities/Client" },
+              "description": "Stores clients for a specific workspace."
             }
-          ]
-        }
-      },
-      {
-        "path": "/categories/{categoryId}",
-        "definition": {
-          "entityName": "Category",
-          "schema": {
-            "$ref": "#/backend/entities/Category"
           },
-          "description": "Stores product categories.",
-          "params": [
-            {
-              "name": "categoryId",
-              "description": "The unique identifier of the category."
+          {
+            "path": "/workspaces/{workspaceId}/categories/{categoryId}",
+            "definition": {
+              "entityName": "Category",
+              "schema": { "$ref": "#/entities/Category" },
+              "description": "Stores product categories for a specific workspace."
             }
-          ]
-        }
-      },
-      {
-        "path": "/products/{productId}",
-        "definition": {
-          "entityName": "Product",
-          "schema": {
-            "$ref": "#/backend/entities/Product"
           },
-          "description": "Stores individual products.",
-          "params": [
-            {
-              "name": "productId",
-              "description": "The unique identifier of the product."
+          {
+            "path": "/workspaces/{workspaceId}/products/{productId}",
+            "definition": {
+              "entityName": "Product",
+              "schema": { "$ref": "#/entities/Product" },
+              "description": "Stores products for a specific workspace."
             }
-          ]
-        }
-      },
-      {
-        "path": "/deposits/{depositId}",
-        "definition": {
-          "entityName": "Deposit",
-          "schema": {
-            "$ref": "#/backend/entities/Deposit"
           },
-          "description": "Stores warehouses or physical locations for inventory.",
-          "params": [
-            {
-              "name": "depositId",
-              "description": "The unique identifier of the deposit."
+          {
+            "path": "/workspaces/{workspaceId}/deposits/{depositId}",
+            "definition": {
+              "entityName": "Deposit",
+              "schema": { "$ref": "#/entities/Deposit" },
+              "description": "Stores inventory locations for a specific workspace."
             }
-          ]
-        }
-      },
-      {
-        "path": "/suppliers/{supplierId}",
-        "definition": {
-          "entityName": "Supplier",
-          "schema": {
-            "$ref": "#/backend/entities/Supplier"
           },
-          "description": "Stores product suppliers.",
-          "params": [
-            {
-              "name": "supplierId",
-              "description": "The unique identifier of the supplier."
+          {
+            "path": "/workspaces/{workspaceId}/suppliers/{supplierId}",
+            "definition": {
+              "entityName": "Supplier",
+              "schema": { "$ref": "#/entities/Supplier" },
+              "description": "Stores suppliers for a specific workspace."
             }
-          ]
-        }
-      },
-      {
-        "path": "/inventory/{inventoryStockId}",
-        "definition": {
-          "entityName": "InventoryStock",
-          "schema": {
-            "$ref": "#/backend/entities/InventoryStock"
           },
-          "description": "Stores stock levels for each product in various deposits. The ID is a composite `${productId}_${depositId}`.",
-          "params": [
-            {
-              "name": "inventoryStockId",
-              "description": "The composite identifier for the stock record."
+          {
+            "path": "/workspaces/{workspaceId}/inventory/{inventoryStockId}",
+            "definition": {
+              "entityName": "InventoryStock",
+              "schema": { "$ref": "#/entities/InventoryStock" },
+              "description": "Stores stock levels for a specific workspace."
             }
-          ]
-        }
-      },
-       {
-        "path": "/stockMovements/{movementId}",
-        "definition": {
-          "entityName": "StockMovement",
-          "schema": {
-            "$ref": "#/backend/entities/StockMovement"
           },
-          "description": "Stores stock movement documents (remitos).",
-          "params": [
-            {
-              "name": "movementId",
-              "description": "The unique identifier of the movement."
+          {
+            "path": "/workspaces/{workspaceId}/stockMovements/{movementId}",
+            "definition": {
+              "entityName": "StockMovement",
+              "schema": { "$ref": "#/entities/StockMovement" },
+              "description": "Stores stock movements for a specific workspace."
             }
-          ]
-        }
-      },
-      {
-        "path": "/counters/{counterId}",
-        "definition": {
-          "entityName": "Counter",
-          "schema": {
-            "$ref": "#/backend/entities/Counter"
           },
-          "description": "Stores atomic counters for sequential number generation.",
-          "params": [
-            {
-              "name": "counterId",
-              "description": "The unique identifier of the counter (e.g., 'remitoCounter')."
+          {
+            "path": "/workspaces/{workspaceId}/counters/{counterId}",
+            "definition": {
+              "entityName": "Counter",
+              "schema": { "$ref": "#/entities/Counter" },
+              "description": "Stores atomic counters for a specific workspace."
             }
-          ]
-        }
+          }
+        ]
       }
     ]
   }

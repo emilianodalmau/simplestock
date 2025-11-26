@@ -10,116 +10,81 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
-
+    
+    function isSuperAdmin() {
+      // Super admins have their role defined in their user document.
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+    }
+    
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+    
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
-    function isSuperAdmin() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+
+    // Function to check if the requesting user belongs to a specific workspace
+    function isInWorkspace(workspaceId) {
+        let userData = getUserData(request.auth.uid);
+        return isSignedIn() && userData.workspaceId == workspaceId;
     }
 
-    function isAdmin() {
-      // Securely check for admin role from the user's own document.
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && (userRole == 'administrador' || userRole == 'super-admin');
+    // Function to check if the user has a specific role within a workspace
+    function hasWorkspaceRole(workspaceId, role) {
+        let userData = getUserData(request.auth.uid);
+        return isInWorkspace(workspaceId) && userData.role == role;
+    }
+    
+    // Function to check if the user is an admin of a specific workspace
+    function isWorkspaceAdmin(workspaceId) {
+        return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
-    function isEditorOrAdmin() {
-      // Securely check for editor or admin role.
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && (userRole in ['administrador', 'editor', 'super-admin']);
-    }
-    
-    function isJefeEditorOrAdmin() {
-      // Securely check for jefe, editor or admin role.
-      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && (userRole in ['administrador', 'editor', 'jefe_deposito', 'super-admin']);
-    }
-    
     // ------------------------------------------------------------------------
     // Collection Rules
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      // READ: Users can get their own profile. Admins can get any profile.
-      allow get, list: if isSignedIn();
+      // READ: Super-admin can read any user. Users can read their own profile.
+      // An admin can read any user within their own workspace.
+      allow get: if isSuperAdmin() || isOwner(userId) || (isInWorkspace(resource.data.workspaceId));
       
-      // CREATE: A user can only create their own user document.
-      allow create: if isOwner(userId);
+      // LIST: Super-admin can list all users. Workspace admins can list users in their workspace.
+      allow list: if isSuperAdmin() || (request.query.limit <= 100 && isInWorkspace(request.query.workspaceId));
+
+      // CREATE: A user can create their own user document. This is usually done at sign-up.
+      // A workspace admin can also create users for their workspace.
+      allow create: if isOwner(userId) || isWorkspaceAdmin(request.resource.data.workspaceId);
       
-      // UPDATE: A user can update their own document. An admin can update any document (e.g., to change a role).
-      allow update: if isOwner(userId) || isAdmin();
+      // UPDATE: A user can update their own profile. A workspace admin or super-admin can update others.
+      allow update: if isOwner(userId) || isSuperAdmin() || isWorkspaceAdmin(resource.data.workspaceId);
       
-      // DELETE: Only admins can delete user documents for now.
-      allow delete: if isAdmin();
+      // DELETE: Only a super-admin or workspace admin can delete users.
+      allow delete: if isSuperAdmin() || isWorkspaceAdmin(resource.data.workspaceId);
     }
     
-    match /clients/{clientId} {
-      allow read, write: if isSuperAdmin();
-    }
-
-    match /categories/{categoryId} {
-      // READ: Any signed-in user can get a single category or list all categories.
-      allow get, list: if isSignedIn();
-      
-      // WRITE: Only editors or admins can create, update, or delete categories.
-      allow write: if isEditorOrAdmin();
-    }
-
-    match /products/{productId} {
-      // READ: Any signed-in user can get or list products.
-      allow get, list: if isSignedIn();
-
-      // WRITE: Only editors or admins can create, update, or delete products.
-      allow write: if isEditorOrAdmin();
-    }
-
-    match /deposits/{depositId} {
-      // READ: Any signed-in user can get or list deposits.
-      allow get, list: if isSignedIn();
-
-      // CREATE/DELETE: Only editors or admins can create or delete deposits.
-      allow create, delete: if isEditorOrAdmin();
-
-      // UPDATE: Editors/Admins can update details and Admins can assign a jefe.
-      allow update: if isAdmin() || isEditorOrAdmin();
-    }
-    
-    match /suppliers/{supplierId} {
-      // READ: Any signed-in user can get or list suppliers.
-      allow get, list: if isSignedIn();
-
-      // WRITE: Only editors or admins can create, update, or delete suppliers.
-      allow write: if isEditorOrAdmin();
-    }
-
-    match /inventory/{inventoryStockId} {
-      // READ: Any signed-in user can read inventory stock levels.
-      allow get, list: if isSignedIn();
-
-      // WRITE: Handled transactionally. We allow any user involved in a valid
-      // stock movement to modify stock. The transaction logic ensures validity.
-      allow write: if isJefeEditorOrAdmin();
-    }
-
-    match /stockMovements/{movementId} {
-      // READ: Any signed-in user can read movement history.
-      allow get, list: if isSignedIn();
-      // WRITE: Jefes, Editors and Admins can create movements.
-      allow create: if isJefeEditorOrAdmin();
-      // UPDATE: Disallowed to preserve audit trail. Annul (delete) and recreate is the pattern.
-      allow update: if false;
-      // DELETE: Only Admins can delete (annul) a movement to correct errors.
-      allow delete: if isAdmin();
-    }
-
-    match /counters/{counterId} {
-      // READ: Signed-in users can read counters (though not strictly necessary for client).
-      allow get: if isSignedIn();
-      // WRITE: Only authenticated users performing transactions (server-side logic is key) should update.
-      // We lock this down to users who can create movements.
-      allow write: if isJefeEditorOrAdmin();
+    match /workspaces/{workspaceId} {
+        // READ: Super-admins can see all workspaces. Users can see their own workspace.
+        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow list: if isSuperAdmin();
+        
+        // WRITE: Only super-admins can create, update, or delete workspaces.
+        // This prevents admins from creating/altering their own or other workspaces.
+        allow write: if isSuperAdmin();
+        
+        // --- Subcollection Rules ---
+        // These rules apply to all subcollections within a workspace
+        match /{subcollection}/{docId} {
+            // General access rule: allow read/write if the user is in the workspace or is a super-admin.
+            allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        
+         // Specific rule for stock movements to allow jefe_deposito to create
+        match /stockMovements/{movementId} {
+             allow create: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador') || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'jefe_deposito');
+             allow read, update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
+        }
     }
   }
 }
