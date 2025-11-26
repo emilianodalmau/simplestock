@@ -21,7 +21,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { doc, setDoc, writeBatch, collection } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 
 const formSchema = z.object({
   firstName: z.string().min(1, { message: "Please enter your first name." }),
@@ -72,9 +72,9 @@ export function SignupForm() {
       const displayName = `${values.firstName} ${values.lastName}`;
       await updateProfile(user, { displayName });
 
+      // By default, a new user is an administrator, unless they are the super-admin.
       const isSuperAdmin = values.email === "emilianodalmau@gmail.com";
-      const isAdmin = values.email === "admin@example.com" && !isSuperAdmin;
-      const role = isSuperAdmin ? "super-admin" : isAdmin ? "administrador" : "visualizador";
+      const role = isSuperAdmin ? "super-admin" : "administrador";
 
       const userDocRef = doc(firestore, "users", user.uid);
       const userData = {
@@ -84,34 +84,18 @@ export function SignupForm() {
         lastName: values.lastName,
         photoURL: user.photoURL || "",
         role: role,
-        workspaceId: null,
+        workspaceId: null, // WorkspaceId is null initially
       };
 
-      if (isAdmin) {
-        const batch = writeBatch(firestore);
-        
-        // Create workspace
-        const workspaceRef = doc(collection(firestore, 'workspaces'));
-        const workspaceData = {
-            id: workspaceRef.id,
-            name: `Workspace de ${displayName}`,
-            ownerId: user.uid,
-        };
-        batch.set(workspaceRef, workspaceData);
-
-        // Update user with workspaceId
-        userData.workspaceId = workspaceRef.id;
-        batch.set(userDocRef, userData);
-
-        await batch.commit();
-      } else {
-         await setDoc(userDocRef, userData);
-      }
-
-
+      await setDoc(userDocRef, userData);
+      
       if (role === 'super-admin') {
         router.push("/super-admin");
-      } else {
+      } else if (role === 'administrador' && !userData.workspaceId) {
+        // Redirect admins without a workspace to the creation page.
+        router.push("/crear-workspace");
+      }
+      else {
         router.push("/dashboard");
       }
 
