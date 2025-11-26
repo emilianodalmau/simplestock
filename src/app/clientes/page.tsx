@@ -68,6 +68,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -143,71 +145,82 @@ export default function ClientesPage() {
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
-    try {
-      await addDoc(collection(firestore, 'clients'), {
+    
+    const newClientData = {
         ...data,
         createdAt: serverTimestamp(),
+    };
+
+    addDoc(collection(firestore, 'clients'), newClientData)
+      .then(() => {
+        toast({
+          title: 'Cliente Creado',
+          description: `El cliente "${data.name}" ha sido agregado.`,
+        });
+        createForm.reset();
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: 'clients',
+            operation: 'create',
+            requestResourceData: newClientData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-      toast({
-        title: 'Cliente Creado',
-        description: `El cliente "${data.name}" ha sido agregado.`,
-      });
-      createForm.reset();
-    } catch (error) {
-      console.error('Error creating client:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description:
-          'Ocurrió un error al crear el cliente. Revisa los permisos.',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore || !editingClient) return;
     setIsEditSubmitting(true);
-    try {
-      const clientRef = doc(firestore, 'clients', editingClient.id);
-      await updateDoc(clientRef, {
+    
+    const clientRef = doc(firestore, 'clients', editingClient.id);
+    const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
+    };
+
+    updateDoc(clientRef, updatedData)
+      .then(() => {
+        toast({
+          title: 'Cliente Actualizado',
+          description: `El cliente "${data.name}" ha sido actualizado.`,
+        });
+        setEditingClient(null);
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `clients/${editingClient.id}`,
+            operation: 'update',
+            requestResourceData: updatedData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsEditSubmitting(false);
       });
-      toast({
-        title: 'Cliente Actualizado',
-        description: `El cliente "${data.name}" ha sido actualizado.`,
-      });
-      setEditingClient(null);
-    } catch (error) {
-      console.error('Error updating client:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al actualizar el cliente.',
-      });
-    } finally {
-      setIsEditSubmitting(false);
-    }
   };
 
   const handleDeleteClient = async (clientId: string) => {
     if (!firestore) return;
-    try {
-      await deleteDoc(doc(firestore, 'clients', clientId));
-      toast({
-        title: 'Cliente Eliminado',
-        description: 'El cliente ha sido eliminado correctamente.',
+    const clientRef = doc(firestore, 'clients', clientId);
+
+    deleteDoc(clientRef)
+      .then(() => {
+        toast({
+          title: 'Cliente Eliminado',
+          description: 'El cliente ha sido eliminado correctamente.',
+        });
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `clients/${clientId}`,
+            operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
-    } catch (error) {
-      console.error('Error deleting client:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al eliminar el cliente.',
-      });
-    }
   };
 
   const canManageClients =
@@ -541,5 +554,3 @@ export default function ClientesPage() {
     </div>
   );
 }
-
-    

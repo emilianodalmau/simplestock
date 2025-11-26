@@ -77,6 +77,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -161,93 +163,106 @@ export default function DepositosPage() {
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
-    try {
-      await addDoc(collection(firestore, 'deposits'), {
+    
+    const newDepositData = {
         ...data,
         createdAt: serverTimestamp(),
+    };
+
+    addDoc(collection(firestore, 'deposits'), newDepositData)
+      .then(() => {
+        toast({
+          title: 'Depósito Creado',
+          description: `El depósito "${data.name}" ha sido agregado.`,
+        });
+        createForm.reset();
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: 'deposits',
+            operation: 'create',
+            requestResourceData: newDepositData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-      toast({
-        title: 'Depósito Creado',
-        description: `El depósito "${data.name}" ha sido agregado.`,
-      });
-      createForm.reset();
-    } catch (error) {
-      console.error('Error creating deposit:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description:
-          'Ocurrió un error al crear el depósito. Revisa los permisos.',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore || !editingDeposit) return;
     setIsEditSubmitting(true);
-    try {
-      const depositRef = doc(firestore, 'deposits', editingDeposit.id);
-      await updateDoc(depositRef, {
+    
+    const depositRef = doc(firestore, 'deposits', editingDeposit.id);
+    const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
+    };
+
+    updateDoc(depositRef, updatedData)
+      .then(() => {
+        toast({
+          title: 'Depósito Actualizado',
+          description: `El depósito "${data.name}" ha sido actualizado.`,
+        });
+        setEditingDeposit(null);
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `deposits/${editingDeposit.id}`,
+            operation: 'update',
+            requestResourceData: updatedData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsEditSubmitting(false);
       });
-      toast({
-        title: 'Depósito Actualizado',
-        description: `El depósito "${data.name}" ha sido actualizado.`,
-      });
-      setEditingDeposit(null);
-    } catch (error) {
-      console.error('Error updating deposit:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al actualizar el depósito.',
-      });
-    } finally {
-      setIsEditSubmitting(false);
-    }
   };
 
   const handleDeleteDeposit = async (depositId: string) => {
     if (!firestore) return;
-    try {
-      await deleteDoc(doc(firestore, 'deposits', depositId));
-      toast({
-        title: 'Depósito Eliminado',
-        description: 'El depósito ha sido eliminado correctamente.',
+    const depositRef = doc(firestore, 'deposits', depositId);
+
+    deleteDoc(depositRef)
+      .then(() => {
+        toast({
+          title: 'Depósito Eliminado',
+          description: 'El depósito ha sido eliminado correctamente.',
+        });
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `deposits/${depositId}`,
+            operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
-    } catch (error) {
-      console.error('Error deleting deposit:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al eliminar el depósito.',
-      });
-    }
   };
   
   const handleJefeChange = async (depositId: string, jefeId: string) => {
     if (!firestore) return;
     const depositRef = doc(firestore, 'deposits', depositId);
-    try {
-      // If "unassigned" is selected, remove the field, otherwise update it.
-      const updateData =
-        jefeId === 'unassigned' ? { jefeId: deleteField() } : { jefeId };
-      await updateDoc(depositRef, updateData);
-      toast({
-        title: 'Jefe de Depósito Actualizado',
-        description: 'Se ha actualizado el jefe para este depósito.',
-      });
-    } catch (error) {
-      console.error('Error assigning jefe:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error de Permisos',
-        description: 'No tienes permisos para asignar un jefe de depósito.',
-      });
-    }
+    
+    const updateData =
+      jefeId === 'unassigned' ? { jefeId: deleteField() } : { jefeId };
+      
+    updateDoc(depositRef, updateData)
+        .then(() => {
+            toast({
+                title: 'Jefe de Depósito Actualizado',
+                description: 'Se ha actualizado el jefe para este depósito.',
+            });
+        })
+        .catch((error) => {
+            const permissionError = new FirestorePermissionError({
+                path: `deposits/${depositId}`,
+                operation: 'update',
+                requestResourceData: updateData,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+        });
   };
 
 
@@ -386,7 +401,7 @@ export default function DepositosPage() {
                           {isAdmin && (
                             <TableCell>
                               <Select
-                                value={deposit.jefeId || ''}
+                                value={deposit.jefeId || 'unassigned'}
                                 onValueChange={(value) => handleJefeChange(deposit.id, value)}
                               >
                                 <SelectTrigger className="w-[200px]">

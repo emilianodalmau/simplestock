@@ -69,6 +69,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -133,71 +135,82 @@ export default function CategoriasPage() {
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
-    try {
-      await addDoc(collection(firestore, 'categories'), {
-        ...data,
-        createdAt: serverTimestamp(),
+
+    const newCategoryData = {
+      ...data,
+      createdAt: serverTimestamp(),
+    };
+
+    addDoc(collection(firestore, 'categories'), newCategoryData)
+      .then(() => {
+        toast({
+          title: 'Categoría Creada',
+          description: `La categoría "${data.name}" ha sido agregada.`,
+        });
+        createForm.reset();
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: 'categories',
+            operation: 'create',
+            requestResourceData: newCategoryData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-      toast({
-        title: 'Categoría Creada',
-        description: `La categoría "${data.name}" ha sido agregada.`,
-      });
-      createForm.reset();
-    } catch (error) {
-      console.error('Error creating category:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description:
-          'Ocurrió un error al crear la categoría. Revisa los permisos.',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore || !editingCategory) return;
     setIsEditSubmitting(true);
-    try {
-      const categoryRef = doc(firestore, 'categories', editingCategory.id);
-      await updateDoc(categoryRef, {
+    
+    const categoryRef = doc(firestore, 'categories', editingCategory.id);
+    const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
+    };
+
+    updateDoc(categoryRef, updatedData)
+      .then(() => {
+        toast({
+          title: 'Categoría Actualizada',
+          description: `La categoría "${data.name}" ha sido actualizada.`,
+        });
+        setEditingCategory(null);
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `categories/${editingCategory.id}`,
+            operation: 'update',
+            requestResourceData: updatedData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsEditSubmitting(false);
       });
-      toast({
-        title: 'Categoría Actualizada',
-        description: `La categoría "${data.name}" ha sido actualizada.`,
-      });
-      setEditingCategory(null);
-    } catch (error) {
-      console.error('Error updating category:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al actualizar la categoría.',
-      });
-    } finally {
-      setIsEditSubmitting(false);
-    }
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
     if (!firestore) return;
-    try {
-      await deleteDoc(doc(firestore, 'categories', categoryId));
-      toast({
-        title: 'Categoría Eliminada',
-        description: 'La categoría ha sido eliminada correctamente.',
+    const categoryRef = doc(firestore, 'categories', categoryId);
+    
+    deleteDoc(categoryRef)
+      .then(() => {
+        toast({
+          title: 'Categoría Eliminada',
+          description: 'La categoría ha sido eliminada correctamente.',
+        });
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `categories/${categoryId}`,
+            operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
-    } catch (error) {
-      console.error('Error deleting category:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al eliminar la categoría.',
-      });
-    }
   };
 
   const canManageCategories =
@@ -438,5 +451,3 @@ export default function CategoriasPage() {
     </div>
   );
 }
-
-    

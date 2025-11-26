@@ -68,6 +68,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -136,71 +138,82 @@ export default function ProveedoresPage() {
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
-    try {
-      await addDoc(collection(firestore, 'suppliers'), {
+    
+    const newSupplierData = {
         ...data,
         createdAt: serverTimestamp(),
+    };
+
+    addDoc(collection(firestore, 'suppliers'), newSupplierData)
+      .then(() => {
+        toast({
+          title: 'Proveedor Creado',
+          description: `El proveedor "${data.name}" ha sido agregado.`,
+        });
+        createForm.reset();
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: 'suppliers',
+            operation: 'create',
+            requestResourceData: newSupplierData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-      toast({
-        title: 'Proveedor Creado',
-        description: `El proveedor "${data.name}" ha sido agregado.`,
-      });
-      createForm.reset();
-    } catch (error) {
-      console.error('Error creating supplier:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description:
-          'Ocurrió un error al crear el proveedor. Revisa los permisos.',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore || !editingSupplier) return;
     setIsEditSubmitting(true);
-    try {
-      const supplierRef = doc(firestore, 'suppliers', editingSupplier.id);
-      await updateDoc(supplierRef, {
+    
+    const supplierRef = doc(firestore, 'suppliers', editingSupplier.id);
+    const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
+    };
+
+    updateDoc(supplierRef, updatedData)
+      .then(() => {
+        toast({
+          title: 'Proveedor Actualizado',
+          description: `El proveedor "${data.name}" ha sido actualizado.`,
+        });
+        setEditingSupplier(null);
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `suppliers/${editingSupplier.id}`,
+            operation: 'update',
+            requestResourceData: updatedData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setIsEditSubmitting(false);
       });
-      toast({
-        title: 'Proveedor Actualizado',
-        description: `El proveedor "${data.name}" ha sido actualizado.`,
-      });
-      setEditingSupplier(null);
-    } catch (error) {
-      console.error('Error updating supplier:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al actualizar el proveedor.',
-      });
-    } finally {
-      setIsEditSubmitting(false);
-    }
   };
 
   const handleDeleteSupplier = async (supplierId: string) => {
     if (!firestore) return;
-    try {
-      await deleteDoc(doc(firestore, 'suppliers', supplierId));
-      toast({
-        title: 'Proveedor Eliminado',
-        description: 'El proveedor ha sido eliminado correctamente.',
+    const supplierRef = doc(firestore, 'suppliers', supplierId);
+
+    deleteDoc(supplierRef)
+      .then(() => {
+        toast({
+          title: 'Proveedor Eliminado',
+          description: 'El proveedor ha sido eliminado correctamente.',
+        });
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+            path: `suppliers/${supplierId}`,
+            operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
-    } catch (error) {
-      console.error('Error deleting supplier:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error al eliminar el proveedor.',
-      });
-    }
   };
 
   const canManageSuppliers =
@@ -479,5 +492,3 @@ export default function ProveedoresPage() {
     </div>
   );
 }
-
-    
