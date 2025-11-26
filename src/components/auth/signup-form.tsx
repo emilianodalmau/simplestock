@@ -91,13 +91,10 @@ export function SignupForm() {
       
       if (role === 'super-admin') {
         router.push("/super-admin");
-      } else if (role === 'administrador' && !userData.workspaceId) {
-        // Redirect admins without a workspace to the creation page.
-        router.push("/crear-workspace");
-      }
-      else {
+      } else {
         router.push("/dashboard");
       }
+
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {

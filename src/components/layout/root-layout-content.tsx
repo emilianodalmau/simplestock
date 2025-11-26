@@ -87,12 +87,13 @@ function AppLayout({
       if (
         currentUserProfile?.role === 'administrador' &&
         !currentUserProfile.workspaceId &&
-        pathname !== '/crear-workspace'
+        pathname !== '/dashboard' // Only redirect if they aren't already on the correct page
       ) {
-        router.replace('/crear-workspace');
+        router.replace('/dashboard');
       }
     }
   }, [isUserLoading, isLoadingProfile, user, currentUserProfile, pathname, router]);
+
 
   const handleLogout = async () => {
     if (auth) {
@@ -123,8 +124,9 @@ function AppLayout({
   }, [currentUserProfile?.role]);
 
   const isLoading = isUserLoading || isLoadingProfile;
-  const hideSidebar = ['/login', '/signup', '/', '/crear-workspace'].includes(pathname);
-  const isBeingRedirected = !isLoading && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/crear-workspace';
+  const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
+  const isBeingRedirected = !isLoading && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
+
 
   if (isLoading || isBeingRedirected) {
     return (
