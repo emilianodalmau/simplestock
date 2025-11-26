@@ -66,7 +66,7 @@ service cloud.firestore {
     
     match /workspaces/{workspaceId} {
         // READ: Super-admins can see all workspaces. Users can see their own workspace.
-        allow get: if isSuperAdmin() || getUserData(request.auth.uid).workspaceId == workspaceId;
+        allow get: if isSuperAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == workspaceId);
         allow list: if isSuperAdmin();
         
         // WRITE: Only super-admins can create, update, or delete workspaces.
