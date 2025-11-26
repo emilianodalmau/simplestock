@@ -42,7 +42,8 @@
           "enum": [
             "administrador",
             "editor",
-            "visualizador"
+            "visualizador",
+            "jefe_deposito"
           ]
         }
       },
@@ -156,6 +157,10 @@
         "description": {
           "type": "string",
           "description": "A brief description or location details of the deposit."
+        },
+        "jefeId": {
+          "type": "string",
+          "description": "Optional reference to the User assigned as the head of this deposit."
         }
       },
       "required": [

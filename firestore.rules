@@ -64,8 +64,11 @@ service cloud.firestore {
       // READ: Any signed-in user can get or list deposits.
       allow get, list: if isSignedIn();
 
-      // WRITE: Only editors or admins can create, update, or delete deposits.
-      allow write: if isEditorOrAdmin();
+      // CREATE/DELETE: Only editors or admins can create or delete deposits.
+      allow create, delete: if isEditorOrAdmin();
+
+      // UPDATE: Editors can update basic details, Admins can also assign a jefe.
+      allow update: if isEditorOrAdmin();
     }
     
     match /suppliers/{supplierId} {
