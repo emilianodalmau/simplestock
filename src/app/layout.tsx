@@ -45,6 +45,7 @@ import { type AppSettings, getSettings } from '@/lib/settings';
 import { useEffect, useState, useMemo } from 'react';
 import Image from 'next/image';
 import { doc } from 'firebase/firestore';
+import { Loader2 } from 'lucide-react';
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
@@ -64,7 +65,7 @@ function AppLayout({
   globalSettings: AppSettings | null;
 }) {
   const pathname = usePathname();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const auth = useAuth();
   const router = useRouter();
@@ -73,7 +74,7 @@ function AppLayout({
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
     [firestore, user]
   );
-  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   
   const workspaceDocRef = useMemoFirebase(
     () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
@@ -81,6 +82,18 @@ function AppLayout({
   );
   const { data: workspaceData } = useDoc<Workspace>(workspaceDocRef);
 
+  // --- Workspace Redirection Logic ---
+  useEffect(() => {
+    if (!isLoadingProfile && user) {
+        if (
+            currentUserProfile?.role === 'administrador' &&
+            !currentUserProfile.workspaceId &&
+            pathname !== '/crear-workspace'
+        ) {
+            router.replace('/crear-workspace');
+        }
+    }
+  }, [isLoadingProfile, user, currentUserProfile, pathname, router]);
 
   const handleLogout = async () => {
     if (auth) {
@@ -111,7 +124,26 @@ function AppLayout({
   }, [currentUserProfile]);
 
 
-  const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
+  const hideSidebar = ['/login', '/signup', '/', '/crear-workspace'].includes(pathname);
+
+  if (isUserLoading || isLoadingProfile) {
+    return (
+        <div className="flex h-screen items-center justify-center">
+            <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+    );
+  }
+  
+  // If user is being redirected, show a loading state
+  if (currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/crear-workspace') {
+     return (
+        <div className="flex h-screen items-center justify-center">
+            <Loader2 className="h-12 w-12 animate-spin" />
+            <p className="ml-4">Redirigiendo a la creación de workspace...</p>
+        </div>
+    );
+  }
+
 
   if (hideSidebar) {
     return <main className="flex-1">{children}</main>;
@@ -126,7 +158,7 @@ function AppLayout({
       <Sidebar>
         <SidebarHeader>
           <div className="flex items-center gap-2">
-            {logoUrl ? (
+            {logoUrl && (
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Image
                   src={logoUrl}
@@ -136,7 +168,7 @@ function AppLayout({
                   className="rounded-sm"
                 />
               </div>
-            ) : null}
+            )}
             <div className="flex flex-col">
               <span className="font-semibold">
                 {appName}
