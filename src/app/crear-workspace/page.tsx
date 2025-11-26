@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -68,14 +68,14 @@ export default function CrearWorkspacePage() {
   });
 
   // Redirect if user is not an orphan admin or already has a workspace
-  if (!isLoadingProfile && (!user || currentUserProfile?.role !== 'administrador' || currentUserProfile?.workspaceId)) {
-    router.replace('/dashboard');
-    return (
-        <div className="container flex min-h-screen items-center justify-center py-12">
-            <Loader2 className="h-12 w-12 animate-spin" />
-        </div>
-    );
-  }
+  useEffect(() => {
+    if (!isLoadingProfile) {
+      if (!user || currentUserProfile?.role !== 'administrador' || currentUserProfile?.workspaceId) {
+        router.replace('/dashboard');
+      }
+    }
+  }, [isLoadingProfile, user, currentUserProfile, router]);
+
 
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!firestore || !user) {
@@ -126,7 +126,8 @@ export default function CrearWorkspacePage() {
     }
   };
 
-  if (isLoadingProfile) {
+  // While loading or before redirect, show a loader.
+  if (isLoadingProfile || !currentUserProfile || (currentUserProfile.role === 'administrador' && currentUserProfile.workspaceId)) {
     return (
         <div className="container flex min-h-screen items-center justify-center py-12">
             <Loader2 className="h-12 w-12 animate-spin" />
