@@ -119,9 +119,9 @@ export default function DepositosPage() {
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
   
   const usersCollectionQuery = useMemoFirebase(() => {
-    if (!firestore || !currentUserProfile?.workspaceId) return null;
+    if (!firestore || !currentUserProfile?.workspaceId || currentUserProfile.role !== 'administrador') return null;
     return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
-  }, [firestore, currentUserProfile?.workspaceId]);
+  }, [firestore, currentUserProfile]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
@@ -281,7 +281,7 @@ export default function DepositosPage() {
     
   const isAdmin = currentUserProfile?.role === 'administrador';
   
-  const isLoading = isLoadingDeposits || isLoadingUsers;
+  const isLoading = isLoadingDeposits || (isAdmin && isLoadingUsers);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
