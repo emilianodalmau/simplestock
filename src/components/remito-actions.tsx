@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -23,7 +24,7 @@ import { RemitoPDF } from '@/components/remito-pdf';
 
 interface RemitoActionsProps {
   movement: StockMovement;
-  settings: AppSettings | null;
+  settings: AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null;
   canDelete: boolean;
   onDelete: () => void;
 }

@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -8,7 +9,7 @@ import type { AppSettings } from '@/lib/settings';
 
 interface RemitoPDFProps {
   movement: StockMovement;
-  settings: AppSettings | null;
+  settings: AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string; } | null;
 }
 
 export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
@@ -16,6 +17,9 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   }
+
+  const appName = settings?.workspaceAppName || settings?.appName || 'Remito';
+  const logoUrl = settings?.workspaceLogoUrl || settings?.logoUrl;
 
   return (
     <div
@@ -25,10 +29,10 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
       {/* Header */}
       <header className="flex justify-between items-start pb-4 border-b-2 border-gray-300">
         <div className="flex items-center gap-4">
-          {settings?.logoUrl && (
+          {logoUrl && (
             <div className="flex-shrink-0">
               <Image
-                src={settings.logoUrl}
+                src={logoUrl}
                 alt="Logo"
                 width={80}
                 height={80}
@@ -38,7 +42,7 @@ export function RemitoPDF({ movement, settings }: RemitoPDFProps) {
           )}
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
-              {settings?.appName || 'Remito'}
+              {appName}
             </h1>
             <p className="text-md text-gray-500">
               Comprobante de Movimiento de Stock

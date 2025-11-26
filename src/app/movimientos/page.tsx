@@ -94,7 +94,12 @@ export type UserProfile = {
   firstName?: string;
   lastName?: string;
   role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  workspaceId?: string;
 };
+type Workspace = {
+    appName?: string;
+    logoUrl?: string;
+}
 export type StockMovementItem = {
   productId: string;
   productName: string;
@@ -186,21 +191,12 @@ function MovementPageSkeleton() {
 // --- Main Page Component ---
 export default function MovimientosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [pdfSettings, setPdfSettings] = useState<AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
   const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
 
-
-  // --- Settings Loading ---
-  useEffect(() => {
-    async function loadSettings() {
-      const settings = await getSettings();
-      setAppSettings(settings);
-    }
-    loadSettings();
-  }, []);
 
   // --- Data Loading ---
   const currentUserDocRef = useMemoFirebase(
@@ -209,21 +205,47 @@ export default function MovimientosPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  const workspaceId = currentUserProfile?.workspaceId;
+  
+  const workspaceDocRef = useMemoFirebase(
+    () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
+    [firestore, workspaceId]
+  );
+  const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
+  // --- Settings Loading for PDF ---
+  useEffect(() => {
+    async function loadSettings() {
+      const globalSettings = await getSettings();
+      setPdfSettings({
+          ...globalSettings,
+          workspaceAppName: workspaceData?.appName,
+          workspaceLogoUrl: workspaceData?.logoUrl,
+      });
+    }
+    if (!isLoadingWorkspace) {
+        loadSettings();
+    }
+  }, [workspaceData, isLoadingWorkspace]);
+
+  const collectionPrefix = useMemo(
+    () => (workspaceId ? `workspaces/${workspaceId}/` : ''),
+    [workspaceId]
+  );
 
   const productsCollection = useMemoFirebase(
     () =>
-      firestore
-        ? query(collection(firestore, 'products'), where('isArchived', '!=', true))
+      firestore && collectionPrefix
+        ? query(collection(firestore, `${collectionPrefix}products`), where('isArchived', '!=', true))
         : null,
-    [firestore]
+    [firestore, collectionPrefix]
   );
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
   const depositsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'deposits') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}deposits`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
@@ -236,36 +258,37 @@ export default function MovimientosPage() {
   }, [isJefeDeposito, deposits, user]);
 
   const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? query(collection(firestore, `users`), where('workspaceId', '==', workspaceId)) : null),
+    [firestore, collectionPrefix, workspaceId]
   );
   const { data: users, isLoading: isLoadingUsers } =
     useCollection<UserProfile>(usersCollection);
 
   const suppliersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'suppliers') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}suppliers`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !collectionPrefix) return null;
+    let baseQuery = query(collection(firestore, `${collectionPrefix}stockMovements`));
     if (isJefeDeposito && assignedDepositId) {
-      return query(collection(firestore, 'stockMovements'), where('depositId', '==', assignedDepositId));
+      return query(baseQuery, where('depositId', '==', assignedDepositId));
     }
     if (isJefeDeposito && assignedDepositId === null) {
         return null; // Don't fetch if jefe has no deposit
     }
-    return query(collection(firestore, 'stockMovements'));
-  }, [firestore, isJefeDeposito, assignedDepositId]);
+    return baseQuery;
+  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
 
   const inventoryCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'inventory') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}inventory`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
@@ -277,7 +300,8 @@ export default function MovimientosPage() {
     isLoadingUsers ||
     isLoadingSuppliers ||
     isLoadingMovements ||
-    isLoadingInventory;
+    isLoadingInventory ||
+    isLoadingWorkspace;
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
@@ -329,7 +353,7 @@ export default function MovimientosPage() {
   const actorLabel = movementType === 'salida' ? 'Usuario' : 'Proveedor';
 
   const availableProductsForMovement = useMemo(() => {
-    if (!products) return [];
+    if (!products || !collectionPrefix) return [];
     if (movementType === 'entrada' || !selectedDepositId || !inventory) {
       return products.filter((p) => !p.isArchived);
     }
@@ -346,11 +370,11 @@ export default function MovimientosPage() {
     return products.filter(
       (product) => !product.isArchived && productsWithStock.has(product.id)
     );
-  }, [movementType, selectedDepositId, products, inventory]);
+  }, [movementType, selectedDepositId, products, inventory, collectionPrefix]);
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
-    if (!firestore || !user || !productsMap.size) return;
+    if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
     setIsSubmitting(true);
 
     const productChanges = new Map<string, number>();
@@ -375,12 +399,12 @@ export default function MovimientosPage() {
         // --- 1. READ PHASE ---
         const stockDocRefs = new Map<string, any>();
         const stockDocs = new Map<string, any>();
-        const counterRef = doc(firestore, 'counters', 'remitoCounter');
+        const counterRef = doc(firestore, `${collectionPrefix}counters`, 'remitoCounter');
 
         // Pre-fetch all necessary stock documents
         for (const [productId] of productChanges.entries()) {
           const inventoryDocId = `${productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+          const stockDocRef = doc(firestore, `${collectionPrefix}inventory`, inventoryDocId);
           stockDocRefs.set(productId, stockDocRef);
         }
         const stockSnaps = await Promise.all(
@@ -469,7 +493,7 @@ export default function MovimientosPage() {
             }
         }
 
-        const movementRef = doc(collection(firestore, 'stockMovements'));
+        const movementRef = doc(collection(firestore, `${collectionPrefix}stockMovements`));
 
         transaction.set(movementRef, {
           id: movementRef.id,
@@ -516,14 +540,14 @@ export default function MovimientosPage() {
   };
 
   const handleDeleteMovement = async (movement: StockMovement) => {
-    if (!firestore) return;
+    if (!firestore || !collectionPrefix) return;
 
     try {
       await runTransaction(firestore, async (transaction) => {
         // 1. Revert stock for each item in the movement
         for (const item of movement.items) {
           const inventoryDocId = `${item.productId}_${movement.depositId}`;
-          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+          const stockDocRef = doc(firestore, `${collectionPrefix}inventory`, inventoryDocId);
 
           // The change is the opposite of the original movement type
           const change =
@@ -540,7 +564,7 @@ export default function MovimientosPage() {
         }
 
         // 2. Delete the movement document itself
-        const movementDocRef = doc(firestore, 'stockMovements', movement.id);
+        const movementDocRef = doc(firestore, `${collectionPrefix}stockMovements`, movement.id);
         transaction.delete(movementDocRef);
       });
 
@@ -890,7 +914,7 @@ export default function MovimientosPage() {
                           <TableCell className="text-right">
                            <RemitoActions 
                              movement={mov}
-                             settings={appSettings}
+                             settings={pdfSettings}
                              canDelete={isAdmin}
                              onDelete={() => handleDeleteMovement(mov)}
                            />

@@ -48,14 +48,20 @@ import { doc } from 'firebase/firestore';
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  workspaceId?: string;
 };
+
+type Workspace = {
+    appName?: string;
+    logoUrl?: string;
+}
 
 function AppLayout({
   children,
-  settings,
+  globalSettings,
 }: {
   children: React.ReactNode;
-  settings: AppSettings | null;
+  globalSettings: AppSettings | null;
 }) {
   const pathname = usePathname();
   const { user } = useUser();
@@ -68,6 +74,13 @@ function AppLayout({
     [firestore, user]
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  
+  const workspaceDocRef = useMemoFirebase(
+    () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
+    [firestore, currentUserProfile]
+  );
+  const { data: workspaceData } = useDoc<Workspace>(workspaceDocRef);
+
 
   const handleLogout = async () => {
     if (auth) {
@@ -83,9 +96,10 @@ function AppLayout({
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
     { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
+    { href: '/clientes', label: 'Clientes', icon: Users, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
     { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
@@ -102,6 +116,10 @@ function AppLayout({
   if (hideSidebar) {
     return <main className="flex-1">{children}</main>;
   }
+  
+  const appName = workspaceData?.appName || globalSettings?.appName || 'Inventario';
+  const logoUrl = workspaceData?.logoUrl || globalSettings?.logoUrl;
+
 
   return (
     <SidebarProvider>
@@ -109,9 +127,9 @@ function AppLayout({
         <SidebarHeader>
           <div className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              {settings?.logoUrl ? (
+              {logoUrl ? (
                 <Image
-                  src={settings.logoUrl}
+                  src={logoUrl}
                   alt="Logo"
                   width={24}
                   height={24}
@@ -123,7 +141,7 @@ function AppLayout({
             </div>
             <div className="flex flex-col">
               <span className="font-semibold">
-                {settings?.appName || 'Inventario'}
+                {appName}
               </span>
             </div>
           </div>
@@ -167,13 +185,13 @@ function AppLayout({
 }
 
 function RootLayoutContent({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [globalSettings, setGlobalSettings] = useState<AppSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function loadSettings() {
       const fetchedSettings = await getSettings();
-      setSettings(fetchedSettings);
+      setGlobalSettings(fetchedSettings);
       setIsLoading(false);
     }
     loadSettings();
@@ -186,7 +204,7 @@ function RootLayoutContent({ children }: { children: React.ReactNode }) {
   
   return (
     <FirebaseClientProvider>
-      <AppLayout settings={settings}>{children}</AppLayout>
+      <AppLayout globalSettings={globalSettings}>{children}</AppLayout>
       <Toaster />
     </FirebaseClientProvider>
   );

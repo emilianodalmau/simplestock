@@ -76,6 +76,14 @@
         "ownerId": {
           "type": "string",
           "description": "The ID of the 'administrador' user who owns this workspace."
+        },
+        "appName": {
+          "type": "string",
+          "description": "The custom display name for the workspace."
+        },
+        "logoUrl": {
+            "type": "string",
+            "description": "The URL for the custom logo of the workspace."
         }
       },
       "required": ["id", "name", "ownerId"]
