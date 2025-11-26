@@ -4,7 +4,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { revalidatePath } from 'next/cache';
-import { getSettings, type AppSettings } from './settings';
+import { getSettings } from './settings';
+import type { AppSettings } from '@/types/settings';
 
 const settingsFilePath = path.join(
   process.cwd(),

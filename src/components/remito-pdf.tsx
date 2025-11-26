@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { StockMovement } from '@/app/movimientos/page';
-import type { AppSettings } from '@/lib/settings';
+import type { AppSettings } from '@/types/settings';
 
 interface RemitoPDFProps {
   movement: StockMovement;

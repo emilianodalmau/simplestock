@@ -1,11 +1,6 @@
-
 import fs from 'fs/promises';
 import path from 'path';
-
-export interface AppSettings {
-  appName: string;
-  logoUrl: string;
-}
+import type { AppSettings } from '@/types/settings';
 
 const settingsFilePath = path.join(
   process.cwd(),

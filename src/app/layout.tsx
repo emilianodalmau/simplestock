@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import './globals.css';
@@ -42,7 +41,8 @@ import {
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
-import { type AppSettings, getSettings } from '@/lib/settings';
+import { getSettings } from '@/lib/settings';
+import type { AppSettings } from '@/types/settings';
 import { useEffect, useState, useMemo } from 'react';
 import Image from 'next/image';
 import { doc } from 'firebase/firestore';

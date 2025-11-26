@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Edit, Trash2, Download, Loader2 } from 'lucide-react';
 import type { StockMovement } from '@/app/movimientos/page';
-import type { AppSettings } from '@/lib/settings';
+import type { AppSettings } from '@/types/settings';
 import { RemitoPDF } from '@/components/remito-pdf';
 
 interface RemitoActionsProps {

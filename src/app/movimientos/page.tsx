@@ -75,7 +75,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ProductComboBox } from '@/components/ui/product-combobox';
 import { RemitoActions } from '@/components/remito-actions';
-import type { AppSettings } from '@/lib/settings';
+import type { AppSettings } from '@/types/settings';
 
 // --- Data Types ---
 export type Product = {
@@ -214,19 +214,13 @@ export default function MovimientosPage() {
 
   // --- Settings Loading for PDF ---
   useEffect(() => {
-    async function loadSettings() {
-      // We can no longer call getSettings() on the client.
-      // We must rely on the workspaceData for appName and logoUrl.
-      // A global fallback isn't easily available on the client without prop drilling.
-      setPdfSettings({
-          appName: workspaceData?.appName || 'Inventario',
-          logoUrl: workspaceData?.logoUrl || '',
-          workspaceAppName: workspaceData?.appName,
-          workspaceLogoUrl: workspaceData?.logoUrl,
-      });
-    }
     if (!isLoadingWorkspace) {
-        loadSettings();
+        setPdfSettings({
+            appName: workspaceData?.appName || 'Inventario',
+            logoUrl: workspaceData?.logoUrl || '',
+            workspaceAppName: workspaceData?.appName,
+            workspaceLogoUrl: workspaceData?.logoUrl,
+        });
     }
   }, [workspaceData, isLoadingWorkspace]);
 
