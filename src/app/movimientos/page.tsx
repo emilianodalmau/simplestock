@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -87,13 +86,13 @@ export type Product = {
   price: number;
   isArchived?: boolean;
 };
-export type Deposit = { id: string; name: string };
+export type Deposit = { id: string; name: string; jefeId?: string };
 export type Supplier = { id: string; name: string };
 export type UserProfile = { 
   id: string;
   firstName?: string;
   lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' 
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 export type StockMovementItem = {
   productId: string;
@@ -190,6 +189,8 @@ export default function MovimientosPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
+
 
   // --- Settings Loading ---
   useEffect(() => {
@@ -205,7 +206,9 @@ export default function MovimientosPage() {
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
     [firestore, user]
   );
-  const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+
 
   const productsCollection = useMemoFirebase(
     () =>
@@ -223,6 +226,13 @@ export default function MovimientosPage() {
   );
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
+    
+  useEffect(() => {
+    if (isJefeDeposito && deposits) {
+      const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
+      setAssignedDepositId(assignedDeposit?.id || null);
+    }
+  }, [isJefeDeposito, deposits, user]);
 
   const usersCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'users') : null),
@@ -238,12 +248,19 @@ export default function MovimientosPage() {
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
-  const movementsCollection = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'stockMovements')) : null),
-    [firestore]
-  );
+  const movementsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    if (isJefeDeposito && assignedDepositId) {
+      return query(collection(firestore, 'stockMovements'), where('depositId', '==', assignedDepositId));
+    }
+    if (isJefeDeposito && assignedDepositId === null) {
+        return null; // Don't fetch if jefe has no deposit
+    }
+    return query(collection(firestore, 'stockMovements'));
+  }, [firestore, isJefeDeposito, assignedDepositId]);
+    
   const { data: movements, isLoading: isLoadingMovements } =
-    useCollection<StockMovement>(movementsCollection);
+    useCollection<StockMovement>(movementsQuery);
 
   const inventoryCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'inventory') : null),
@@ -253,6 +270,7 @@ export default function MovimientosPage() {
     useCollection<InventoryStock>(inventoryCollection);
 
   const isLoading =
+    isLoadingProfile ||
     isLoadingProducts ||
     isLoadingDeposits ||
     isLoadingUsers ||
@@ -764,6 +782,7 @@ export default function MovimientosPage() {
       <Card>
         <CardHeader>
           <CardTitle>Historial de Movimientos</CardTitle>
+           { isJefeDeposito && <CardDescription>Solo se muestran los movimientos de tu depósito asignado.</CardDescription>}
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border">
@@ -817,7 +836,7 @@ export default function MovimientosPage() {
                 {!isLoadingMovements && movements?.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                      No hay movimientos registrados.
+                      {isJefeDeposito ? "No hay movimientos en tu depósito." : "No hay movimientos registrados."}
                     </TableCell>
                   </TableRow>
                 )}

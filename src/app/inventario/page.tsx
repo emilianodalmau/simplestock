@@ -1,9 +1,8 @@
-
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { useMemo, useState, useEffect } from 'react';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import { collection, doc, where, query } from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -58,6 +57,12 @@ type Category = {
 type Deposit = {
   id: string;
   name: string;
+  jefeId?: string;
+};
+
+type UserProfile = {
+  id: string;
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
 type InventoryStock = {
@@ -91,6 +96,7 @@ type SortConfig = {
 
 export default function InventarioPage() {
   const firestore = useFirestore();
+  const { user } = useUser();
 
   // State for filters and search
   const [searchTerm, setSearchTerm] = useState('');
@@ -101,6 +107,31 @@ export default function InventarioPage() {
 
   // State for detail modal
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
+  
+  const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
+
+  // --- Data Loading ---
+  const currentUserDocRef = useMemoFirebase(
+    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
+  
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+
+  const depositsCollection = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'deposits') : null),
+    [firestore]
+  );
+  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
+  
+  useEffect(() => {
+    if (isJefeDeposito && deposits) {
+      const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
+      setAssignedDepositId(assignedDeposit?.id || null);
+    }
+  }, [isJefeDeposito, deposits, user]);
+
 
   // Fetch all necessary collections
   const productsCollection = useMemoFirebase(
@@ -117,22 +148,24 @@ export default function InventarioPage() {
   const { data: categories, isLoading: isLoadingCategories } =
     useCollection<Category>(categoriesCollection);
 
-  const depositsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'deposits') : null),
-    [firestore]
-  );
-  const { data: deposits, isLoading: isLoadingDeposits } =
-    useCollection<Deposit>(depositsCollection);
+  const inventoryQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    if (isJefeDeposito && assignedDepositId) {
+        return query(collection(firestore, 'inventory'), where('depositId', '==', assignedDepositId));
+    }
+    // Admins/Editors see all inventory
+    return collection(firestore, 'inventory');
+  }, [firestore, isJefeDeposito, assignedDepositId]);
 
-  const inventoryCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'inventory') : null),
-    [firestore]
-  );
   const { data: inventory, isLoading: isLoadingInventory } =
-    useCollection<InventoryStock>(inventoryCollection);
+    useCollection<InventoryStock>(inventoryQuery);
 
   const isLoading =
-    isLoadingProducts || isLoadingCategories || isLoadingInventory || isLoadingDeposits;
+    isLoadingProfile ||
+    isLoadingProducts ||
+    isLoadingCategories ||
+    isLoadingInventory ||
+    isLoadingDeposits;
     
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
@@ -140,14 +173,17 @@ export default function InventarioPage() {
 
   // Memoize the data processing for the main table
   const processedInventoryData = useMemo(() => {
-    if (!products || !categories || !inventory) {
+    if (!products || !categories || (!inventory && isJefeDeposito && assignedDepositId)) {
       return [];
     }
 
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
     const stockMap = new Map<string, number>();
+    
+    // If inventory is null (because of permissions or no data), treat it as an empty array
+    const inventoryData = inventory || [];
 
-    for (const stockItem of inventory) {
+    for (const stockItem of inventoryData) {
       const currentStock = stockMap.get(stockItem.productId) || 0;
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
     }
@@ -175,6 +211,12 @@ export default function InventarioPage() {
         unit: product.unit,
         status: status,
       };
+    }).filter(item => {
+        // If user is jefe, only show products that exist in their inventory map
+        if (isJefeDeposito) {
+            return stockMap.has(item.productId);
+        }
+        return true;
     });
 
     // Apply filters and search
@@ -227,19 +269,27 @@ export default function InventarioPage() {
     selectedCategory,
     selectedStatus,
     sortConfig,
+    isJefeDeposito
   ]);
 
   // Memoize data for the detail modal, now with aggregation
   const productStockDetails = useMemo(() => {
     if (!selectedProduct || !inventory || !deposits) return [];
-
+    
+    // Non-jefes see all deposits, so we need the full deposit map.
+    // Jefes only see their own deposit.
     const depositMap = new Map(deposits.map((dep) => [dep.id, dep.name]));
+
     const stockByDeposit = new Map<string, number>();
 
     // Filter and aggregate stock for the selected product
     inventory
       .filter((stock) => stock.productId === selectedProduct.productId)
       .forEach((stockItem) => {
+        // If the user is a jefe, only include their assigned deposit.
+        if (isJefeDeposito && stockItem.depositId !== assignedDepositId) {
+            return;
+        }
         const currentQuantity = stockByDeposit.get(stockItem.depositId) || 0;
         stockByDeposit.set(stockItem.depositId, currentQuantity + stockItem.quantity);
       });
@@ -249,7 +299,7 @@ export default function InventarioPage() {
       depositName: depositMap.get(depositId) || 'Depósito desconocido',
       quantity: quantity,
     }));
-  }, [selectedProduct, inventory, deposits]);
+  }, [selectedProduct, inventory, deposits, isJefeDeposito, assignedDepositId]);
   
   const requestSort = (key: keyof InventoryItem) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -274,7 +324,7 @@ export default function InventarioPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Inventario General</h1>
         <p className="text-muted-foreground">
-          Filtra y busca para ver el estado del stock de todos los productos.
+          {isJefeDeposito ? 'Estado del stock de tu depósito asignado.' : 'Filtra y busca para ver el estado del stock de todos los productos.'}
         </p>
       </div>
 
@@ -392,7 +442,7 @@ export default function InventarioPage() {
                 {!isLoading && processedInventoryData.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center h-24">
-                      No se encontraron productos con los filtros aplicados.
+                      { isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado." : "No se encontraron productos con los filtros aplicados." }
                     </TableCell>
                   </TableRow>
                 )}

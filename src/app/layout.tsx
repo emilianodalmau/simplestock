@@ -2,7 +2,14 @@
 
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
-import { FirebaseClientProvider, useFirebase, useAuth } from '@/firebase';
+import {
+  FirebaseClientProvider,
+  useUser,
+  useFirestore,
+  useDoc,
+  useMemoFirebase,
+  useAuth,
+} from '@/firebase';
 import {
   Sidebar,
   SidebarContent,
@@ -20,7 +27,6 @@ import {
   Warehouse,
   Box,
   Users,
-  Building,
   Archive,
   Tags,
   Truck,
@@ -34,8 +40,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { type AppSettings, getSettings } from '@/lib/settings';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Image from 'next/image';
+import { doc } from 'firebase/firestore';
+
+type UserProfile = {
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+};
 
 function AppLayout({
   children,
@@ -45,8 +56,16 @@ function AppLayout({
   settings: AppSettings | null;
 }) {
   const pathname = usePathname();
+  const { user } = useUser();
+  const firestore = useFirestore();
   const auth = useAuth();
   const router = useRouter();
+
+  const userDocRef = useMemoFirebase(
+    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
   const handleLogout = async () => {
     if (auth) {
@@ -55,18 +74,24 @@ function AppLayout({
     }
   };
 
-  const menuItems = [
-    { href: '/dashboard', label: 'Panel de Control', icon: Home },
-    { href: '/inventario', label: 'Inventario', icon: Warehouse },
-    { href: '/movimientos', label: 'Movimientos', icon: Replace },
-    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList },
-    { href: '/productos', label: 'Productos', icon: Box },
-    { href: '/categorias', label: 'Categorías', icon: Tags },
-    { href: '/proveedores', label: 'Proveedores', icon: Truck },
-    { href: '/depositos', label: 'Depósitos', icon: Archive },
-    { href: '/usuarios', label: 'Usuarios', icon: Users },
-    { href: '/configuracion', label: 'Configuración', icon: Settings },
+  const allMenuItems = [
+    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador', 'editor'] },
+    { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+    { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor'] },
+    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
+    { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
+    { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
+    { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
+    { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador'] },
+    { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador'] },
   ];
+  
+  const menuItems = useMemo(() => {
+    if (!currentUserProfile?.role) return [];
+    return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
+  }, [currentUserProfile]);
+
 
   const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
 

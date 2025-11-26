@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -74,12 +73,12 @@ type Product = {
   code: string;
   isArchived?: boolean;
 };
-type Deposit = { id: string; name: string };
+type Deposit = { id: string; name: string; jefeId?: string; };
 type UserProfile = { 
   id: string;
   firstName?: string;
   lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' 
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 export type StockMovementItem = {
   productId: string;
@@ -99,6 +98,7 @@ export type StockMovement = {
     toDate: () => Date;
   };
   items: StockMovementItem[];
+  totalValue: number;
 };
 type InventoryStock = {
   id: string;
@@ -171,6 +171,7 @@ export default function SolicitudesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
 
   // --- Settings Loading ---
   useEffect(() => {
@@ -186,7 +187,9 @@ export default function SolicitudesPage() {
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
     [firestore, user]
   );
-  const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+
 
   const productsCollection = useMemoFirebase(
     () =>
@@ -204,6 +207,14 @@ export default function SolicitudesPage() {
   );
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
+    
+  useEffect(() => {
+    if (isJefeDeposito && deposits) {
+      const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
+      setAssignedDepositId(assignedDeposit?.id || null);
+    }
+  }, [isJefeDeposito, deposits, user]);
+
 
   const inventoryCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'inventory') : null),
@@ -218,13 +229,27 @@ export default function SolicitudesPage() {
   );
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollection);
 
-  const movementsCollection = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'stockMovements'), where('type', '==', 'salida')) : null),
-    [firestore]
-  );
-  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsCollection);
+ const movementsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    let baseQuery = query(collection(firestore, 'stockMovements'), where('type', '==', 'salida'));
+    
+    if (currentUserProfile?.role === 'administrador') {
+      return baseQuery; // Admins see all
+    }
+    
+    if (isJefeDeposito && assignedDepositId) {
+      // Jefe sees all from their deposit
+      return query(baseQuery, where('depositId', '==', assignedDepositId));
+    }
+    
+    // Other users see only their own requests
+    return query(baseQuery, where('userId', '==', user.uid));
+ }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId]);
+
+ const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
   
   const isLoading =
+    isLoadingProfile ||
     isLoadingProducts ||
     isLoadingDeposits ||
     isLoadingInventory ||
@@ -248,12 +273,15 @@ export default function SolicitudesPage() {
   
   const selectedDepositId = form.watch('depositId');
   
-  // Set the actorId once the user data is available
+  // Set the actorId and depositId if user is Jefe
   useEffect(() => {
     if (user?.uid) {
         form.setValue('actorId', user.uid);
     }
-  }, [user, form]);
+    if (isJefeDeposito && assignedDepositId) {
+        form.setValue('depositId', assignedDepositId);
+    }
+  }, [user, form, isJefeDeposito, assignedDepositId]);
 
   // --- Effects ---
   useEffect(() => {
@@ -280,6 +308,8 @@ export default function SolicitudesPage() {
   const availableProductsForRequest = useMemo(() => {
     if (!products) return [];
     if (!selectedDepositId || !inventory) {
+       // Return empty if jefe de deposito has no deposit selected yet.
+      if (isJefeDeposito) return [];
       return products.filter((p) => !p.isArchived);
     }
 
@@ -294,18 +324,10 @@ export default function SolicitudesPage() {
     return products.filter(
       (product) => !product.isArchived && productsWithStock.has(product.id)
     );
-  }, [selectedDepositId, products, inventory]);
+  }, [selectedDepositId, products, inventory, isJefeDeposito]);
   
-  const canCreateRequest = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor' || currentUserProfile?.role === 'visualizador';
+  const canCreateRequest = currentUserProfile?.role !== 'visualizador';
   const isAdmin = currentUserProfile?.role === 'administrador';
-
-  const filteredMovements = useMemo(() => {
-    if (!movements || !user) return [];
-    if (isAdmin) {
-        return movements;
-    }
-    return movements.filter(mov => mov.userId === user.uid);
-  }, [movements, user, isAdmin]);
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
@@ -395,8 +417,12 @@ export default function SolicitudesPage() {
               productName: product?.name || 'N/A',
               quantity: item.quantity,
               unit: product?.unit || 'N/A',
+              price: product?.price || 0,
+              total: (product?.price || 0) * item.quantity
             };
         });
+        
+        const totalValue = movementItemsForDoc.reduce((sum, item) => sum + item.total, 0);
 
         const deposit = deposits?.find((d) => d.id === data.depositId);
         const actor = users?.find((u) => u.id === data.actorId);
@@ -415,6 +441,7 @@ export default function SolicitudesPage() {
           createdAt: serverTimestamp(),
           userId: user.uid,
           items: movementItemsForDoc,
+          totalValue: totalValue,
         });
       });
 
@@ -423,7 +450,7 @@ export default function SolicitudesPage() {
         description: 'El pedido ha sido registrado como un remito de salida.',
       });
       form.reset({
-        depositId: '',
+        depositId: isJefeDeposito ? assignedDepositId || '' : '',
         actorId: user.uid,
         items: [{ productId: '', quantity: 1 }],
       });
@@ -505,7 +532,9 @@ export default function SolicitudesPage() {
               <CardHeader>
                 <CardTitle>Crear Pedido de Productos</CardTitle>
                 <CardDescription>
-                  Completa el formulario para generar un remito de salida. El stock disponible se mostrará al seleccionar un producto.
+                  {isJefeDeposito && !assignedDepositId 
+                    ? 'Debes tener un depósito asignado para poder crear pedidos.' 
+                    : 'Completa el formulario para generar un remito de salida. El stock disponible se mostrará al seleccionar un producto.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -516,7 +545,7 @@ export default function SolicitudesPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Depósito de Origen</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona un depósito" />
@@ -660,9 +689,9 @@ export default function SolicitudesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Historial de Mis Pedidos</CardTitle>
+          <CardTitle>Historial de Pedidos</CardTitle>
           <CardDescription>
-             {isAdmin ? 'Como administrador, puedes ver todos los pedidos.' : 'Aquí puedes ver todos los pedidos que has generado.'}
+             {isAdmin ? 'Como administrador, puedes ver todos los pedidos.' : 'Aquí puedes ver los pedidos que has generado o los de tu depósito.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -690,16 +719,16 @@ export default function SolicitudesPage() {
                       <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                     </TableRow>
                   ))}
-                {!isLoadingMovements && filteredMovements.length === 0 && (
+                {!isLoadingMovements && movements?.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center h-24">
-                      No has generado ningún pedido todavía.
+                      {isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado para ver pedidos." : "No se encontraron pedidos."}
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoadingMovements &&
-                  filteredMovements
-                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
+                  movements
+                    ?.sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
                     .map((mov) => (
                       <TableRow key={mov.id}>
                         <TableCell className="font-medium">
