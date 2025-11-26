@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import './globals.css';
@@ -214,23 +215,13 @@ function AppLayout({
   );
 }
 
-function RootLayoutContent({ children }: { children: React.ReactNode }) {
-  const [globalSettings, setGlobalSettings] = useState<AppSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadSettings() {
-      const fetchedSettings = await getSettings();
-      setGlobalSettings(fetchedSettings);
-      setIsLoading(false);
-    }
-    loadSettings();
-  }, []);
-
-  if (isLoading) {
-    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="animate-spin h-12 w-12" /></div>; 
-  }
-  
+function RootLayoutContent({ 
+  children, 
+  globalSettings 
+}: { 
+  children: React.ReactNode, 
+  globalSettings: AppSettings | null 
+}) {
   return (
     <FirebaseClientProvider>
       <AppLayout globalSettings={globalSettings}>{children}</AppLayout>
@@ -240,11 +231,13 @@ function RootLayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const globalSettings = await getSettings();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -260,7 +253,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-background font-body antialiased">
-         <RootLayoutContent>{children}</RootLayoutContent>
+         <RootLayoutContent globalSettings={globalSettings}>{children}</RootLayoutContent>
       </body>
     </html>
   );

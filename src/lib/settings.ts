@@ -1,4 +1,3 @@
-'use server';
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -14,6 +13,8 @@ const settingsFilePath = path.join(
   'src/lib/app-settings.json'
 );
 
+// This function is intended to be run on the server, but not as a Server Action.
+// It reads from the file system, which is a server-side operation.
 export async function getSettings(): Promise<AppSettings> {
   try {
     const fileContent = await fs.readFile(settingsFilePath, 'utf-8');
@@ -27,7 +28,9 @@ export async function getSettings(): Promise<AppSettings> {
   }
 }
 
+// This function IS a Server Action, meant to be called from the client.
 export async function updateSettings(formData: FormData) {
+  'use server';
   const currentSettings = await getSettings();
 
   const newSettings: AppSettings = {
