@@ -92,6 +92,7 @@ const formSchema = z.object({
     .min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
   supplierId: z.string().min(1, { message: 'El proveedor es requerido.' }),
+  price: z.coerce.number().min(0, { message: 'El precio no puede ser negativo.'}),
   minStock: z.coerce
     .number()
     .min(0, { message: 'El stock mínimo no puede ser negativo.' }),
@@ -118,6 +119,7 @@ type Product = {
   name: string;
   categoryId: string;
   supplierId: string;
+  price: number;
   minStock: number;
   unit: (typeof unitTypes)[number];
   isArchived?: boolean;
@@ -175,6 +177,7 @@ export default function ProductosPage() {
       name: '',
       categoryId: '',
       supplierId: '',
+      price: 0,
       minStock: 0,
       unit: undefined,
     },
@@ -190,6 +193,7 @@ export default function ProductosPage() {
         name: editingProduct.name,
         categoryId: editingProduct.categoryId,
         supplierId: editingProduct.supplierId,
+        price: editingProduct.price,
         minStock: editingProduct.minStock,
         unit: editingProduct.unit,
       });
@@ -215,6 +219,7 @@ export default function ProductosPage() {
       createForm.reset({
         ...data, // Keep previous data
         name: '', // Clear only name
+        price: 0,
         minStock: 0, // Reset minStock
       });
     } catch (error) {
@@ -289,6 +294,10 @@ export default function ProductosPage() {
   };
 
   const isLoading = isLoadingProducts || isLoadingCategories || isLoadingSuppliers;
+  
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -312,7 +321,7 @@ export default function ProductosPage() {
               <Form {...createForm}>
                 <form
                   onSubmit={createForm.handleSubmit(onCreateSubmit)}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+                  className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7"
                 >
                   <FormField
                     control={createForm.control}
@@ -423,6 +432,19 @@ export default function ProductosPage() {
                       </FormItem>
                     )}
                   />
+                   <FormField
+                    control={createForm.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Precio</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="Ej: 1500.50" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <FormField
                     control={createForm.control}
                     name="minStock"
@@ -468,7 +490,8 @@ export default function ProductosPage() {
                       <TableHead>Nombre</TableHead>
                       <TableHead>Categoría</TableHead>
                       <TableHead>Proveedor</TableHead>
-                      <TableHead>Tipo de Unidad</TableHead>
+                      <TableHead>Unidad</TableHead>
+                      <TableHead>Precio</TableHead>
                       <TableHead>Stock Mínimo</TableHead>
                       {canManageProducts && (
                         <TableHead className="text-right">Acciones</TableHead>
@@ -497,6 +520,9 @@ export default function ProductosPage() {
                           <TableCell>
                             <Skeleton className="h-4 w-24" />
                           </TableCell>
+                           <TableCell>
+                            <Skeleton className="h-4 w-24" />
+                          </TableCell>
                           {canManageProducts && (
                             <TableCell>
                               <Skeleton className="ml-auto h-8 w-20" />
@@ -507,7 +533,7 @@ export default function ProductosPage() {
                     {!isLoading && products?.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={canManageProducts ? 7 : 6}
+                          colSpan={canManageProducts ? 8 : 7}
                           className="text-center"
                         >
                           No hay productos creados.
@@ -531,6 +557,9 @@ export default function ProductosPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {product.unit}
+                          </TableCell>
+                           <TableCell className="text-muted-foreground font-medium">
+                            {formatPrice(product.price)}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {product.minStock}
@@ -695,6 +724,19 @@ export default function ProductosPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Precio</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

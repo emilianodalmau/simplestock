@@ -103,6 +103,10 @@
           "type": "string",
           "description": "Reference to the Supplier of this product."
         },
+        "price": {
+            "type": "number",
+            "description": "The price per unit of the product."
+        },
         "minStock": {
           "type": "number",
           "description": "The minimum stock level for the product."
@@ -130,6 +134,7 @@
         "name",
         "categoryId",
         "supplierId",
+        "price",
         "minStock",
         "unit"
       ]
