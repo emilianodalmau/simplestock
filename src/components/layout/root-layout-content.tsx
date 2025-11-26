@@ -36,6 +36,7 @@ import {
   Settings,
   ClipboardList,
   Shield,
+  FileCode,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -52,6 +53,7 @@ type UserProfile = {
 };
 
 type Workspace = {
+    name?: string;
     appName?: string;
     logoUrl?: string;
 }
@@ -147,6 +149,9 @@ function AppLayout({
   
   const appName = workspaceData?.appName || globalSettings?.appName || 'Inventario';
   const logoUrl = workspaceData?.logoUrl || globalSettings?.logoUrl;
+  const workspaceName = workspaceData?.name;
+  const globalAppName = globalSettings?.appName || 'SIMPLESTOCK';
+
 
   return (
     <SidebarProvider>
@@ -166,7 +171,7 @@ function AppLayout({
             )}
             <div className="flex flex-col">
               <span className="font-semibold">
-                {appName}
+                {workspaceName || appName}
               </span>
             </div>
           </div>
@@ -193,6 +198,11 @@ function AppLayout({
             <SidebarMenuItem>
               <SidebarMenuButton onClick={handleLogout} icon={<LogOut />}>
                 <span>Cerrar Sesión</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton disabled icon={<FileCode />}>
+                <span>{globalAppName}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
