@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -296,6 +297,13 @@ export default function MovimientosPage() {
   });
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
+  
+  // Set the depositId if user is Jefe
+  useEffect(() => {
+    if (isJefeDeposito && assignedDepositId) {
+        form.setValue('depositId', assignedDepositId);
+    }
+  }, [isJefeDeposito, assignedDepositId, form]);
 
   // --- Effects ---
   useEffect(() => {
@@ -553,7 +561,8 @@ export default function MovimientosPage() {
 
   const canManageMovements =
     currentUserProfile?.role === 'administrador' ||
-    currentUserProfile?.role === 'editor';
+    currentUserProfile?.role === 'editor' ||
+    currentUserProfile?.role === 'jefe_deposito';
   const isAdmin = currentUserProfile?.role === 'administrador';
   
   const formatPrice = (price: number) => {
@@ -611,6 +620,7 @@ export default function MovimientosPage() {
                         <Select
                           onValueChange={field.onChange}
                           value={field.value}
+                          disabled={isJefeDeposito}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -686,6 +696,7 @@ export default function MovimientosPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => append({ productId: '', quantity: 1 })}
+                      disabled={!selectedDepositId && !isJefeDeposito}
                     >
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Agregar Producto
