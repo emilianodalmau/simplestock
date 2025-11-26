@@ -234,12 +234,6 @@ export default function SolicitudesPage() {
   );
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
-    
-  const usersCollection = useMemoFirebase(
-    () => (firestore && workspaceId ? query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId)) : null),
-    [firestore, workspaceId]
-  );
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollection);
 
  const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !user || !collectionPrefix) return null;
@@ -265,7 +259,6 @@ export default function SolicitudesPage() {
     isLoadingProducts ||
     isLoadingDeposits ||
     isLoadingInventory ||
-    isLoadingUsers ||
     isLoadingMovements;
 
   // --- Form Setup ---
@@ -343,7 +336,7 @@ export default function SolicitudesPage() {
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
-    if (!firestore || !user || !productsMap.size || !canCreateRequest || !collectionPrefix) return;
+    if (!firestore || !user || !productsMap.size || !canCreateRequest || !collectionPrefix || !currentUserProfile) return;
     
     // --- 1. Client-side Validation ---
     for (const item of data.items) {
@@ -437,8 +430,7 @@ export default function SolicitudesPage() {
         const totalValue = movementItemsForDoc.reduce((sum, item) => sum + item.total, 0);
 
         const deposit = deposits?.find((d) => d.id === data.depositId);
-        const actor = users?.find((u) => u.id === data.actorId);
-        const actorName = `${actor?.firstName || ''} ${actor?.lastName || ''}`.trim();
+        const actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
 
         const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
         transaction.set(movementRef, {
