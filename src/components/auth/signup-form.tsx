@@ -86,7 +86,11 @@ export function SignupForm() {
         role: role,
       });
 
-      router.push("/dashboard");
+      if (role === 'super-admin') {
+        router.push("/super-admin");
+      } else {
+        router.push("/dashboard");
+      }
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {

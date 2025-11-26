@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -16,10 +17,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { useAuth } from "@/firebase";
+import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { doc, getDoc } from 'firebase/firestore';
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -33,6 +35,7 @@ export function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
   const auth = useAuth();
+  const firestore = useFirestore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -44,10 +47,29 @@ export function LoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
+    if (!firestore) {
+      setIsLoading(false);
+      toast({
+        title: "Error",
+        description: "El servicio de base de datos no está disponible.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
-      router.push("/dashboard");
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+
+      // Fetch user role from Firestore
+      const userDocRef = doc(firestore, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists() && userDoc.data().role === 'super-admin') {
+        router.push("/super-admin");
+      } else {
+        router.push("/dashboard");
+      }
 
     } catch (error: any) {
       toast({
