@@ -26,6 +26,12 @@ service cloud.firestore {
       return isSignedIn() && (userRole in ['administrador', 'editor']);
     }
     
+    function isJefeEditorOrAdmin() {
+      // Securely check for jefe, editor or admin role.
+      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return isSignedIn() && (userRole in ['administrador', 'editor', 'jefe_deposito']);
+    }
+    
     // ------------------------------------------------------------------------
     // Collection Rules
     // ------------------------------------------------------------------------
@@ -67,8 +73,8 @@ service cloud.firestore {
       // CREATE/DELETE: Only editors or admins can create or delete deposits.
       allow create, delete: if isEditorOrAdmin();
 
-      // UPDATE: Editors can update basic details, Admins can also assign a jefe.
-      allow update: if isEditorOrAdmin();
+      // UPDATE: Editors/Admins can update details and Admins can assign a jefe.
+      allow update: if isAdmin() || isEditorOrAdmin();
     }
     
     match /suppliers/{supplierId} {
@@ -83,16 +89,16 @@ service cloud.firestore {
       // READ: Any signed-in user can read inventory stock levels.
       allow get, list: if isSignedIn();
 
-      // WRITE: Only editors or admins can modify stock levels.
-      // This is handled via transactions in the stockMovements logic.
-      allow write: if isEditorOrAdmin();
+      // WRITE: Handled transactionally. We allow any user involved in a valid
+      // stock movement to modify stock. The transaction logic ensures validity.
+      allow write: if isJefeEditorOrAdmin();
     }
 
     match /stockMovements/{movementId} {
       // READ: Any signed-in user can read movement history.
       allow get, list: if isSignedIn();
-      // WRITE: Editors and Admins can create movements.
-      allow create: if isEditorOrAdmin();
+      // WRITE: Jefes, Editors and Admins can create movements.
+      allow create: if isJefeEditorOrAdmin();
       // UPDATE: Disallowed to preserve audit trail. Annul (delete) and recreate is the pattern.
       allow update: if false;
       // DELETE: Only Admins can delete (annul) a movement to correct errors.
@@ -103,8 +109,8 @@ service cloud.firestore {
       // READ: Signed-in users can read counters (though not strictly necessary for client).
       allow get: if isSignedIn();
       // WRITE: Only authenticated users performing transactions (server-side logic is key) should update.
-      // We lock this down to editors/admins for safety.
-      allow write: if isEditorOrAdmin();
+      // We lock this down to users who can create movements.
+      allow write: if isJefeEditorOrAdmin();
     }
   }
 }
