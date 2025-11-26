@@ -110,8 +110,15 @@ export default function WorkspacesPage() {
   
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user: currentUser } = useUser();
 
   // --- Data Loading ---
+  const currentUserDocRef = useMemoFirebase(
+    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    [firestore, currentUser]
+  );
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
+  
   const workspacesCollection = useMemoFirebase(
     () => (firestore ? collection(firestore, 'workspaces') : null),
     [firestore]
@@ -119,12 +126,16 @@ export default function WorkspacesPage() {
   const { data: workspaces, isLoading: isLoadingWorkspaces } =
     useCollection<Workspace>(workspacesCollection);
 
-  const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
-  );
+  // Corrected users query: only fetch if super-admin
+  const usersCollectionQuery = useMemoFirebase(() => {
+    if (firestore && currentUserProfile?.role === 'super-admin') {
+      return collection(firestore, 'users');
+    }
+    return null; // Don't fetch for other roles
+  }, [firestore, currentUserProfile]);
+
   const { data: users, isLoading: isLoadingUsers } =
-    useCollection<UserProfile>(usersCollection);
+    useCollection<UserProfile>(usersCollectionQuery);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -249,7 +260,7 @@ export default function WorkspacesPage() {
     setIsCreateDialogOpen(false);
   }
 
-  const isLoading = isLoadingWorkspaces || isLoadingUsers;
+  const isLoading = isLoadingWorkspaces || isLoadingUsers || isLoadingProfile;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
