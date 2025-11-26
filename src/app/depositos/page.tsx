@@ -119,7 +119,10 @@ export default function DepositosPage() {
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
   
   const usersCollectionQuery = useMemoFirebase(() => {
-    if (!firestore || !currentUserProfile?.workspaceId || currentUserProfile.role !== 'administrador') return null;
+    if (!firestore || !currentUserProfile?.workspaceId) return null;
+    const allowedRoles = ['administrador', 'jefe_deposito'];
+    if (!allowedRoles.includes(currentUserProfile.role!)) return null;
+
     return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
   }, [firestore, currentUserProfile]);
 
@@ -279,9 +282,11 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
     
-  const isAdmin = currentUserProfile?.role === 'administrador';
+  const canAssignJefe =
+    currentUserProfile?.role === 'administrador' ||
+    currentUserProfile?.role === 'jefe_deposito';
   
-  const isLoading = isLoadingDeposits || (isAdmin && isLoadingUsers);
+  const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -360,7 +365,7 @@ export default function DepositosPage() {
                     <TableRow>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Descripción</TableHead>
-                       {isAdmin && <TableHead>Jefe Asignado</TableHead>}
+                       {canAssignJefe && <TableHead>Jefe Asignado</TableHead>}
                       {canManageDeposits && (
                         <TableHead className="text-right">Acciones</TableHead>
                       )}
@@ -376,7 +381,7 @@ export default function DepositosPage() {
                           <TableCell>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
-                          {isAdmin && (
+                          {canAssignJefe && (
                             <TableCell>
                               <Skeleton className="h-10 w-40" />
                             </TableCell>
@@ -391,7 +396,7 @@ export default function DepositosPage() {
                     {!isLoading && deposits?.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={isAdmin ? 4 : (canManageDeposits ? 3 : 2)}
+                          colSpan={canAssignJefe ? 4 : (canManageDeposits ? 3 : 2)}
                           className="text-center"
                         >
                           No hay depósitos creados.
@@ -407,7 +412,7 @@ export default function DepositosPage() {
                           <TableCell className="text-muted-foreground">
                             {deposit.description || '-'}
                           </TableCell>
-                          {isAdmin && (
+                          {canAssignJefe && (
                             <TableCell>
                               <Select
                                 value={deposit.jefeId || 'unassigned'}
