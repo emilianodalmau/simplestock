@@ -72,6 +72,7 @@ type Product = {
   name: string;
   unit: string;
   code: string;
+  price: number;
   isArchived?: boolean;
 };
 type Deposit = { id: string; name: string; jefeId?: string; };
@@ -80,12 +81,15 @@ type UserProfile = {
   firstName?: string;
   lastName?: string;
   role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  workspaceId?: string;
 };
 export type StockMovementItem = {
   productId: string;
   productName: string;
   quantity: number;
   unit: string;
+  price: number;
+  total: number;
 };
 export type StockMovement = {
   id: string;
@@ -190,21 +194,27 @@ export default function SolicitudesPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  const workspaceId = currentUserProfile?.workspaceId;
+
+  const collectionPrefix = useMemo(() => {
+    if (!workspaceId) return null;
+    return `workspaces/${workspaceId}`;
+  }, [workspaceId]);
 
 
   const productsCollection = useMemoFirebase(
     () =>
-      firestore
-        ? query(collection(firestore, 'products'), where('isArchived', '!=', true))
+      firestore && collectionPrefix
+        ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true))
         : null,
-    [firestore]
+    [firestore, collectionPrefix]
   );
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
   const depositsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'deposits') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
@@ -218,21 +228,21 @@ export default function SolicitudesPage() {
 
 
   const inventoryCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'inventory') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
     
   const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
+    () => (firestore && workspaceId ? query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId)) : null),
+    [firestore, workspaceId]
   );
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollection);
 
  const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    let baseQuery = query(collection(firestore, 'stockMovements'), where('type', '==', 'salida'));
+    if (!firestore || !user || !collectionPrefix) return null;
+    let baseQuery = query(collection(firestore, `${collectionPrefix}/stockMovements`), where('type', '==', 'salida'));
     
     if (currentUserProfile?.role === 'administrador') {
       return baseQuery; // Admins see all
@@ -245,7 +255,7 @@ export default function SolicitudesPage() {
     
     // Other users see only their own requests
     return query(baseQuery, where('userId', '==', user.uid));
- }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId]);
+ }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId, collectionPrefix]);
 
  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
   
@@ -332,7 +342,7 @@ export default function SolicitudesPage() {
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
-    if (!firestore || !user || !productsMap.size || !canCreateRequest) return;
+    if (!firestore || !user || !productsMap.size || !canCreateRequest || !collectionPrefix) return;
     
     // --- 1. Client-side Validation ---
     for (const item of data.items) {
@@ -364,12 +374,12 @@ export default function SolicitudesPage() {
       await runTransaction(firestore, async (transaction) => {
         // --- 2. Server-side Read & Validation (as a safeguard) ---
         const stockDocRefs = new Map<string, any>();
-        const counterRef = doc(firestore, 'counters', 'remitoCounter');
+        const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
 
         // Pre-fetch all necessary stock documents
         for (const [productId] of productChanges.entries()) {
           const inventoryDocId = `${productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
           stockDocRefs.set(productId, stockDocRef);
         }
         
@@ -429,7 +439,7 @@ export default function SolicitudesPage() {
         const actor = users?.find((u) => u.id === data.actorId);
         const actorName = `${actor?.firstName || ''} ${actor?.lastName || ''}`.trim();
 
-        const movementRef = doc(collection(firestore, 'stockMovements'));
+        const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
         transaction.set(movementRef, {
           id: movementRef.id,
           remitoNumber: formattedRemitoNumber,
@@ -468,14 +478,14 @@ export default function SolicitudesPage() {
   };
 
   const handleDeleteMovement = async (movement: StockMovement) => {
-    if (!firestore) return;
+    if (!firestore || !collectionPrefix) return;
 
     try {
       await runTransaction(firestore, async (transaction) => {
         // 1. Revert stock for each item in the movement
         for (const item of movement.items) {
           const inventoryDocId = `${item.productId}_${movement.depositId}`;
-          const stockDocRef = doc(firestore, 'inventory', inventoryDocId);
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
 
           // The change is the opposite of the original movement type
           const change =
@@ -492,7 +502,7 @@ export default function SolicitudesPage() {
         }
 
         // 2. Delete the movement document itself
-        const movementDocRef = doc(firestore, 'stockMovements', movement.id);
+        const movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements`, movement.id);
         transaction.delete(movementDocRef);
       });
 

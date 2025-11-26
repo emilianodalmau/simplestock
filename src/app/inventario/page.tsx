@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
@@ -63,6 +64,7 @@ type Deposit = {
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  workspaceId?: string;
 };
 
 type InventoryStock = {
@@ -118,10 +120,16 @@ export default function InventarioPage() {
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  const workspaceId = currentUserProfile?.workspaceId;
+
+  const collectionPrefix = useMemo(() => {
+    if (!workspaceId) return null;
+    return `workspaces/${workspaceId}`;
+  }, [workspaceId]);
 
   const depositsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'deposits') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
   
@@ -135,31 +143,31 @@ export default function InventarioPage() {
 
   // Fetch all necessary collections
   const productsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'products') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/products`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
   const categoriesCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'categories') : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null),
+    [firestore, collectionPrefix]
   );
   const { data: categories, isLoading: isLoadingCategories } =
     useCollection<Category>(categoriesCollection);
 
   const inventoryQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !collectionPrefix) return null;
     // For Jefe de Deposito, we filter the inventory later in the processing logic,
     // so we fetch all inventory they have access to first. If they have an assigned
     // deposit, the query is already filtered. If not, we still need all inventory
     // for other roles.
     if (isJefeDeposito && assignedDepositId) {
-        return query(collection(firestore, 'inventory'), where('depositId', '==', assignedDepositId));
+        return query(collection(firestore, `${collectionPrefix}/inventory`), where('depositId', '==', assignedDepositId));
     }
     // Admins/Editors/Viewers see all inventory.
-    return collection(firestore, 'inventory');
-  }, [firestore, isJefeDeposito, assignedDepositId]);
+    return collection(firestore, `${collectionPrefix}/inventory`);
+  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId]);
 
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryQuery);

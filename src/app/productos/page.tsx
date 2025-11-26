@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -128,6 +128,7 @@ type Product = {
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'editor' | 'visualizador';
+  workspaceId?: string;
 };
 
 const generateProductCode = (name: string): string => {
@@ -149,24 +150,30 @@ export default function ProductosPage() {
     [firestore, currentUser]
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  const workspaceId = currentUserProfile?.workspaceId;
+
+  const collectionPrefix = useMemo(() => {
+      if (!workspaceId) return null;
+      return `workspaces/${workspaceId}`;
+  }, [workspaceId]);
 
   const categoriesCollection = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'categories')) : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? query(collection(firestore, `${collectionPrefix}/categories`)) : null),
+    [firestore, collectionPrefix]
   );
   const { data: categories, isLoading: isLoadingCategories } =
     useCollection<Category>(categoriesCollection);
 
   const suppliersCollection = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'suppliers')) : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? query(collection(firestore, `${collectionPrefix}/suppliers`)) : null),
+    [firestore, collectionPrefix]
   );
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
   const productsCollection = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'products'), where('isArchived', '!=', true)) : null),
-    [firestore]
+    () => (firestore && collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true)) : null),
+    [firestore, collectionPrefix]
   );
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
@@ -201,11 +208,11 @@ export default function ProductosPage() {
   }, [editingProduct, editForm]);
 
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore) return;
+    if (!firestore || !collectionPrefix) return;
     setIsSubmitting(true);
     try {
       const productCode = generateProductCode(data.name);
-      await addDoc(collection(firestore, 'products'), {
+      await addDoc(collection(firestore, `${collectionPrefix}/products`), {
         ...data,
         code: productCode,
         isArchived: false,
@@ -236,10 +243,10 @@ export default function ProductosPage() {
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !editingProduct) return;
+    if (!firestore || !editingProduct || !collectionPrefix) return;
     setIsEditSubmitting(true);
     try {
-      const productRef = doc(firestore, 'products', editingProduct.id);
+      const productRef = doc(firestore, `${collectionPrefix}/products`, editingProduct.id);
       await updateDoc(productRef, {
         ...data,
         updatedAt: serverTimestamp(),
@@ -262,9 +269,9 @@ export default function ProductosPage() {
   };
 
   const handleArchiveProduct = async (productId: string) => {
-    if (!firestore) return;
+    if (!firestore || !collectionPrefix) return;
     try {
-      await updateDoc(doc(firestore, 'products', productId), {
+      await updateDoc(doc(firestore, `${collectionPrefix}/products`, productId), {
         isArchived: true
       });
       toast({
