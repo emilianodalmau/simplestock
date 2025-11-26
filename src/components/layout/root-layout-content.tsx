@@ -147,9 +147,8 @@ function AppLayout({
     return <main className="flex-1">{children}</main>;
   }
   
-  const appName = workspaceData?.appName || globalSettings?.appName || 'Inventario';
+  const displayAppName = workspaceData?.name || workspaceData?.appName || globalSettings?.appName || 'Inventario';
   const logoUrl = workspaceData?.logoUrl || globalSettings?.logoUrl;
-  const workspaceName = workspaceData?.name;
   const globalAppName = globalSettings?.appName || 'SIMPLESTOCK';
 
 
@@ -171,7 +170,7 @@ function AppLayout({
             )}
             <div className="flex flex-col">
               <span className="font-semibold">
-                {workspaceName || appName}
+                {displayAppName}
               </span>
             </div>
           </div>

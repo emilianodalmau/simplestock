@@ -31,13 +31,14 @@ type UserProfile = {
 };
 
 type Workspace = {
+    name?: string;
     appName?: string;
     logoUrl?: string;
 }
 
 export default function ConfiguracionPage() {
   // State for form fields
-  const [appName, setAppName] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
   const [logoPreview, setLogoPreview] = useState<string | null>('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,14 +67,12 @@ export default function ConfiguracionPage() {
   // Effect to populate form when data loads
   useEffect(() => {
     if (isSuperAdmin) {
-      // For super-admin, we don't load from a file on the client.
-      // We can assume the placeholders are fine, as `updateSettings` will handle the logic.
-      // Or we can pre-fill from a known default if needed. For now, empty is fine.
-      setAppName('');
+      // For super-admin, we allow editing the global fallback appName
+      setWorkspaceName(workspaceData?.appName || '');
       setLogoPreview(null);
       setIsLoading(false);
     } else if (isWorkspaceAdmin && workspaceData) {
-      setAppName(workspaceData.appName || '');
+      setWorkspaceName(workspaceData.name || '');
       setLogoPreview(workspaceData.logoUrl || '');
       setIsLoading(false);
     }
@@ -118,14 +117,14 @@ export default function ConfiguracionPage() {
       if (isSuperAdmin) {
         // --- Super Admin: Update global settings file via Server Action ---
         const formData = new FormData();
-        formData.append('appName', appName);
+        formData.append('appName', workspaceName); // Super-admin still edits appName
         formData.append('logoUrl', logoPreview || '');
         await updateSettings(formData);
 
       } else if (isWorkspaceAdmin && workspaceDocRef) {
         // --- Workspace Admin: Update workspace document in Firestore ---
         await updateDoc(workspaceDocRef, {
-            appName: appName,
+            name: workspaceName, // Edit the workspace name
             logoUrl: logoPreview || '',
             updatedAt: serverTimestamp(),
         });
@@ -183,13 +182,13 @@ export default function ConfiguracionPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="appName">Nombre de la Aplicación</Label>
+              <Label htmlFor="workspaceName">{isSuperAdmin ? "Nombre de la App (Fallback)" : "Nombre del Workspace"}</Label>
               <Input
-                id="appName"
-                name="appName"
+                id="workspaceName"
+                name="workspaceName"
                 placeholder="Ej: Mi Inventario"
-                value={appName}
-                onChange={(e) => setAppName(e.target.value)}
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
