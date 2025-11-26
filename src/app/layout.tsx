@@ -78,11 +78,12 @@ function AppLayout({
 
   const allMenuItems = [
     { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
-    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador', 'super-admin'] },
+    { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
+    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
     { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'super-admin'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'super-admin'] },
     { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'super-admin'] },

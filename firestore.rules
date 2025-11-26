@@ -54,6 +54,10 @@ service cloud.firestore {
       // DELETE: Only admins can delete user documents for now.
       allow delete: if isAdmin();
     }
+    
+    match /clients/{clientId} {
+      allow read, write: if isSuperAdmin();
+    }
 
     match /categories/{categoryId} {
       // READ: Any signed-in user can get a single category or list all categories.
