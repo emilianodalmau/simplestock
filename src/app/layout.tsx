@@ -159,7 +159,7 @@ function AppLayout({
         <SidebarHeader>
           <div className="flex items-center gap-2">
             {logoUrl && (
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg">
                 <Image
                   src={logoUrl}
                   alt="Logo"
