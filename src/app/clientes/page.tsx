@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -93,6 +93,7 @@ type Client = {
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'editor' | 'visualizador';
+  workspaceId?: string;
 };
 
 export default function ClientesPage() {
@@ -108,10 +109,16 @@ export default function ClientesPage() {
     [firestore, currentUser]
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  
+  const collectionPath = useMemo(() => {
+    if (!currentUserProfile?.workspaceId) return null;
+    return `workspaces/${currentUserProfile.workspaceId}/clients`;
+  }, [currentUserProfile?.workspaceId]);
+
 
   const clientsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'clients') : null),
-    [firestore]
+    () => (firestore && collectionPath ? collection(firestore, collectionPath) : null),
+    [firestore, collectionPath]
   );
   const { data: clients, isLoading } = useCollection<Client>(clientsCollection);
 
@@ -143,7 +150,7 @@ export default function ClientesPage() {
   }, [editingClient, editForm]);
 
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore) return;
+    if (!firestore || !clientsCollection) return;
     setIsSubmitting(true);
     
     const newClientData = {
@@ -151,7 +158,7 @@ export default function ClientesPage() {
         createdAt: serverTimestamp(),
     };
 
-    addDoc(collection(firestore, 'clients'), newClientData)
+    addDoc(clientsCollection, newClientData)
       .then(() => {
         toast({
           title: 'Cliente Creado',
@@ -161,7 +168,7 @@ export default function ClientesPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: 'clients',
+            path: clientsCollection.path,
             operation: 'create',
             requestResourceData: newClientData,
         });
@@ -173,10 +180,10 @@ export default function ClientesPage() {
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !editingClient) return;
+    if (!firestore || !editingClient || !clientsCollection) return;
     setIsEditSubmitting(true);
     
-    const clientRef = doc(firestore, 'clients', editingClient.id);
+    const clientRef = doc(clientsCollection, editingClient.id);
     const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
@@ -192,7 +199,7 @@ export default function ClientesPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `clients/${editingClient.id}`,
+            path: clientRef.path,
             operation: 'update',
             requestResourceData: updatedData,
         });
@@ -204,8 +211,8 @@ export default function ClientesPage() {
   };
 
   const handleDeleteClient = async (clientId: string) => {
-    if (!firestore) return;
-    const clientRef = doc(firestore, 'clients', clientId);
+    if (!firestore || !clientsCollection) return;
+    const clientRef = doc(clientsCollection, clientId);
 
     deleteDoc(clientRef)
       .then(() => {
@@ -216,7 +223,7 @@ export default function ClientesPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `clients/${clientId}`,
+            path: clientRef.path,
             operation: 'delete',
         });
         errorEmitter.emit('permission-error', permissionError);

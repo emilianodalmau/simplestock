@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -89,6 +89,7 @@ type Supplier = {
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'editor' | 'visualizador';
+  workspaceId?: string;
 };
 
 export default function ProveedoresPage() {
@@ -105,9 +106,14 @@ export default function ProveedoresPage() {
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
+  const collectionPath = useMemo(() => {
+    if (!currentUserProfile?.workspaceId) return null;
+    return `workspaces/${currentUserProfile.workspaceId}/suppliers`;
+  }, [currentUserProfile?.workspaceId]);
+
   const suppliersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'suppliers') : null),
-    [firestore]
+    () => (firestore && collectionPath ? collection(firestore, collectionPath) : null),
+    [firestore, collectionPath]
   );
   const { data: suppliers, isLoading } =
     useCollection<Supplier>(suppliersCollection);
@@ -136,7 +142,7 @@ export default function ProveedoresPage() {
   }, [editingSupplier, editForm]);
 
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore) return;
+    if (!firestore || !suppliersCollection) return;
     setIsSubmitting(true);
     
     const newSupplierData = {
@@ -144,7 +150,7 @@ export default function ProveedoresPage() {
         createdAt: serverTimestamp(),
     };
 
-    addDoc(collection(firestore, 'suppliers'), newSupplierData)
+    addDoc(suppliersCollection, newSupplierData)
       .then(() => {
         toast({
           title: 'Proveedor Creado',
@@ -154,7 +160,7 @@ export default function ProveedoresPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: 'suppliers',
+            path: suppliersCollection.path,
             operation: 'create',
             requestResourceData: newSupplierData,
         });
@@ -166,10 +172,10 @@ export default function ProveedoresPage() {
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !editingSupplier) return;
+    if (!firestore || !editingSupplier || !suppliersCollection) return;
     setIsEditSubmitting(true);
     
-    const supplierRef = doc(firestore, 'suppliers', editingSupplier.id);
+    const supplierRef = doc(suppliersCollection, editingSupplier.id);
     const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
@@ -185,7 +191,7 @@ export default function ProveedoresPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `suppliers/${editingSupplier.id}`,
+            path: supplierRef.path,
             operation: 'update',
             requestResourceData: updatedData,
         });
@@ -197,8 +203,8 @@ export default function ProveedoresPage() {
   };
 
   const handleDeleteSupplier = async (supplierId: string) => {
-    if (!firestore) return;
-    const supplierRef = doc(firestore, 'suppliers', supplierId);
+    if (!firestore || !suppliersCollection) return;
+    const supplierRef = doc(suppliersCollection, supplierId);
 
     deleteDoc(supplierRef)
       .then(() => {
@@ -209,7 +215,7 @@ export default function ProveedoresPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `suppliers/${supplierId}`,
+            path: supplierRef.path,
             operation: 'delete',
         });
         errorEmitter.emit('permission-error', permissionError);

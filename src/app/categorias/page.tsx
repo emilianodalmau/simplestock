@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -88,6 +88,7 @@ type Category = {
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'editor' | 'visualizador';
+  workspaceId?: string;
 };
 
 export default function CategoriasPage() {
@@ -104,9 +105,14 @@ export default function CategoriasPage() {
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
 
+  const collectionPath = useMemo(() => {
+    if (!currentUserProfile?.workspaceId) return null;
+    return `workspaces/${currentUserProfile.workspaceId}/categories`;
+  }, [currentUserProfile?.workspaceId]);
+
   const categoriesCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'categories') : null),
-    [firestore]
+    () => (firestore && collectionPath ? collection(firestore, collectionPath) : null),
+    [firestore, collectionPath]
   );
   const { data: categories, isLoading } =
     useCollection<Category>(categoriesCollection);
@@ -133,7 +139,7 @@ export default function CategoriasPage() {
   }, [editingCategory, editForm]);
 
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore) return;
+    if (!firestore || !categoriesCollection) return;
     setIsSubmitting(true);
 
     const newCategoryData = {
@@ -141,7 +147,7 @@ export default function CategoriasPage() {
       createdAt: serverTimestamp(),
     };
 
-    addDoc(collection(firestore, 'categories'), newCategoryData)
+    addDoc(categoriesCollection, newCategoryData)
       .then(() => {
         toast({
           title: 'Categoría Creada',
@@ -151,7 +157,7 @@ export default function CategoriasPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: 'categories',
+            path: categoriesCollection.path,
             operation: 'create',
             requestResourceData: newCategoryData,
         });
@@ -163,10 +169,10 @@ export default function CategoriasPage() {
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !editingCategory) return;
+    if (!firestore || !editingCategory || !categoriesCollection) return;
     setIsEditSubmitting(true);
     
-    const categoryRef = doc(firestore, 'categories', editingCategory.id);
+    const categoryRef = doc(categoriesCollection, editingCategory.id);
     const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
@@ -182,7 +188,7 @@ export default function CategoriasPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `categories/${editingCategory.id}`,
+            path: categoryRef.path,
             operation: 'update',
             requestResourceData: updatedData,
         });
@@ -194,8 +200,8 @@ export default function CategoriasPage() {
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    if (!firestore) return;
-    const categoryRef = doc(firestore, 'categories', categoryId);
+    if (!firestore || !categoriesCollection) return;
+    const categoryRef = doc(categoriesCollection, categoryId);
     
     deleteDoc(categoryRef)
       .then(() => {
@@ -206,7 +212,7 @@ export default function CategoriasPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `categories/${categoryId}`,
+            path: categoryRef.path,
             operation: 'delete',
         });
         errorEmitter.emit('permission-error', permissionError);

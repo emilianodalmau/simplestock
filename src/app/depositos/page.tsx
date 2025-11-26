@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -20,6 +20,8 @@ import {
   doc,
   serverTimestamp,
   deleteField,
+  query,
+  where,
 } from 'firebase/firestore';
 import {
   Card,
@@ -98,6 +100,7 @@ type UserProfile = {
   id: string;
   firstName?: string;
   lastName?: string;
+  workspaceId?: string;
   role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
@@ -115,15 +118,21 @@ export default function DepositosPage() {
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
   
-  const usersCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'users') : null),
-    [firestore]
-  );
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollection);
+  const usersCollectionQuery = useMemoFirebase(() => {
+    if (!firestore || !currentUserProfile?.workspaceId) return null;
+    return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
+  }, [firestore, currentUserProfile?.workspaceId]);
+
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
+
+  const collectionPath = useMemo(() => {
+    if (!currentUserProfile?.workspaceId) return null;
+    return `workspaces/${currentUserProfile.workspaceId}/deposits`;
+  }, [currentUserProfile?.workspaceId]);
 
   const depositsCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'deposits') : null),
-    [firestore]
+    () => (firestore && collectionPath ? collection(firestore, collectionPath) : null),
+    [firestore, collectionPath]
   );
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
@@ -161,7 +170,7 @@ export default function DepositosPage() {
   }, [editingDeposit, editForm]);
 
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore) return;
+    if (!firestore || !depositsCollection) return;
     setIsSubmitting(true);
     
     const newDepositData = {
@@ -169,7 +178,7 @@ export default function DepositosPage() {
         createdAt: serverTimestamp(),
     };
 
-    addDoc(collection(firestore, 'deposits'), newDepositData)
+    addDoc(depositsCollection, newDepositData)
       .then(() => {
         toast({
           title: 'Depósito Creado',
@@ -179,7 +188,7 @@ export default function DepositosPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: 'deposits',
+            path: depositsCollection.path,
             operation: 'create',
             requestResourceData: newDepositData,
         });
@@ -191,10 +200,10 @@ export default function DepositosPage() {
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !editingDeposit) return;
+    if (!firestore || !editingDeposit || !depositsCollection) return;
     setIsEditSubmitting(true);
     
-    const depositRef = doc(firestore, 'deposits', editingDeposit.id);
+    const depositRef = doc(depositsCollection, editingDeposit.id);
     const updatedData = {
         ...data,
         updatedAt: serverTimestamp(),
@@ -210,7 +219,7 @@ export default function DepositosPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `deposits/${editingDeposit.id}`,
+            path: depositRef.path,
             operation: 'update',
             requestResourceData: updatedData,
         });
@@ -222,8 +231,8 @@ export default function DepositosPage() {
   };
 
   const handleDeleteDeposit = async (depositId: string) => {
-    if (!firestore) return;
-    const depositRef = doc(firestore, 'deposits', depositId);
+    if (!firestore || !depositsCollection) return;
+    const depositRef = doc(depositsCollection, depositId);
 
     deleteDoc(depositRef)
       .then(() => {
@@ -234,7 +243,7 @@ export default function DepositosPage() {
       })
       .catch((error) => {
         const permissionError = new FirestorePermissionError({
-            path: `deposits/${depositId}`,
+            path: depositRef.path,
             operation: 'delete',
         });
         errorEmitter.emit('permission-error', permissionError);
@@ -242,8 +251,8 @@ export default function DepositosPage() {
   };
   
   const handleJefeChange = async (depositId: string, jefeId: string) => {
-    if (!firestore) return;
-    const depositRef = doc(firestore, 'deposits', depositId);
+    if (!firestore || !depositsCollection) return;
+    const depositRef = doc(depositsCollection, depositId);
     
     const updateData =
       jefeId === 'unassigned' ? { jefeId: deleteField() } : { jefeId };
@@ -257,7 +266,7 @@ export default function DepositosPage() {
         })
         .catch((error) => {
             const permissionError = new FirestorePermissionError({
-                path: `deposits/${depositId}`,
+                path: depositRef.path,
                 operation: 'update',
                 requestResourceData: updateData,
             });
