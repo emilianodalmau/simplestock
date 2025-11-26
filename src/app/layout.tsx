@@ -78,7 +78,7 @@ function AppLayout({
 
   const allMenuItems = [
     { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
-    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador', 'editor', 'super-admin'] },
+    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador', 'super-admin'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'super-admin'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito', 'super-admin'] },
     { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'super-admin'] },
