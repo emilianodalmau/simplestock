@@ -179,7 +179,7 @@ export default function ProductosPage() {
       supplierId: '',
       price: 0,
       minStock: 0,
-      unit: undefined,
+      unit: 'unidades',
     },
   });
 
@@ -193,8 +193,8 @@ export default function ProductosPage() {
         name: editingProduct.name,
         categoryId: editingProduct.categoryId,
         supplierId: editingProduct.supplierId,
-        price: editingProduct.price,
-        minStock: editingProduct.minStock,
+        price: editingProduct.price || 0,
+        minStock: editingProduct.minStock || 0,
         unit: editingProduct.unit,
       });
     }
