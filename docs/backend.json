@@ -40,6 +40,7 @@
           "type": "string",
           "description": "The role of the user, which determines their permissions.",
           "enum": [
+            "super-admin",
             "administrador",
             "editor",
             "visualizador",

@@ -14,22 +14,27 @@ service cloud.firestore {
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
+    
+    function isSuperAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+    }
 
     function isAdmin() {
       // Securely check for admin role from the user's own document.
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrador';
+      let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return isSignedIn() && (userRole == 'administrador' || userRole == 'super-admin');
     }
 
     function isEditorOrAdmin() {
       // Securely check for editor or admin role.
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && (userRole in ['administrador', 'editor']);
+      return isSignedIn() && (userRole in ['administrador', 'editor', 'super-admin']);
     }
     
     function isJefeEditorOrAdmin() {
       // Securely check for jefe, editor or admin role.
       let userRole = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
-      return isSignedIn() && (userRole in ['administrador', 'editor', 'jefe_deposito']);
+      return isSignedIn() && (userRole in ['administrador', 'editor', 'jefe_deposito', 'super-admin']);
     }
     
     // ------------------------------------------------------------------------

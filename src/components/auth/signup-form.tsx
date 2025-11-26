@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -71,8 +72,9 @@ export function SignupForm() {
       const displayName = `${values.firstName} ${values.lastName}`;
       await updateProfile(user, { displayName });
 
+      const isSuperAdmin = values.email === "superadmin@example.com";
       const isAdmin = values.email === "emilianodalmau@gmail.com";
-      const role = isAdmin ? "administrador" : "visualizador";
+      const role = isSuperAdmin ? "super-admin" : isAdmin ? "administrador" : "visualizador";
 
       const userDocRef = doc(firestore, "users", user.uid);
       await setDoc(userDocRef, {

@@ -1,3 +1,4 @@
+
 'use client';
 
 import './globals.css';
@@ -35,6 +36,7 @@ import {
   Replace,
   Settings,
   ClipboardList,
+  Shield,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -45,7 +47,7 @@ import Image from 'next/image';
 import { doc } from 'firebase/firestore';
 
 type UserProfile = {
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
 function AppLayout({
@@ -75,16 +77,17 @@ function AppLayout({
   };
 
   const allMenuItems = [
-    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador', 'editor'] },
-    { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
-    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador'] },
-    { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador'] },
+    { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
+    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador', 'editor', 'super-admin'] },
+    { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'super-admin'] },
+    { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito', 'super-admin'] },
+    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'super-admin'] },
+    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'super-admin'] },
+    { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'super-admin'] },
+    { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'super-admin'] },
+    { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'super-admin'] },
+    { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
+    { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
   ];
   
   const menuItems = useMemo(() => {

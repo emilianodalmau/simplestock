@@ -74,10 +74,11 @@ type UserProfile = {
   photoURL?: string;
   phone?: string;
   address?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
 };
 
 const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
+  'super-admin': 'destructive',
   administrador: 'destructive',
   editor: 'default',
   visualizador: 'secondary',
@@ -172,7 +173,8 @@ export default function UsuariosPage() {
     return `${firstInitial}${lastInitial}`.toUpperCase();
   };
 
-  const currentUserIsAdmin = currentUserProfile?.role === 'administrador';
+  const currentUserIsAdmin = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'super-admin';
+  const currentUserIsSuperAdmin = currentUserProfile?.role === 'super-admin';
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -272,12 +274,13 @@ export default function UsuariosPage() {
                         <Select
                           defaultValue={user.role}
                           onValueChange={(value) => handleRoleChange(user.id, value)}
-                          disabled={user.id === currentUser?.uid}
+                          disabled={user.id === currentUser?.uid || (user.role === 'super-admin' && !currentUserIsSuperAdmin)}
                         >
                           <SelectTrigger className="w-36 ml-auto inline-flex">
                             <SelectValue placeholder="Seleccionar rol" />
                           </SelectTrigger>
                           <SelectContent>
+                            {currentUserIsSuperAdmin && <SelectItem value="super-admin">Super Admin</SelectItem>}
                             <SelectItem value="administrador">
                               Administrador
                             </SelectItem>
