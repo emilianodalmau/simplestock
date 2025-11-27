@@ -121,12 +121,11 @@ service cloud.firestore {
                          || hasWorkspaceRole(workspaceId, 'administrador')
                          || (resource.data.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
             
-             // LIST: Se pueden listar movimientos si eres admin, editor, o si filtras por tu propio userId.
-             // Se quita 'solicitante' de aquí para forzar el uso de la página 'mis-movimientos'.
+             // LIST: Admins/editores ven todo. Jefes y solicitantes solo ven sus propios movimientos.
              allow list: if isSuperAdmin() 
                          || hasWorkspaceRole(workspaceId, 'administrador')
                          || hasWorkspaceRole(workspaceId, 'editor')
-                         || (request.query.where.userId == request.auth.uid && hasWorkspaceRole(workspaceId, 'jefe_deposito'));
+                         || (request.query.where.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'jefe_deposito') || hasWorkspaceRole(workspaceId, 'solicitante')));
 
              allow update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
         }
