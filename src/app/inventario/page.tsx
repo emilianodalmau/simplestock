@@ -37,7 +37,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { StockStatusBadge } from '@/components/ui/stock-status-badge';
 import { Button } from '@/components/ui/button';
-import { ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, FileDown } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 // Data types from Firestore
 type Product = {
@@ -333,6 +334,24 @@ export default function InventarioPage() {
     return <ArrowUpDown className="ml-2 h-4 w-4" />;
   };
 
+  const handleExportToExcel = () => {
+    const dataToExport = processedInventoryData.map(item => ({
+      'Producto': item.productName,
+      'Código': item.productCode,
+      'Categoría': item.categoryName,
+      'Stock Total': item.totalStock,
+      'Unidad': item.unit,
+      'Stock Mínimo': item.minStock,
+      'Valor Total': item.totalValue,
+      'Estado': item.status,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventario');
+    XLSX.writeFile(workbook, 'Inventario.xlsx');
+  };
+
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
@@ -350,7 +369,7 @@ export default function InventarioPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row">
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
             <Input
               placeholder="Buscar por nombre o código..."
               value={searchTerm}
@@ -385,6 +404,10 @@ export default function InventarioPage() {
                 <SelectItem value="Sin Stock">Sin Stock</SelectItem>
               </SelectContent>
             </Select>
+            <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto">
+              <FileDown className="mr-2 h-4 w-4" />
+              Exportar a Excel
+            </Button>
           </div>
 
           <div className="rounded-lg border">
