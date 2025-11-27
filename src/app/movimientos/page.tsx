@@ -258,9 +258,18 @@ export default function MovimientosPage() {
     
     // For simplicity with multiple filters, we fetch all remitos and filter client-side.
     // This is less efficient for very large datasets but much simpler to implement without complex backend logic.
-    return movementsCollectionRef;
+    // An improved implementation would apply filters on the Firestore query itself.
+    if (currentUserProfile.role === 'administrador' || currentUserProfile.role === 'editor') {
+      return movementsCollectionRef;
+    }
+    
+    if (currentUserProfile.role === 'jefe_deposito') {
+      return query(movementsCollectionRef, where('depositId', '==', assignedDepositId || 'null'));
+    }
 
-  }, [firestore, collectionPrefix, currentUserProfile, canAccessPage]);
+    return null;
+
+  }, [firestore, collectionPrefix, currentUserProfile, canAccessPage, assignedDepositId]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -268,7 +277,7 @@ export default function MovimientosPage() {
   const filteredMovements = useMemo(() => {
     let filtered = movements || [];
 
-    // Role-based pre-filtering
+    // Role-based pre-filtering is now handled by the query, but we keep this for client-side flexibility
     if (currentUserProfile?.role === 'jefe_deposito') {
       if (!assignedDepositId) return []; // Jefe must have an assigned deposit
       filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
@@ -1059,5 +1068,3 @@ export default function MovimientosPage() {
     </div>
   );
 }
-
-    
