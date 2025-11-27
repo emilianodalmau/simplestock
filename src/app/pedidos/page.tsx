@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -10,6 +11,7 @@ import {
 } from '@/firebase';
 import {
   collection,
+  doc,
   query,
   where,
   orderBy,
@@ -236,3 +238,4 @@ export default function PedidosPage() {
     </div>
   );
 }
+
