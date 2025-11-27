@@ -161,96 +161,123 @@ export function ProcessRequestDialog({
     
     const collectionPrefix = `workspaces/${workspaceId}`;
 
-    runTransaction(firestore, async (transaction) => {
-      const counterRef = doc(firestore, collectionPrefix, 'counters', 'remitoCounter');
-      const counterSnap = await transaction.get(counterRef);
-      const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-      const newRemitoNumber = lastNumber + 1;
-      const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
-      transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+    try {
+      await runTransaction(firestore, async (transaction) => {
+        const itemsToDeliver = data.items.filter(item => item.toDeliver > 0);
 
-      const itemsToDeliver = data.items.filter(item => item.toDeliver > 0);
-      let newTotalValue = 0;
+        // --- 1. READ PHASE ---
+        const counterRef = doc(firestore, collectionPrefix, 'counters', 'remitoCounter');
+        const originalRequestRef = doc(firestore, collectionPrefix, 'stockMovements', request.id);
 
-      for (const item of itemsToDeliver) {
-          const product = productMap.get(item.productId);
-          if (!product) throw new Error(`Producto ${item.productName} no encontrado.`);
-
+        const stockRefs = itemsToDeliver.map(item => {
           const inventoryDocId = `${item.productId}_${request.depositId}`;
-          const stockDocRef = doc(firestore, collectionPrefix, 'inventory', inventoryDocId);
-          
-          const stockSnap = await transaction.get(stockDocRef);
-          const currentStock = stockSnap.exists() ? stockSnap.data().quantity : 0;
-          
-          if (item.toDeliver > currentStock) {
-              throw new Error(`Stock insuficiente para ${item.productName}. Inténtalo de nuevo.`);
-          }
-          
-          transaction.set(stockDocRef, {
-              quantity: increment(-item.toDeliver),
-              lastUpdated: serverTimestamp(),
-              productId: item.productId,
-              depositId: request.depositId,
-          }, { merge: true });
-
-          newTotalValue += (product.price || 0) * item.toDeliver;
-      }
-
-      const newMovementRef = doc(collection(firestore, collectionPrefix, 'stockMovements'));
-      
-      const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
-           const product = productMap.get(item.productId)!;
-           return {
-               productId: item.productId,
-               productName: item.productName,
-               quantity: item.toDeliver,
-               unit: item.unit,
-               price: product.price || 0,
-               total: (product.price || 0) * item.toDeliver,
-           };
-      });
-      
-      transaction.set(newMovementRef, {
-          id: newMovementRef.id,
-          remitoNumber: formattedRemitoNumber,
-          type: 'salida',
-          depositId: request.depositId,
-          depositName: request.depositName,
-          actorId: request.actorId,
-          actorName: request.actorName,
-          actorType: 'user',
-          createdAt: serverTimestamp(),
-          userId: user.uid,
-          items: newMovementItems,
-          totalValue: newTotalValue,
-          processedFromRequestId: request.id,
-      });
-
-      const originalRequestRef = doc(firestore, collectionPrefix, 'stockMovements', request.id);
-      transaction.delete(originalRequestRef);
-    })
-    .then(() => {
-        toast({
-            title: 'Remito Generado',
-            description: 'El remito de salida ha sido creado y el stock actualizado.',
+          return doc(firestore, collectionPrefix, 'inventory', inventoryDocId);
         });
-        onProcessed();
-    })
-    .catch((error: any) => {
+
+        const allReads = [
+          transaction.get(counterRef),
+          transaction.get(originalRequestRef),
+          ...stockRefs.map(ref => transaction.get(ref)),
+        ];
+
+        const [counterSnap, originalRequestSnap, ...stockSnaps] = await Promise.all(allReads);
+        
+        // --- 2. LOGIC & VALIDATION PHASE ---
+
+        if (!originalRequestSnap.exists()) {
+            throw new Error("La solicitud original ya no existe. Es posible que ya haya sido procesada.");
+        }
+
+        for (let i = 0; i < itemsToDeliver.length; i++) {
+          const item = itemsToDeliver[i];
+          const stockSnap = stockSnaps[i];
+          const currentStock = stockSnap.exists() ? stockSnap.data().quantity : 0;
+          if (item.toDeliver > currentStock) {
+            throw new Error(`Stock insuficiente para ${item.productName}. Disponible: ${currentStock}, se intentan entregar: ${item.toDeliver}.`);
+          }
+        }
+        
+        const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+        const newRemitoNumber = lastNumber + 1;
+        const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
+
+        let newTotalValue = 0;
+        const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
+          const product = productMap.get(item.productId)!;
+          newTotalValue += (product.price || 0) * item.toDeliver;
+          return {
+             productId: item.productId,
+             productName: item.productName,
+             quantity: item.toDeliver,
+             unit: item.unit,
+             price: product.price || 0,
+             total: (product.price || 0) * item.toDeliver,
+          };
+        });
+
+        // --- 3. WRITE PHASE ---
+        // After this point, no more transaction.get() calls are allowed.
+
+        // Update counter
+        transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+
+        // Update stock for each item
+        for (let i = 0; i < itemsToDeliver.length; i++) {
+          const item = itemsToDeliver[i];
+          const stockRef = stockRefs[i];
+          transaction.set(stockRef, {
+            quantity: increment(-item.toDeliver),
+            lastUpdated: serverTimestamp(),
+            productId: item.productId,
+            depositId: request.depositId,
+          }, { merge: true });
+        }
+        
+        // Create the new remito de salida
+        const newMovementRef = doc(collection(firestore, collectionPrefix, 'stockMovements'));
+        transaction.set(newMovementRef, {
+            id: newMovementRef.id,
+            remitoNumber: formattedRemitoNumber,
+            type: 'salida',
+            depositId: request.depositId,
+            depositName: request.depositName,
+            actorId: request.actorId,
+            actorName: request.actorName,
+            actorType: 'user',
+            createdAt: serverTimestamp(),
+            userId: user.uid,
+            items: newMovementItems,
+            totalValue: newTotalValue,
+            processedFromRequestId: request.id,
+        });
+
+        // Delete the original request
+        transaction.delete(originalRequestRef);
+      });
+
+      // If transaction completes successfully
+      toast({
+          title: 'Remito Generado',
+          description: 'El remito de salida ha sido creado y el stock actualizado.',
+      });
+      onProcessed();
+
+    } catch (error: any) {
+        console.error("Error en la transacción:", error);
+        // Emit the contextual error instead of using console.error
         const permissionError = new FirestorePermissionError({
-            path: 'transaction', // Generic path for transaction failure
-            operation: 'write', 
+            path: collectionPrefix, // This path is now for general context, the real error is in the transaction
+            operation: 'write', // 'write' is a good generic for transactions
             requestResourceData: {
-                message: error.message, // Include the actual internal error
+                message: error.message,
                 originalRequestId: request.id,
                 itemsToDeliver: data.items,
             },
         });
         errorEmitter.emit('permission-error', permissionError);
-    })
-    .finally(() => {
+    } finally {
         setIsSubmitting(false);
-    });
+    }
   };
 
   return (
