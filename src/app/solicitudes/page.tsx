@@ -255,9 +255,10 @@ export default function SolicitudesPage() {
     if (!firestore || !user || !collectionPrefix || !currentUserProfile) return null;
 
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+    const userRole = currentUserProfile.role;
 
-    if (currentUserProfile.role === 'administrador') {
-      // Admins can query by remitoNumber range
+    if (userRole === 'administrador' || userRole === 'editor') {
+      // Admins and Editors can see all 'S-' movements
       return query(
         movementsCollectionRef,
         orderBy('remitoNumber'),
@@ -266,32 +267,27 @@ export default function SolicitudesPage() {
       );
     }
     
-    if (currentUserProfile.role === 'jefe_deposito') {
-       if (!assignedDepositId) return null;
-       // Jefes query by depositId
-       return query(movementsCollectionRef, where('depositId', '==', assignedDepositId));
-    }
-    
-    if (currentUserProfile.role === 'solicitante') {
-        // Solicitantes MUST query by their own userId to comply with security rules
+    if (userRole === 'solicitante' || userRole === 'jefe_deposito') {
+        // Solicitantes and Jefes MUST query by their own userId to comply with security rules
         return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
     
     return null; // Default to no query if no appropriate role
- }, [firestore, user, currentUserProfile, assignedDepositId, collectionPrefix]);
+ }, [firestore, user, currentUserProfile, collectionPrefix]);
 
  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
 
   const filteredMovements = useMemo(() => {
       if (!movements || !currentUserProfile) return [];
       
-      // For roles other than admin, we need to manually filter for 'S-' remitos
+      const userRole = currentUserProfile.role;
+      // For non-admins/editors, we need to manually filter for 'S-' remitos
       // because their queries might fetch other types of movements (e.g., 'R-')
-      if (currentUserProfile.role !== 'administrador') {
+      if (userRole === 'solicitante' || userRole === 'jefe_deposito') {
           return movements.filter(mov => mov.remitoNumber?.startsWith('S-'));
       }
       
-      // Admins already have their data pre-filtered by the query
+      // Admins/Editors already have their data pre-filtered by the query
       return movements;
   }, [movements, currentUserProfile]);
   
@@ -373,7 +369,7 @@ export default function SolicitudesPage() {
     );
   }, [selectedDepositId, products, inventory, isJefeDeposito]);
   
-  const canCreateRequest = currentUserProfile?.role !== 'visualizador';
+  const canCreateRequest = currentUserProfile?.role && ['administrador', 'editor', 'solicitante', 'jefe_deposito'].includes(currentUserProfile.role);
   const isAdmin = currentUserProfile?.role === 'administrador';
 
   // --- Form Submission Logic ---

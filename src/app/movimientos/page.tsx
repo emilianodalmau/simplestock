@@ -280,45 +280,40 @@ export default function MovimientosPage() {
 
   const movementsQuery = useMemoFirebase(() => {
     // Crucial: Do not run the query if the user doesn't have access.
-    if (!canAccessPage || !firestore || !collectionPrefix) return null;
+    if (!canAccessPage || !firestore || !collectionPrefix || !currentUserProfile) return null;
     
-    // Base query for "remitos" (remitoNumber starts with 'R-')
-    let baseQuery = query(
-      collection(firestore, `${collectionPrefix}/stockMovements`),
-      orderBy('remitoNumber'),
-      startAt('R-'),
-      endAt('R-\uf8ff')
-    );
-    
-    if (isJefeDeposito && assignedDepositId) {
-      // For jefe, we need a composite query. Firestore requires an index for this.
-      // Since we can't create indexes dynamically, we'll filter client-side as a fallback,
-      // but the ideal solution is a composite index on [remitoNumber, depositId].
-      // For now, this query might not work as expected without the index.
-      // A better approach for jefe might be to just query by depositId and then filter client-side.
-      return query(
-          collection(firestore, `${collectionPrefix}/stockMovements`), 
-          where('depositId', '==', assignedDepositId)
-      );
+    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+    const userRole = currentUserProfile.role;
+
+    if (userRole === 'administrador' || userRole === 'editor') {
+        // Admins and Editors see all 'R-' movements
+        return query(
+          movementsCollectionRef,
+          orderBy('remitoNumber'),
+          startAt('R-'),
+          endAt('R-\uf8ff')
+        );
     }
     
-    if (isJefeDeposito && assignedDepositId === null) {
-      return null; // Don't fetch if jefe has no deposit
+    if (userRole === 'jefe_deposito') {
+       if (!user) return null;
+       // Jefes query by their own userId to comply with security rules
+       return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
 
-    return baseQuery;
-  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId, canAccessPage]);
+    return null;
+  }, [firestore, user, collectionPrefix, currentUserProfile, canAccessPage]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
     
   // Client-side filter for jefe_deposito to only show 'R-' remitos
   const filteredMovementsForJefe = useMemo(() => {
-    if (isJefeDeposito && movements) {
+    if (currentUserProfile?.role === 'jefe_deposito' && movements) {
         return movements.filter(mov => mov.remitoNumber?.startsWith('R-'));
     }
     return movements;
-  }, [isJefeDeposito, movements]);
+  }, [currentUserProfile?.role, movements]);
 
   const inventoryCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null),
@@ -994,8 +989,3 @@ export default function MovimientosPage() {
     </div>
   );
 }
-
-    
-
-    
-
