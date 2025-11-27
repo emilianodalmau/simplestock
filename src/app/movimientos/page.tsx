@@ -95,7 +95,7 @@ export type UserProfile = {
   id: string;
   firstName?: string;
   lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
   workspaceId?: string;
 };
 type Workspace = {
@@ -209,9 +209,14 @@ export default function MovimientosPage() {
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   const workspaceId = currentUserProfile?.workspaceId;
   
+  const canAccessPage = useMemo(() => {
+    if (!currentUserProfile) return false;
+    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role!);
+  }, [currentUserProfile]);
+
   const workspaceDocRef = useMemoFirebase(
-    () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
-    [firestore, workspaceId]
+    () => (firestore && workspaceId && canAccessPage ? doc(firestore, 'workspaces', workspaceId) : null),
+    [firestore, workspaceId, canAccessPage]
   );
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
@@ -228,8 +233,8 @@ export default function MovimientosPage() {
   }, [workspaceData, isLoadingWorkspace]);
 
   const collectionPrefix = useMemo(
-    () => (workspaceId ? `workspaces/${workspaceId}` : null),
-    [workspaceId]
+    () => (workspaceId && canAccessPage ? `workspaces/${workspaceId}` : null),
+    [workspaceId, canAccessPage]
   );
 
   const productsCollection = useMemoFirebase(
@@ -322,13 +327,15 @@ export default function MovimientosPage() {
 
   const isLoading =
     isLoadingProfile ||
-    isLoadingProducts ||
-    isLoadingDeposits ||
-    isLoadingUsers ||
-    isLoadingSuppliers ||
-    isLoadingMovements ||
-    isLoadingInventory ||
-    isLoadingWorkspace;
+    (canAccessPage && (
+        isLoadingProducts ||
+        isLoadingDeposits ||
+        isLoadingUsers ||
+        isLoadingSuppliers ||
+        isLoadingMovements ||
+        isLoadingInventory ||
+        isLoadingWorkspace
+    ));
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
@@ -633,6 +640,22 @@ export default function MovimientosPage() {
   if (isLoading) {
     return <MovementPageSkeleton />;
   }
+
+  if (!canAccessPage) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 md:p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Acceso Denegado</CardTitle>
+            <CardDescription>
+              No tienes los permisos necesarios para ver esta página.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
