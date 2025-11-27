@@ -162,7 +162,7 @@ export function ProcessRequestDialog({
     const collectionPrefix = `workspaces/${workspaceId}`;
 
     runTransaction(firestore, async (transaction) => {
-      const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
+      const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
       const counterSnap = await transaction.get(counterRef);
       const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
       const newRemitoNumber = lastNumber + 1;
@@ -196,7 +196,7 @@ export function ProcessRequestDialog({
           newTotalValue += (product.price || 0) * item.toDeliver;
       }
 
-      // CORRECT: Create the new document in the stockMovements subcollection
+      // CORRECTED: Create the new document in the stockMovements subcollection
       const newMovementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
       
       const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
@@ -227,7 +227,7 @@ export function ProcessRequestDialog({
           processedFromRequestId: request.id,
       });
 
-      // CORRECT: Reference the original request document to delete it
+      // CORRECTED: Reference the original request document to delete it
       const originalRequestRef = doc(firestore, `${collectionPrefix}/stockMovements`, request.id);
       transaction.delete(originalRequestRef);
     })
