@@ -1,15 +1,19 @@
 
 'use server';
 
-import { initializeApp, getApps, App } from 'firebase-admin/app';
+import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { firebaseConfig } from '@/firebase/config';
 
 // --- Firebase Admin SDK Initialization ---
 // This pattern ensures the Admin SDK is initialized only once per server instance.
 let adminApp: App;
 if (!getApps().length) {
-  adminApp = initializeApp();
+  adminApp = initializeApp({
+    credential: applicationDefault(),
+    ...firebaseConfig
+  });
 } else {
   adminApp = getApps()[0];
 }
