@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Toaster } from '@/components/ui/toaster';
@@ -39,6 +38,7 @@ import {
   FileCode,
   History,
   FileCheck,
+  Calculator,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -117,6 +117,7 @@ function AppLayout({
     { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
+    { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'editor', 'jefe_deposito'] },
     { href: '/solicitudes', label: 'Crear Solicitud', icon: ClipboardList, roles: ['administrador', 'editor', 'solicitante'] },
     { href: '/mis-movimientos', label: 'Mis Movimientos', icon: History, roles: ['solicitante'] },
     { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
