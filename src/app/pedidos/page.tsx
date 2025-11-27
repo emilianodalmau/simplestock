@@ -248,11 +248,12 @@ export default function PedidosPage() {
         </Card>
       </div>
 
-      {selectedRequest && inventory && products && (
+      {selectedRequest && inventory && products && currentUserProfile?.workspaceId && (
         <ProcessRequestDialog
           request={selectedRequest}
           inventory={inventory}
           products={products}
+          workspaceId={currentUserProfile.workspaceId}
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
           onProcessed={handleRequestProcessed}
@@ -261,5 +262,3 @@ export default function PedidosPage() {
     </>
   );
 }
-
-    

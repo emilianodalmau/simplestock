@@ -88,6 +88,7 @@ interface ProcessRequestDialogProps {
   request: StockMovement;
   inventory: InventoryStock[];
   products: Product[];
+  workspaceId: string;
   isOpen: boolean;
   onClose: () => void;
   onProcessed: () => void;
@@ -97,6 +98,7 @@ export function ProcessRequestDialog({
   request,
   inventory,
   products,
+  workspaceId,
   isOpen,
   onClose,
   onProcessed,
@@ -150,19 +152,16 @@ export function ProcessRequestDialog({
   });
   
   const handleFormSubmit: SubmitHandler<ProcessRequestFormValues> = async (data) => {
-    if (!firestore || !user?.uid) {
-        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo autenticar al usuario.' });
+    if (!firestore || !user?.uid || !workspaceId) {
+        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo autenticar al usuario o workspace.' });
         return;
     }
     
     setIsSubmitting(true);
     
-    const workspaceId = request.id.split('/')[0];
     const collectionPrefix = `workspaces/${workspaceId}`;
 
     runTransaction(firestore, async (transaction) => {
-      if (!workspaceId) throw new Error("Workspace ID no encontrado en la solicitud.");
-      
       const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
       const counterSnap = await transaction.get(counterRef);
       const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
