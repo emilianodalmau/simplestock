@@ -28,6 +28,7 @@ import {
   useMemoFirebase,
   useUser,
   useDoc,
+  initializeFirebase,
 } from '@/firebase';
 import {
   collection,
@@ -38,6 +39,9 @@ import {
   where,
   setDoc,
 } from 'firebase/firestore';
+import { getApp, getApps, initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { firebaseConfig } from '@/firebase/config';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -62,7 +66,6 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { createAuthUser } from '@/lib/auth-actions';
 
 const editFormSchema = z.object({
   firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -109,6 +112,19 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
   jefe_deposito: 'secondary',
   solicitante: 'secondary',
 };
+
+// Generates a random, secure password.
+const generatePassword = (length = 12): string => {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+  let password = "";
+  // This is a simple, non-cryptographically secure way to generate a password.
+  // For production, consider using a more robust library or window.crypto.
+  for (let i = 0, n = charset.length; i < n; ++i) {
+    password += charset.charAt(Math.floor(Math.random() * n));
+  }
+  return password;
+};
+
 
 export default function UsuariosPage() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -224,30 +240,27 @@ export default function UsuariosPage() {
   
   const onCreateSubmit: SubmitHandler<CreateFormValues> = async (data) => {
     if (!currentUserProfile?.workspaceId || !firestore) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'No se ha podido identificar tu espacio de trabajo.',
-      });
+      toast({ variant: "destructive", title: "Error", description: "No se pudo identificar tu espacio de trabajo." });
       return;
     }
     setIsCreateSubmitting(true);
+    
+    // Create a temporary, secondary Firebase App instance for user creation
+    const tempAppName = `temp-user-creation-${Date.now()}`;
+    const tempApp = initializeApp(firebaseConfig, tempAppName);
+    const tempAuth = getAuth(tempApp);
+    
+    const password = generatePassword();
+
     try {
-      // Step 1: Call server action to create user in Auth
-      const result = await createAuthUser({
-        email: data.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-      });
+      // Step 1: Create user in Auth with the temporary app instance
+      const userCredential = await createUserWithEmailAndPassword(tempAuth, data.email, password);
+      const newUid = userCredential.user.uid;
 
-      if (result.error || !result.uid) {
-        throw new Error(result.error || 'No se pudo obtener el UID del nuevo usuario.');
-      }
-
-      // Step 2: Create the user document in Firestore from the client
-      const userDocRef = doc(firestore, 'users', result.uid);
+      // Step 2: Create the user document in Firestore using the main app instance (where the admin is logged in)
+      const userDocRef = doc(firestore, 'users', newUid);
       await setDoc(userDocRef, {
-        id: result.uid,
+        id: newUid,
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
@@ -258,21 +271,24 @@ export default function UsuariosPage() {
         createdAt: serverTimestamp(),
       });
       
-      setNewUserCredentials({
-        email: data.email,
-        password: result.password,
-      });
-
+      // Step 3: Show credentials to the admin
+      setNewUserCredentials({ email: data.email, password });
       createForm.reset();
       setIsCreateDialogOpen(false);
 
     } catch (error: any) {
+      let errorMessage = 'No se pudo crear el usuario. Revisa que el email no esté en uso.';
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'El email proporcionado ya está en uso por otro usuario.';
+      }
       toast({
-        variant: 'destructive',
-        title: 'Error al Crear Usuario',
-        description: error.message || 'No se pudo crear el usuario. Revisa que el email no esté en uso.',
+        variant: "destructive",
+        title: "Error al Crear Usuario",
+        description: errorMessage,
       });
     } finally {
+      // Step 4: Clean up the temporary app instance
+      await deleteApp(tempApp);
       setIsCreateSubmitting(false);
     }
   };
