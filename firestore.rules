@@ -117,11 +117,16 @@ service cloud.firestore {
                             || hasWorkspaceRole(workspaceId, 'jefe_deposito')
                             || hasWorkspaceRole(workspaceId, 'solicitante');
              
-             // Un 'solicitante' puede leer los movimientos que él mismo creó.
-             allow read: if isSuperAdmin() 
+             // GET: Se puede leer un movimiento individual si eres admin o el creador.
+             allow get: if isSuperAdmin() 
                          || hasWorkspaceRole(workspaceId, 'administrador')
                          || (resource.data.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
-                         
+            
+             // LIST: Se pueden listar movimientos si eres admin, o si filtras por tu propio userId.
+             allow list: if isSuperAdmin() 
+                         || hasWorkspaceRole(workspaceId, 'administrador')
+                         || (request.query.where.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
+
              allow update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
         }
     }
