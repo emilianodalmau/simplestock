@@ -86,6 +86,8 @@ import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 
 type Workspace = {
@@ -406,8 +408,9 @@ export default function MovimientosPage() {
     if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
     setIsSubmitting(true);
 
-    try {
-      await runTransaction(firestore, async (transaction) => {
+    const movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+
+    runTransaction(firestore, async (transaction) => {
         // --- 1. READ PHASE ---
         const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
         const counterSnap = await transaction.get(counterRef);
@@ -498,10 +501,9 @@ export default function MovimientosPage() {
           const actor = suppliers?.find((s) => s.id === data.actorId);
           actorName = actor ? actor.name : null;
         }
-
-        const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
-        transaction.set(movementRef, {
-          id: movementRef.id,
+        
+        transaction.set(movementDocRef, {
+          id: movementDocRef.id,
           remitoNumber: data.remitoNumber || formattedRemitoNumber,
           type: data.type,
           depositId: data.depositId,
@@ -514,64 +516,58 @@ export default function MovimientosPage() {
           items: movementItemsForDoc,
           totalValue: totalMovementValue,
         });
+      }).then(() => {
+        toast({
+          title: 'Movimiento Registrado',
+          description: 'El remito ha sido registrado exitosamente.',
+        });
+        form.reset({
+          type: 'salida',
+          depositId: isJefeDeposito ? assignedDepositId || '' : '',
+          remitoNumber: '',
+          actorId: '',
+          items: [{ productId: '', quantity: 1 }],
+        });
+      }).catch((error: any) => {
+        const permissionError = new FirestorePermissionError({
+            path: movementDocRef.path,
+            operation: 'create',
+            requestResourceData: form.getValues(),
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      }).finally(() => {
+        setIsSubmitting(false);
       });
-
-      toast({
-        title: 'Movimiento Registrado',
-        description: 'El remito ha sido registrado exitosamente.',
-      });
-      form.reset({
-        type: 'salida',
-        depositId: isJefeDeposito ? assignedDepositId || '' : '',
-        remitoNumber: '',
-        actorId: '',
-        items: [{ productId: '', quantity: 1 }],
-      });
-    } catch (error: any) {
-      console.error('Error procesando el movimiento:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error en el movimiento',
-        description:
-          error.message || 'Ocurrió un error al procesar el remito.',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
-  const handleDeleteMovement = async (movement: StockMovement) => {
+  const handleDeleteMovement = (movement: StockMovement) => {
     if (!firestore || !collectionPrefix) return;
 
-    try {
-      await runTransaction(firestore, async (transaction) => {
-        // --- 1. Read Phase ---
-        // Nothing to read, as we have all info in the `movement` object
+    const movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
+    
+    runTransaction(firestore, async (transaction) => {
+        // No reads needed, we have the info.
         
-        // --- 2. Write Phase ---
+        // Write phase
         for (const item of movement.items) {
           const inventoryDocId = `${item.productId}_${movement.depositId}`;
           const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
           const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
           transaction.set(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() }, { merge: true });
         }
-        const movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
         transaction.delete(movementDocRef);
+      }).then(() => {
+        toast({
+            title: 'Remito Anulado',
+            description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
+        });
+      }).catch((error: any) => {
+          const permissionError = new FirestorePermissionError({
+            path: movementDocRef.path,
+            operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
       });
-
-      toast({
-        title: 'Remito Anulado',
-        description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
-      });
-    } catch (error: any) {
-      console.error('Error deleting movement:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error al Anular',
-        description:
-          error.message || 'No se pudo anular el remito. Revisa los permisos.',
-      });
-    }
   };
 
   const canManageMovements =
