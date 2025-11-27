@@ -251,25 +251,22 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    // Crucial: Do not run the query if the user doesn't have access.
-    if (!canAccessPage || !firestore || !collectionPrefix || !currentUserProfile) return null;
-    
+    if (!firestore || !collectionPrefix || !user || !currentUserProfile) return null;
+
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    
-    // For simplicity with multiple filters, we fetch all remitos and filter client-side.
-    // This is less efficient for very large datasets but much simpler to implement without complex backend logic.
-    // An improved implementation would apply filters on the Firestore query itself.
-    if (currentUserProfile.role === 'administrador' || currentUserProfile.role === 'editor') {
-      return movementsCollectionRef;
+    const role = currentUserProfile.role;
+
+    if (role === 'administrador' || role === 'editor') {
+      return movementsCollectionRef; // Admins and Editors can see all movements
     }
     
-    if (currentUserProfile.role === 'jefe_deposito') {
-      return query(movementsCollectionRef, where('depositId', '==', assignedDepositId || 'null'));
+    // For jefe_deposito, they MUST filter by their userId according to security rules for LIST operations
+    if (role === 'jefe_deposito') {
+      return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
 
     return null;
-
-  }, [firestore, collectionPrefix, currentUserProfile, canAccessPage, assignedDepositId]);
+  }, [firestore, collectionPrefix, user, currentUserProfile]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -277,10 +274,10 @@ export default function MovimientosPage() {
   const filteredMovements = useMemo(() => {
     let filtered = movements || [];
 
-    // Role-based pre-filtering is now handled by the query, but we keep this for client-side flexibility
+    // For jefe_deposito, apply the deposit filter client-side since the query is by userId
     if (currentUserProfile?.role === 'jefe_deposito') {
-      if (!assignedDepositId) return []; // Jefe must have an assigned deposit
-      filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
+        if (!assignedDepositId) return []; // Must have an assigned deposit
+        filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
     }
 
     // Apply UI filters

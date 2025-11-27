@@ -124,6 +124,7 @@ service cloud.firestore {
              // LIST: Se pueden listar movimientos si eres admin, o si filtras por tu propio userId.
              allow list: if isSuperAdmin() 
                          || hasWorkspaceRole(workspaceId, 'administrador')
+                         || hasWorkspaceRole(workspaceId, 'editor')
                          || (request.query.where.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
 
              allow update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
