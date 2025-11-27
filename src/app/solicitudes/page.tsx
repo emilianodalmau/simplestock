@@ -21,6 +21,9 @@ import {
   query,
   where,
   deleteDoc,
+  startAt,
+  endAt,
+  orderBy,
 } from 'firebase/firestore';
 import {
   Card,
@@ -250,18 +253,25 @@ export default function SolicitudesPage() {
 
  const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !user || !collectionPrefix) return null;
-    let baseQuery = query(collection(firestore, `${collectionPrefix}/stockMovements`), where('type', '==', 'salida'));
+    
+    // Base query for "solicitudes" (remitoNumber starts with 'S-')
+    let baseQuery = query(
+      collection(firestore, `${collectionPrefix}/stockMovements`),
+      orderBy('remitoNumber'),
+      startAt('S-'),
+      endAt('S-\uf8ff')
+    );
     
     if (currentUserProfile?.role === 'administrador') {
-      return baseQuery; // Admins see all
+      return baseQuery; // Admins see all 'S-' remitos
     }
     
     if (isJefeDeposito && assignedDepositId) {
-      // Jefe sees all from their deposit
+      // Jefe sees 'S-' remitos from their deposit
       return query(baseQuery, where('depositId', '==', assignedDepositId));
     }
     
-    // Other users see only their own requests
+    // Other users see only their own 'S-' requests
     return query(baseQuery, where('userId', '==', user.uid));
  }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId, collectionPrefix]);
 
