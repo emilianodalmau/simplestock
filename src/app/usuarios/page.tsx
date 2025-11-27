@@ -100,16 +100,21 @@ export default function UsuariosPage() {
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   
   const usersCollectionQuery = useMemoFirebase(() => {
-      if (!firestore || !currentUserProfile) return null;
-      // Super-admin sees all users
-      if (currentUserProfile.role === 'super-admin') {
-          return collection(firestore, 'users');
-      }
-      // Admins see users in their own workspace
-      if (currentUserProfile.role === 'administrador' && currentUserProfile.workspaceId) {
-          return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
-      }
-      return null;
+    if (!firestore || !currentUserProfile) return null;
+    
+    // Super-admin sees all users.
+    if (currentUserProfile.role === 'super-admin') {
+      return collection(firestore, 'users');
+    }
+    
+    // Workspace admin sees users ONLY from their own workspace.
+    // This requires the frontend to apply the filter that the security rules expect.
+    if (currentUserProfile.role === 'administrador' && currentUserProfile.workspaceId) {
+      return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
+    }
+    
+    // For any other role, they should not be able to list users.
+    return null;
   }, [firestore, currentUserProfile]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
