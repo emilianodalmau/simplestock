@@ -48,7 +48,7 @@ import { doc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 
 type UserProfile = {
-  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
   workspaceId?: string | null; // Allow null
 };
 
@@ -114,7 +114,7 @@ function AppLayout({
     { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
-    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
     { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
