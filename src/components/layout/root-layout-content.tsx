@@ -38,6 +38,7 @@ import {
   Shield,
   FileCode,
   History,
+  FileCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -113,10 +114,11 @@ function AppLayout({
     { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
     { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
     { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
+    { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
     { href: '/solicitudes', label: 'Crear Solicitud', icon: ClipboardList, roles: ['administrador', 'editor', 'solicitante'] },
-    { href: '/mis-movimientos', label: 'Mis Movimientos', icon: History, roles: ['solicitante', 'jefe_deposito'] },
+    { href: '/mis-movimientos', label: 'Mis Movimientos', icon: History, roles: ['solicitante'] },
     { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
