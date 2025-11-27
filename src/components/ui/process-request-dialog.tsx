@@ -26,14 +26,25 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import {
+  useFirestore,
+  useUser
+} from '@/firebase';
+import {
+  runTransaction,
+  doc,
+  serverTimestamp,
+  increment,
+  collection,
+} from 'firebase/firestore';
 import type { StockMovement, InventoryStock, Product, StockMovementItem } from '@/types/inventory';
+
 
 // --- Zod Schemas ---
 const processItemSchema = z.object({
@@ -60,6 +71,12 @@ const processRequestFormSchema = z.object({
     message: 'La cantidad a entregar no puede superar el stock disponible.',
     path: ['items'],
   }
+).refine(
+    (data) => data.items.some(item => item.toDeliver > 0),
+    {
+        message: 'Debes entregar al menos un producto para generar el remito.',
+        path: ['items'],
+    }
 );
 
 
@@ -71,7 +88,7 @@ interface ProcessRequestDialogProps {
   products: Product[];
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (values: ProcessRequestFormValues) => void;
+  onProcessed: () => void;
 }
 
 export function ProcessRequestDialog({
@@ -80,13 +97,16 @@ export function ProcessRequestDialog({
   products,
   isOpen,
   onClose,
-  onSubmit,
+  onProcessed,
 }: ProcessRequestDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const firestore = useFirestore();
+  const { user } = useUser();
+
+  const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
 
   const preparedItems = useMemo(() => {
-    const productMap = new Map(products.map(p => [p.id, p]));
     const stockMap = new Map<string, number>();
 
     inventory.forEach(stockItem => {
@@ -107,7 +127,7 @@ export function ProcessRequestDialog({
         toDeliver: Math.min(item.quantity, inStock), // Default to requested qty or what's in stock
       };
     });
-  }, [request, inventory, products]);
+  }, [request, inventory, productMap]);
   
   const form = useForm<ProcessRequestFormValues>({
     resolver: zodResolver(processRequestFormSchema),
@@ -117,17 +137,119 @@ export function ProcessRequestDialog({
   });
 
   useEffect(() => {
-    form.reset({ items: preparedItems });
-  }, [preparedItems, form]);
+    if (isOpen) {
+        form.reset({ items: preparedItems });
+    }
+  }, [isOpen, preparedItems, form]);
 
   const { fields } = useFieldArray({
     control: form.control,
     name: 'items',
   });
   
-  const handleFormSubmit: SubmitHandler<ProcessRequestFormValues> = (data) => {
-    // In the next step, this will trigger the Firestore transaction.
-    onSubmit(data);
+  const handleFormSubmit: SubmitHandler<ProcessRequestFormValues> = async (data) => {
+    if (!firestore || !user?.uid) {
+        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo autenticar al usuario.' });
+        return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            const workspaceId = request.remitoNumber?.split('/')[0]; // Assuming workspaceId is part of the path
+            if (!workspaceId) throw new Error("Workspace ID no encontrado en la solicitud.");
+            
+            const collectionPrefix = `workspaces/${workspaceId}`;
+
+            // --- 1. Increment Remito Counter ---
+            const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
+            const counterSnap = await transaction.get(counterRef);
+            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+            const newRemitoNumber = lastNumber + 1;
+            const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
+            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
+
+            const itemsToDeliver = data.items.filter(item => item.toDeliver > 0);
+            let newTotalValue = 0;
+
+            // --- 2. Update Inventory for each item ---
+            for (const item of itemsToDeliver) {
+                const product = productMap.get(item.productId);
+                if (!product) throw new Error(`Producto ${item.productName} no encontrado.`);
+
+                const inventoryDocId = `${item.productId}_${request.depositId}`;
+                const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
+                
+                // Read stock within transaction
+                const stockSnap = await transaction.get(stockDocRef);
+                const currentStock = stockSnap.exists() ? stockSnap.data().quantity : 0;
+                
+                if (item.toDeliver > currentStock) {
+                    throw new Error(`Stock insuficiente para ${item.productName}. Inténtalo de nuevo.`);
+                }
+                
+                transaction.set(stockDocRef, {
+                    quantity: increment(-item.toDeliver),
+                    lastUpdated: serverTimestamp(),
+                    productId: item.productId,
+                    depositId: request.depositId,
+                }, { merge: true });
+
+                newTotalValue += (product.price || 0) * item.toDeliver;
+            }
+
+            // --- 3. Create the new StockMovement (Remito de Salida) ---
+            const newMovementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+            const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
+                 const product = productMap.get(item.productId)!;
+                 return {
+                     productId: item.productId,
+                     productName: item.productName,
+                     quantity: item.toDeliver,
+                     unit: item.unit,
+                     price: product.price || 0,
+                     total: (product.price || 0) * item.toDeliver,
+                 };
+            });
+            
+            transaction.set(newMovementRef, {
+                id: newMovementRef.id,
+                remitoNumber: formattedRemitoNumber,
+                type: 'salida',
+                depositId: request.depositId,
+                depositName: request.depositName,
+                actorId: request.actorId,
+                actorName: request.actorName,
+                actorType: 'user',
+                createdAt: serverTimestamp(),
+                userId: user.uid, // The user processing the request (Jefe)
+                items: newMovementItems,
+                totalValue: newTotalValue,
+                processedFromRequestId: request.id, // Link to original request
+            });
+
+            // --- 4. Delete the original request document ---
+            const originalRequestRef = doc(firestore, `${collectionPrefix}/stockMovements`, request.id);
+            transaction.delete(originalRequestRef);
+        });
+
+        toast({
+            title: 'Remito Generado',
+            description: 'El remito de salida ha sido creado y el stock actualizado.',
+        });
+        onProcessed();
+
+    } catch (error: any) {
+        console.error('Error al procesar el pedido:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Error en la Transacción',
+            description: error.message || 'No se pudo completar la operación.',
+        });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   return (
@@ -183,7 +305,7 @@ export function ProcessRequestDialog({
             </div>
              {form.formState.errors.items && (
                   <p className="text-sm font-medium text-destructive mt-2">
-                    {form.formState.errors.items.message}
+                    {form.formState.errors.items.root?.message}
                   </p>
             )}
 
@@ -203,3 +325,5 @@ export function ProcessRequestDialog({
     </Dialog>
   );
 }
+
+    

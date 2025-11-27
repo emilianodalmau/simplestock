@@ -93,7 +93,7 @@ export default function PedidosPage() {
     );
   }, [firestore, collectionPrefix, canAccessPage]);
 
-  const { data: requests, isLoading: isLoadingRequests } =
+  const { data: requests, isLoading: isLoadingRequests, forceRefetch: refetchRequests } =
     useCollection<StockMovement>(requestsQuery);
     
   const inventoryCollection = useMemoFirebase(
@@ -111,6 +111,12 @@ export default function PedidosPage() {
     useCollection<Product>(productsCollection);
 
   const isLoading = isLoadingProfile || isLoadingRequests || isLoadingInventory || isLoadingProducts;
+  
+  const handleRequestProcessed = () => {
+    setSelectedRequest(null);
+    if(refetchRequests) refetchRequests();
+  }
+
 
   if (isLoading && !selectedRequest) {
     return (
@@ -249,12 +255,11 @@ export default function PedidosPage() {
           products={products}
           isOpen={!!selectedRequest}
           onClose={() => setSelectedRequest(null)}
-          onSubmit={() => {
-            // Logic to be implemented in the next step
-            console.log("Submitting...");
-          }}
+          onProcessed={handleRequestProcessed}
         />
       )}
     </>
   );
 }
+
+    
