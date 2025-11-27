@@ -478,7 +478,6 @@ export default function UsuariosPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => setEditingUser(user)}
-                          disabled={user.role === 'solicitante' && !currentUserIsSuperAdmin}
                         >
                           <Edit className="h-4 w-4" />
                           <span className="sr-only">Editar</span>
@@ -491,8 +490,7 @@ export default function UsuariosPage() {
                           disabled={
                             user.id === currentUser?.uid ||
                             (user.role === 'super-admin' &&
-                              !currentUserIsSuperAdmin) ||
-                            (user.role === 'solicitante' && !currentUserIsSuperAdmin)
+                              !currentUserIsSuperAdmin)
                           }
                         >
                           <SelectTrigger className="w-40 ml-auto inline-flex">
@@ -514,7 +512,7 @@ export default function UsuariosPage() {
                             <SelectItem value="jefe_deposito">
                               Jefe de Depósito
                             </SelectItem>
-                            <SelectItem value="solicitante" disabled={!currentUserIsSuperAdmin}>
+                            <SelectItem value="solicitante">
                               Solicitante
                             </SelectItem>
                           </SelectContent>
