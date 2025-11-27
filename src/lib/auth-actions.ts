@@ -3,14 +3,15 @@
 
 import { initializeApp, getApps, App, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { firebaseConfig } from '@/firebase/config';
 
 // --- Firebase Admin SDK Initialization ---
 let adminApp: App;
 if (!getApps().length) {
+  // Initialize with application default credentials.
+  // The project configuration is automatically discovered by the Admin SDK
+  // in the App Hosting environment.
   adminApp = initializeApp({
     credential: applicationDefault(),
-    ...firebaseConfig
   });
 } else {
   adminApp = getApps()[0];
