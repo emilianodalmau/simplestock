@@ -48,7 +48,8 @@
             "administrador",
             "editor",
             "visualizador",
-            "jefe_deposito"
+            "jefe_deposito",
+            "solicitante"
           ]
         }
       },

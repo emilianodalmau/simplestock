@@ -11,6 +11,12 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    // Datos del usuario que está haciendo la petición (Requester)
+    function getMyData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Datos de un usuario objetivo específico (Target)
     function getUserData(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data;
     }
@@ -20,28 +26,26 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      // Check if user is signed in and their role in the /users collection is 'super-admin'
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+      return isSignedIn() && getMyData().role == 'super-admin';
     }
     
+    // Verifica si el usuario logueado pertenece al workspace
     function isInWorkspace(workspaceId) {
-      // Check if user is signed in and their workspaceId matches
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == workspaceId;
+      return isSignedIn() && getMyData().workspaceId == workspaceId;
     }
 
     function hasWorkspaceRole(workspaceId, role) {
-      return isInWorkspace(workspaceId) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+      return isInWorkspace(workspaceId) && getMyData().role == role;
     }
     
     function isWorkspaceAdmin(workspaceId) {
       return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
-    // An 'orphan' admin is one who has the 'administrador' role but no workspace assigned yet.
-    // This is a temporary state after sign-up and before workspace creation.
+    // Admin huérfano (recién registrado, sin workspace aún)
     function isOrphanAdmin() {
-      let userData = getUserData(request.auth.uid);
-      return isSignedIn() && userData.role == 'administrador' && userData.workspaceId == null;
+      let userData = getMyData();
+      return isSignedIn() && userData.role == 'administrador' && (userData.workspaceId == null || userData.workspaceId == "");
     }
 
     // ------------------------------------------------------------------------
@@ -49,43 +53,34 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      // READ: 
-      // - Super-admins can read any user profile.
-      // - Users can read their own profile.
-      // - Workspace admins can read profiles of users within their own workspace.
-      allow get: if isSuperAdmin() 
-                   || isOwner(userId) 
-                   || (isWorkspaceAdmin(getUserData(userId).workspaceId));
+      // READ (Combina GET y LIST)
+      // Permite leer si:
+      // 1. Es SuperAdmin
+      // 2. Es el dueño de la cuenta
+      // 3. El usuario que se intenta leer pertenece al MISMO workspace que el administrador/jefe que consulta.
+      allow read: if isSuperAdmin() 
+                  || isOwner(userId) 
+                  || (
+                      isSignedIn() 
+                      && resource.data.workspaceId == getMyData().workspaceId 
+                      && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
+                     );
 
-      // LIST:
-      // - Super-admins can list all users.
-      // - Workspace admins and jefe_deposito can list users filtered by their workspaceId.
-      allow list: if isSuperAdmin() 
-                    || (request.query.workspaceId != null && 
-                         (isWorkspaceAdmin(request.query.workspaceId) || hasWorkspaceRole(request.query.workspaceId, 'jefe_deposito'))
-                       );
-
-      // CREATE:
-      // - Any authenticated user can create their OWN user document (e.g., during sign-up).
-      // - Admins (super or workspace) can create users for their workspace.
+      // CREATE: Un administrador puede crear un usuario para su propio workspace.
       allow create: if isOwner(userId) 
                       || isSuperAdmin() 
-                      || isWorkspaceAdmin(request.resource.data.workspaceId);
+                      || (isWorkspaceAdmin(request.resource.data.workspaceId));
       
-      // UPDATE:
-      // - A user can update their own profile.
-      // - A super-admin can update any user.
-      // - A workspace admin can update users within their workspace.
-      // - A new 'orphan' admin can update their OWN profile to add the workspaceId.
+      // UPDATE: El rol 'solicitante' no puede ser cambiado por un admin normal a otro rol.
+      // Solo un super-admin puede cambiar el rol de un solicitante.
       allow update: if isOwner(userId)
                       || isSuperAdmin()
-                      || isWorkspaceAdmin(getUserData(userId).workspaceId)
-                      || (isOrphanAdmin() && isOwner(userId) && request.resource.data.keys().hasOnly(['workspaceId']));
+                      || (isWorkspaceAdmin(resource.data.workspaceId) && resource.data.role != 'solicitante')
+                      || (isOrphanAdmin() && isOwner(userId));
       
-      // DELETE:
-      // - Only admins can delete users.
+      // DELETE
       allow delete: if isSuperAdmin() 
-                      || isWorkspaceAdmin(getUserData(userId).workspaceId);
+                      || isWorkspaceAdmin(resource.data.workspaceId);
     }
     
     // ------------------------------------------------------------------------
@@ -93,55 +88,43 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId} {
-        // READ: Super-admins see all workspaces. A user can only see the workspace they belong to.
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
+        // READ: Super-admins o miembros del workspace
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         
-        // LIST: Only super-admins can list all workspaces.
-        allow list: if isSuperAdmin();
-        
-        // CREATE: 
-        // - A super-admin can create any workspace.
-        // - An 'administrador' without a workspace (orphan) can create ONE for themselves.
-        //   This rule is critical for the initial setup flow.
+        // CREATE: Super-admin o Admin Huérfano (setup inicial)
         allow create: if isSuperAdmin() 
                         || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
 
-        // UPDATE: Super-admin can update any workspace. A workspace admin can update their own.
+        // UPDATE: Super-admin o Admin del workspace
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         
-        // DELETE: Only super-admins can delete workspaces.
+        // DELETE: Solo Super-admin
         allow delete: if isSuperAdmin();
         
         // --- Subcollection Rules ---
         
-        match /categories/{categoryId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
-        match /products/{productId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
-        match /suppliers/{supplierId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
-        match /inventory/{inventoryId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
-        match /counters/{counterId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
-        match /deposits/{depositId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
+        match /categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+        match /products/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+        match /suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+        match /inventory/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+        match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+        match /deposits/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         
-        // Specific rule for stock movements to allow 'jefe_deposito' to create movements.
+        // Reglas específicas para movimientos de stock
         match /stockMovements/{movementId} {
+             // El 'solicitante' ahora puede crear movimientos (sus solicitudes).
              allow create: if isSuperAdmin() 
                             || hasWorkspaceRole(workspaceId, 'administrador') 
                             || hasWorkspaceRole(workspaceId, 'editor') 
-                            || hasWorkspaceRole(workspaceId, 'jefe_deposito');
+                            || hasWorkspaceRole(workspaceId, 'jefe_deposito')
+                            || hasWorkspaceRole(workspaceId, 'solicitante');
              
-             // Reading/deleting movements remains restricted to admins/super-admins
-             allow read, update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
+             // Un 'solicitante' puede leer los movimientos que él mismo creó.
+             allow read: if isSuperAdmin() 
+                         || hasWorkspaceRole(workspaceId, 'administrador')
+                         || (resource.data.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
+                         
+             allow update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
         }
     }
   }
