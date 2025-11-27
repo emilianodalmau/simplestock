@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -64,7 +65,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, Edit, CalendarIcon } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, Edit, CalendarIcon, FileDown } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -86,12 +87,7 @@ import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-
-
-type Workspace = {
-    appName?: string;
-    logoUrl?: string;
-}
+import * as XLSX from 'xlsx';
 
 
 // --- Zod Schemas ---
@@ -109,6 +105,11 @@ const movementFormSchema = z.object({
 });
 
 type MovementFormValues = z.infer<typeof movementFormSchema>;
+
+type Workspace = {
+    appName?: string;
+    logoUrl?: string;
+}
 
 // --- Skeleton Component ---
 function MovementPageSkeleton() {
@@ -406,9 +407,10 @@ export default function MovimientosPage() {
     if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
     setIsSubmitting(true);
 
-    const movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
-
-    runTransaction(firestore, async (transaction) => {
+    let movementDocRef: any; 
+    try {
+        await runTransaction(firestore, async (transaction) => {
+        movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
         // --- 1. READ PHASE ---
         const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
         const counterSnap = await transaction.get(counterRef);
@@ -514,58 +516,84 @@ export default function MovimientosPage() {
           items: movementItemsForDoc,
           totalValue: totalMovementValue,
         });
-      }).then(() => {
-        toast({
-          title: 'Movimiento Registrado',
-          description: 'El remito ha sido registrado exitosamente.',
-        });
-        form.reset({
-          type: 'salida',
-          depositId: isJefeDeposito ? assignedDepositId || '' : '',
-          remitoNumber: '',
-          actorId: '',
-          items: [{ productId: '', quantity: 1 }],
-        });
-      }).catch((error: any) => {
+      });
+      toast({
+        title: 'Movimiento Registrado',
+        description: 'El remito ha sido registrado exitosamente.',
+      });
+      form.reset({
+        type: 'salida',
+        depositId: isJefeDeposito ? assignedDepositId || '' : '',
+        remitoNumber: '',
+        actorId: '',
+        items: [{ productId: '', quantity: 1 }],
+      });
+    } catch(error: any) {
         const permissionError = new FirestorePermissionError({
-            path: movementDocRef.path,
+            path: movementDocRef ? movementDocRef.path : `${collectionPrefix}/stockMovements`,
             operation: 'create',
             requestResourceData: form.getValues(),
         });
         errorEmitter.emit('permission-error', permissionError);
-      }).finally(() => {
+    } finally {
         setIsSubmitting(false);
-      });
+    }
   };
 
   const handleDeleteMovement = (movement: StockMovement) => {
     if (!firestore || !collectionPrefix) return;
-
-    const movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
     
-    runTransaction(firestore, async (transaction) => {
-        // No reads needed, we have the info.
-        
-        // Write phase
-        for (const item of movement.items) {
-          const inventoryDocId = `${item.productId}_${movement.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
-          const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
-          transaction.set(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() }, { merge: true });
-        }
-        transaction.delete(movementDocRef);
-      }).then(() => {
-        toast({
-            title: 'Remito Anulado',
-            description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
+    let movementDocRef: any;
+    try {
+        runTransaction(firestore, async (transaction) => {
+            movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
+            // No reads needed, we have the info.
+            
+            // Write phase
+            for (const item of movement.items) {
+              const inventoryDocId = `${item.productId}_${movement.depositId}`;
+              const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+              const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
+              transaction.set(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() }, { merge: true });
+            }
+            transaction.delete(movementDocRef);
+        }).then(() => {
+            toast({
+                title: 'Remito Anulado',
+                description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
+            });
         });
-      }).catch((error: any) => {
-          const permissionError = new FirestorePermissionError({
-            path: movementDocRef.path,
+    } catch(error: any) {
+        const permissionError = new FirestorePermissionError({
+            path: movementDocRef ? movementDocRef.path : `${collectionPrefix}/stockMovements/${movement.id}`,
             operation: 'delete',
         });
         errorEmitter.emit('permission-error', permissionError);
-      });
+    }
+  };
+
+  const handleExportToExcel = () => {
+    const dataToExport = filteredMovements.flatMap(mov => 
+        mov.items.map(item => ({
+            'Fecha': format(mov.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es }),
+            'Remito Nº': mov.remitoNumber || '-',
+            'Tipo': mov.type,
+            'Depósito': mov.depositName,
+            'Origen/Destino': mov.actorName || '-',
+            'Producto (Nombre)': item.productName,
+            'Producto (ID)': item.productId,
+            'Cantidad': item.quantity,
+            'Unidad': item.unit,
+            'Precio Unitario': item.price,
+            'Subtotal': item.total,
+            'Valor Total Remito': mov.totalValue,
+        }))
+    );
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimientos');
+    XLSX.writeFile(workbook, 'Movimientos.xlsx');
   };
 
   const canManageMovements =
@@ -912,7 +940,10 @@ export default function MovimientosPage() {
                     />
                   </PopoverContent>
                 </Popover>
-
+                 <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto">
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Exportar
+                </Button>
               </div>
               <div className="rounded-lg border">
                 <Table>
