@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -17,7 +16,6 @@ import {
   runTransaction,
   doc,
   serverTimestamp,
-  query,
   increment,
   writeBatch,
   deleteDoc,
@@ -25,6 +23,7 @@ import {
   orderBy,
   startAt,
   endAt,
+  query,
 } from 'firebase/firestore';
 import {
   Card,
@@ -65,7 +64,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, Edit } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, Edit, CalendarIcon } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -82,7 +81,6 @@ import type { AppSettings } from '@/types/settings';
 import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock } from '@/types/inventory';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
@@ -581,8 +579,8 @@ export default function MovimientosPage() {
   
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
-  }
-
+  };
+  
   if (isLoading) {
     return <MovementPageSkeleton />;
   }
@@ -708,7 +706,8 @@ export default function MovimientosPage() {
                               </Select>
                             </FormItem>
                           )}
-                        ) : null}
+                        />
+                      ) : null}
                       <FormField
                         control={form.control}
                         name="remitoNumber"
@@ -765,9 +764,9 @@ export default function MovimientosPage() {
                                     disabled={!selectedDepositId}
                                     noStockMessage={
                                       movementType === 'salida' &&
-                                        !!selectedDepositId
-                                        ? 'No hay productos con stock en este depósito.'
-                                        : 'Selecciona un producto'
+                                      !!selectedDepositId
+                                      ? 'No hay productos con stock en este depósito.'
+                                      : 'Selecciona un producto'
                                     }
                                   />
                                   <FormMessage />
@@ -993,7 +992,7 @@ export default function MovimientosPage() {
                                   mov.type === 'entrada'
                                     ? 'bg-green-100 text-green-800'
                                     : 'bg-red-100 text-red-800'
-                                  }`}
+                                }`}
                               >
                                 {mov.type.charAt(0).toUpperCase() +
                                   mov.type.slice(1)}
