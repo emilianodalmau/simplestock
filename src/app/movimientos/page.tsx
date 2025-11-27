@@ -254,16 +254,10 @@ export default function MovimientosPage() {
     if (!canAccessPage || !firestore || !collectionPrefix || !currentUserProfile) return null;
     
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    const userRole = currentUserProfile.role;
-
+    
     // For simplicity with multiple filters, we fetch all remitos and filter client-side.
     // This is less efficient for very large datasets but much simpler to implement without complex backend logic.
-    return query(
-        movementsCollectionRef,
-        orderBy('remitoNumber'),
-        startAt('R-'),
-        endAt('R-\uf8ff')
-    );
+    return movementsCollectionRef;
 
   }, [firestore, collectionPrefix, currentUserProfile, canAccessPage]);
     
@@ -433,28 +427,29 @@ export default function MovimientosPage() {
       await runTransaction(firestore, async (transaction) => {
         // --- 1. READ PHASE ---
         const stockDocRefs = new Map<string, any>();
-        const stockDocs = new Map<string, any>();
         const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
+        
+        const readsToPerform: Promise<any>[] = [transaction.get(counterRef)];
 
         // Pre-fetch all necessary stock documents
         for (const [productId] of productChanges.entries()) {
           const inventoryDocId = `${productId}_${data.depositId}`;
           const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
           stockDocRefs.set(productId, stockDocRef);
+          readsToPerform.push(transaction.get(stockDocRef));
         }
         
-        const allReads = [
-          transaction.get(counterRef),
-          ...Array.from(stockDocRefs.values()).map(ref => transaction.get(ref))
-        ];
-        
-        const [counterSnap, ...stockSnaps] = await Promise.all(allReads);
+        const snaps = await Promise.all(readsToPerform);
+        const counterSnap = snaps[0];
+        const stockSnaps = snaps.slice(1);
 
 
         // --- 2. VALIDATION PHASE ---
+        let stockSnapIndex = 0;
         for (const [productId, change] of productChanges.entries()) {
           if (change < 0) { // Only validate stock for 'salidas'
-             const stockDoc = stockSnaps.shift(); // Get the corresponding snapshot
+             const stockDoc = stockSnaps[stockSnapIndex];
+             stockSnapIndex++;
              if (!stockDoc) continue;
 
             const currentQuantity = stockDoc.exists()
@@ -655,430 +650,429 @@ export default function MovimientosPage() {
       </div>
     );
   }
-
-
+  
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
-        <div className="mb-6">
-            <h1 className="text-3xl font-bold tracking-tight">Movimientos de Stock</h1>
-            <p className="text-muted-foreground">
-              Registra entradas y salidas de inventario o consulta el historial de remitos.
-            </p>
-        </div>
-        <Tabs defaultValue="history">
-            <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
-                <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
-            </TabsList>
-            <TabsContent value="create">
-                 {canManageMovements && (
-                    <Card>
-                    <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)}>
-                        <CardHeader>
-                            <CardTitle>Registrar Nuevo Remito</CardTitle>
-                            <CardDescription>
-                            Completa el formulario para registrar una entrada o salida de
-                            productos.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                            <FormField
-                                control={form.control}
-                                name="type"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Tipo de Movimiento</FormLabel>
-                                    <Select
-                                    onValueChange={field.onChange}
-                                    defaultValue={field.value}
-                                    >
-                                    <FormControl>
-                                        <SelectTrigger>
-                                        <SelectValue />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="salida">Salida</SelectItem>
-                                        <SelectItem value="entrada">Entrada</SelectItem>
-                                    </SelectContent>
-                                    </Select>
-                                </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="depositId"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Depósito</FormLabel>
-                                    <Select
-                                    onValueChange={field.onChange}
-                                    value={field.value}
-                                    disabled={isJefeDeposito}
-                                    >
-                                    <FormControl>
-                                        <SelectTrigger>
-                                        <SelectValue placeholder="Selecciona un depósito" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {deposits?.map((d) => (
-                                        <SelectItem key={d.id} value={d.id}>
-                                            {d.name}
-                                        </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
-                            {movementType === 'entrada' || canSelectActor ? (
-                                <FormField
-                                control={form.control}
-                                name="actorId"
-                                render={({ field }) => (
-                                    <FormItem>
-                                    <FormLabel>{actorLabel} (Opcional)</FormLabel>
-                                    <Select
-                                        onValueChange={field.onChange}
-                                        value={field.value || ''}
-                                    >
-                                        <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue
-                                            placeholder={`Selecciona un ${actorLabel.toLowerCase()}`}
-                                            />
-                                        </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                        {actors?.map((a) => (
-                                            <SelectItem key={a.id} value={a.id}>
-                                            {movementType === 'salida' ? `${(a as UserProfile).firstName} ${(a as UserProfile).lastName}` : (a as Supplier).name}
-                                            </SelectItem>
-                                        ))}
-                                        </SelectContent>
-                                    </Select>
-                                    </FormItem>
-                                )}
-                            ) : null}
-                            <FormField
-                                control={form.control}
-                                name="remitoNumber"
-                                render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Nº Remito (Auto)</FormLabel>
-                                    <FormControl>
-                                    <Input
-                                        placeholder="Se genera automáticamente"
-                                        {...field}
-                                        disabled
-                                    />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                                )}
-                            />
-                            </div>
-                            <Separator />
-                            <div>
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-medium">
-                                Productos del Remito
-                                </h3>
-                                <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => append({ productId: '', quantity: 1 })}
-                                disabled={!selectedDepositId && !isJefeDeposito}
-                                >
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                Agregar Producto
-                                </Button>
-                            </div>
-                            <div className="space-y-4">
-                                {fields.map((field, index) => (
-                                <div
-                                    key={field.id}
-                                    className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_150px_auto] gap-2 items-start p-4 border rounded-md"
-                                >
-                                    <FormField
-                                    control={form.control}
-                                    name={`items.${index}.productId`}
-                                    render={({ field }) => (
-                                        <FormItem>
-                                        <FormLabel className="sr-only">
-                                            Producto
-                                        </FormLabel>
-                                        <ProductComboBox
-                                            products={availableProductsForMovement}
-                                            value={field.value}
-                                            onChange={field.onChange}
-                                            disabled={!selectedDepositId}
-                                            noStockMessage={
-                                            movementType === 'salida' &&
-                                            !!selectedDepositId
-                                                ? 'No hay productos con stock en este depósito.'
-                                                : 'Selecciona un producto'
-                                            }
-                                        />
-                                        <FormMessage />
-                                        </FormItem>
-                                    )}
-                                    />
-                                    <FormField
-                                    control={form.control}
-                                    name={`items.${index}.quantity`}
-                                    render={({ field }) => (
-                                        <FormItem>
-                                        <FormLabel className="sr-only">
-                                            Cantidad
-                                        </FormLabel>
-                                        <FormControl>
-                                            <Input
-                                            type="number"
-                                            placeholder="Cantidad"
-                                            {...field}
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                        </FormItem>
-                                    )}
-                                    />
-                                    <div className="hidden sm:flex items-center justify-center h-10 px-3 text-sm text-muted-foreground font-medium bg-muted rounded-md">
-                                    {productsMap.get(
-                                        form.watch(`items.${index}.productId`)
-                                    )?.unit || '-'}
-                                    </div>
-                                    <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => remove(index)}
-                                    className="text-destructive hover:bg-destructive/10"
-                                    >
-                                    <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                                ))}
-                                {form.formState.errors.items && (
-                                <p className="text-sm font-medium text-destructive mt-2">
-                                    {typeof form.formState.errors.items === 'string'
-                                    ? form.formState.errors.items
-                                    : (form.formState.errors.items as any).root?.message}
-                                </p>
-                                )}
-                            </div>
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                            <Button type="submit" disabled={isSubmitting}>
-                            {isSubmitting && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            )}
-                            Registrar Remito
-                            </Button>
-                        </CardFooter>
-                        </form>
-                    </Form>
-                    </Card>
-                )}
-            </TabsContent>
-            <TabsContent value="history">
-                 <Card>
-                    <CardHeader>
-                    <CardTitle>Historial de Movimientos</CardTitle>
-                    { isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tu depósito asignado.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
-                    </CardHeader>
-                    <CardContent>
-                    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
-                        <Input
-                            placeholder="Buscar por Nº Remito o producto..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="flex-grow"
-                        />
-                        <Select value={selectedType} onValueChange={setSelectedType}>
-                            <SelectTrigger className="w-full sm:w-[180px]">
-                                <SelectValue placeholder="Filtrar por tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos los tipos</SelectItem>
-                                <SelectItem value="entrada">Entrada</SelectItem>
-                                <SelectItem value="salida">Salida</SelectItem>
-                            </SelectContent>
-                        </Select>
-
-                        <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isJefeDeposito}>
-                            <SelectTrigger className="w-full sm:w-[180px]">
-                                <SelectValue placeholder="Filtrar por depósito" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos los depósitos</SelectItem>
-                                {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                        
-                        <Select value={selectedActor} onValueChange={setSelectedActor}>
-                            <SelectTrigger className="w-full sm:w-[180px]">
-                                <SelectValue placeholder="Filtrar por actor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos los actores</SelectItem>
-                                {allActorsForFilter.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-
-                        <Popover>
-                            <PopoverTrigger asChild>
-                            <Button
-                                id="date"
-                                variant={"outline"}
-                                className={cn(
-                                "w-full sm:w-[300px] justify-start text-left font-normal",
-                                !dateRange && "text-muted-foreground"
-                                )}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Movimientos de Stock</h1>
+        <p className="text-muted-foreground">
+          Registra entradas y salidas de inventario o consulta el historial de remitos.
+        </p>
+      </div>
+      <Tabs defaultValue="history">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
+          <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
+        </TabsList>
+        <TabsContent value="create">
+          {canManageMovements && (
+            <Card>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <CardHeader>
+                    <CardTitle>Registrar Nuevo Remito</CardTitle>
+                    <CardDescription>
+                      Completa el formulario para registrar una entrada o salida de
+                      productos.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <FormField
+                        control={form.control}
+                        name="type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Tipo de Movimiento</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
                             >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {dateRange?.from ? (
-                                dateRange.to ? (
-                                    <>
-                                    {format(dateRange.from, "LLL dd, y")} -{" "}
-                                    {format(dateRange.to, "LLL dd, y")}
-                                    </>
-                                ) : (
-                                    format(dateRange.from, "LLL dd, y")
-                                )
-                                ) : (
-                                <span>Seleccionar rango de fechas</span>
-                                )}
-                            </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                                initialFocus
-                                mode="range"
-                                defaultMonth={dateRange?.from}
-                                selected={dateRange}
-                                onSelect={setDateRange}
-                                numberOfMonths={2}
-                            />
-                            </PopoverContent>
-                        </Popover>
-
-                    </div>
-                    <div className="rounded-lg border">
-                        <Table>
-                        <TableHeader>
-                            <TableRow>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Remito Nº</TableHead>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead>Depósito</TableHead>
-                            <TableHead>Origen/Destino</TableHead>
-                            <TableHead>Productos</TableHead>
-                            <TableHead className='text-right'>Valor Total</TableHead>
-                            {canManageMovements && (
-                                <TableHead className="text-right">Acciones</TableHead>
-                            )}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoadingMovements &&
-                            [...Array(3)].map((_, i) => (
-                                <TableRow key={i}>
-                                <TableCell>
-                                    <Skeleton className="h-4 w-36" />
-                                </TableCell>
-                                <TableCell>
-                                    <Skeleton className="h-4 w-20" />
-                                </TableCell>
-                                <TableCell>
-                                    <Skeleton className="h-6 w-16 rounded-full" />
-                                </TableCell>
-                                <TableCell>
-                                    <Skeleton className="h-4 w-24" />
-                                </TableCell>
-                                <TableCell>
-                                    <Skeleton className="h-4 w-24" />
-                                </TableCell>
-                                <TableCell>
-                                    <Skeleton className="h-4 w-10" />
-                                </TableCell>
-                                <TableCell>
-                                    <Skeleton className="h-4 w-20 ml-auto" />
-                                </TableCell>
-                                {canManageMovements && (
-                                    <TableCell>
-                                    <Skeleton className="h-8 w-20 ml-auto" />
-                                    </TableCell>
-                                )}
-                                </TableRow>
-                            ))}
-                            {!isLoadingMovements && filteredMovements?.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                                {isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado." : "No se encontraron movimientos con los filtros aplicados."}
-                                </TableCell>
-                            </TableRow>
-                            )}
-                            {!isLoadingMovements &&
-                            (filteredMovements || [])
-                                ?.sort(
-                                (a, b) =>
-                                    b.createdAt.toDate().getTime() -
-                                    a.createdAt.toDate().getTime()
-                                )
-                                .map((mov) => (
-                                <TableRow key={mov.id}>
-                                    <TableCell className="font-medium">
-                                    {format(mov.createdAt.toDate(), 'PPpp', {
-                                        locale: es,
-                                    })}
-                                    </TableCell>
-                                    <TableCell className="font-mono">
-                                    {mov.remitoNumber || '-'}
-                                    </TableCell>
-                                    <TableCell>
-                                    <span
-                                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                        mov.type === 'entrada'
-                                            ? 'bg-green-100 text-green-800'
-                                            : 'bg-red-100 text-red-800'
-                                        }`}
-                                    >
-                                        {mov.type.charAt(0).toUpperCase() +
-                                        mov.type.slice(1)}
-                                    </span>
-                                    </TableCell>
-                                    <TableCell>{mov.depositName}</TableCell>
-                                    <TableCell>{mov.actorName || '-'}</TableCell>
-                                    <TableCell>{mov.items.length}</TableCell>
-                                    <TableCell className="text-right font-medium">
-                                    {formatPrice(mov.totalValue || 0)}
-                                    </TableCell>
-                                    {canManageMovements && (
-                                    <TableCell className="text-right">
-                                    <RemitoActions 
-                                        movement={mov}
-                                        settings={pdfSettings}
-                                        canDelete={isAdmin}
-                                        onDelete={() => handleDeleteMovement(mov)}
-                                    />
-                                    </TableCell>
-                                    )}
-                                </TableRow>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="salida">Salida</SelectItem>
+                                <SelectItem value="entrada">Entrada</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="depositId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Depósito</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              disabled={isJefeDeposito}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona un depósito" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {deposits?.map((d) => (
+                                  <SelectItem key={d.id} value={d.id}>
+                                    {d.name}
+                                  </SelectItem>
                                 ))}
-                        </TableBody>
-                        </Table>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {movementType === 'entrada' || canSelectActor ? (
+                        <FormField
+                          control={form.control}
+                          name="actorId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{actorLabel} (Opcional)</FormLabel>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value || ''}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue
+                                      placeholder={`Selecciona un ${actorLabel.toLowerCase()}`}
+                                    />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {actors?.map((a) => (
+                                    <SelectItem key={a.id} value={a.id}>
+                                      {movementType === 'salida' ? `${(a as UserProfile).firstName} ${(a as UserProfile).lastName}` : (a as Supplier).name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </FormItem>
+                          )}
+                        ) : null}
+                      <FormField
+                        control={form.control}
+                        name="remitoNumber"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nº Remito (Auto)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Se genera automáticamente"
+                                {...field}
+                                disabled
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
-                    </CardContent>
-                </Card>
-            </TabsContent>
-        </Tabs>
+                    <Separator />
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium">
+                          Productos del Remito
+                        </h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => append({ productId: '', quantity: 1 })}
+                          disabled={!selectedDepositId && !isJefeDeposito}
+                        >
+                          <PlusCircle className="mr-2 h-4 w-4" />
+                          Agregar Producto
+                        </Button>
+                      </div>
+                      <div className="space-y-4">
+                        {fields.map((field, index) => (
+                          <div
+                            key={field.id}
+                            className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_150px_auto] gap-2 items-start p-4 border rounded-md"
+                          >
+                            <FormField
+                              control={form.control}
+                              name={`items.${index}.productId`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="sr-only">
+                                    Producto
+                                  </FormLabel>
+                                  <ProductComboBox
+                                    products={availableProductsForMovement}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    disabled={!selectedDepositId}
+                                    noStockMessage={
+                                      movementType === 'salida' &&
+                                        !!selectedDepositId
+                                        ? 'No hay productos con stock en este depósito.'
+                                        : 'Selecciona un producto'
+                                    }
+                                  />
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`items.${index}.quantity`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="sr-only">
+                                    Cantidad
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      placeholder="Cantidad"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <div className="hidden sm:flex items-center justify-center h-10 px-3 text-sm text-muted-foreground font-medium bg-muted rounded-md">
+                              {productsMap.get(
+                                form.watch(`items.${index}.productId`)
+                              )?.unit || '-'}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => remove(index)}
+                              className="text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        {form.formState.errors.items && (
+                          <p className="text-sm font-medium text-destructive mt-2">
+                            {typeof form.formState.errors.items === 'string'
+                              ? form.formState.errors.items
+                              : (form.formState.errors.items as any).root?.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      Registrar Remito
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Form>
+            </Card>
+          )}
+        </TabsContent>
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>Historial de Movimientos</CardTitle>
+              {isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tu depósito asignado.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
+            </CardHeader>
+            <CardContent>
+              <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                <Input
+                  placeholder="Buscar por Nº Remito o producto..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-grow"
+                />
+                <Select value={selectedType} onValueChange={setSelectedType}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filtrar por tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    <SelectItem value="entrada">Entrada</SelectItem>
+                    <SelectItem value="salida">Salida</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isJefeDeposito}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filtrar por depósito" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los depósitos</SelectItem>
+                    {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedActor} onValueChange={setSelectedActor}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filtrar por actor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los actores</SelectItem>
+                    {allActorsForFilter.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date"
+                      variant={"outline"}
+                      className={cn(
+                        "w-full sm:w-[300px] justify-start text-left font-normal",
+                        !dateRange && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateRange?.from ? (
+                        dateRange.to ? (
+                          <>
+                            {format(dateRange.from, "LLL dd, y")} -{" "}
+                            {format(dateRange.to, "LLL dd, y")}
+                          </>
+                        ) : (
+                          format(dateRange.from, "LLL dd, y")
+                        )
+                      ) : (
+                        <span>Seleccionar rango de fechas</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={dateRange?.from}
+                      selected={dateRange}
+                      onSelect={setDateRange}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+              </div>
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Remito Nº</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Depósito</TableHead>
+                      <TableHead>Origen/Destino</TableHead>
+                      <TableHead>Productos</TableHead>
+                      <TableHead className='text-right'>Valor Total</TableHead>
+                      {canManageMovements && (
+                        <TableHead className="text-right">Acciones</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoadingMovements &&
+                      [...Array(3)].map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            <Skeleton className="h-4 w-36" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-20" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-6 w-16 rounded-full" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-24" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-24" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-10" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-20 ml-auto" />
+                          </TableCell>
+                          {canManageMovements && (
+                            <TableCell>
+                              <Skeleton className="h-8 w-20 ml-auto" />
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    {!isLoadingMovements && filteredMovements?.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
+                          {isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado." : "No se encontraron movimientos con los filtros aplicados."}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!isLoadingMovements &&
+                      (filteredMovements || [])
+                        ?.sort(
+                          (a, b) =>
+                            b.createdAt.toDate().getTime() -
+                            a.createdAt.toDate().getTime()
+                        )
+                        .map((mov) => (
+                          <TableRow key={mov.id}>
+                            <TableCell className="font-medium">
+                              {format(mov.createdAt.toDate(), 'PPpp', {
+                                locale: es,
+                              })}
+                            </TableCell>
+                            <TableCell className="font-mono">
+                              {mov.remitoNumber || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                  mov.type === 'entrada'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                  }`}
+                              >
+                                {mov.type.charAt(0).toUpperCase() +
+                                  mov.type.slice(1)}
+                              </span>
+                            </TableCell>
+                            <TableCell>{mov.depositName}</TableCell>
+                            <TableCell>{mov.actorName || '-'}</TableCell>
+                            <TableCell>{mov.items.length}</TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatPrice(mov.totalValue || 0)}
+                            </TableCell>
+                            {canManageMovements && (
+                              <TableCell className="text-right">
+                                <RemitoActions
+                                  movement={mov}
+                                  settings={pdfSettings}
+                                  canDelete={isAdmin}
+                                  onDelete={() => handleDeleteMovement(mov)}
+                                />
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
