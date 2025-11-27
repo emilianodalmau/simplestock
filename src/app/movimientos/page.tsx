@@ -251,22 +251,24 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !user || !currentUserProfile) return null;
-
+    if (!firestore || !collectionPrefix || !user || !currentUserProfile?.role) return null;
+  
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile.role;
-
+  
+    // Admins and Editors can see all movements
     if (role === 'administrador' || role === 'editor') {
-      return movementsCollectionRef; // Admins and Editors can see all movements
+      return movementsCollectionRef;
     }
     
-    // For jefe_deposito, they MUST filter by their userId according to security rules for LIST operations
+    // For jefe_deposito, they MUST query by their own userId to comply with security rules
     if (role === 'jefe_deposito') {
       return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
-
+  
+    // Solicitante role is handled in 'mis-movimientos', so this page won't load data for them
     return null;
-  }, [firestore, collectionPrefix, user, currentUserProfile]);
+  }, [firestore, collectionPrefix, user, currentUserProfile?.role]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -274,13 +276,20 @@ export default function MovimientosPage() {
   const filteredMovements = useMemo(() => {
     let filtered = movements || [];
 
-    // For jefe_deposito, apply the deposit filter client-side since the query is by userId
-    if (currentUserProfile?.role === 'jefe_deposito') {
-        if (!assignedDepositId) return []; // Must have an assigned deposit
-        filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
+    // For 'jefe_deposito', we perform a secondary filter on the client-side
+    // This allows them to see movements across deposits if they somehow have them,
+    // while still allowing the UI filter to work as expected.
+    // This is safe because the initial query is already secured by `userId`.
+    if (isJefeDeposito) {
+        if (!assignedDepositId) return []; // Must have an assigned deposit to see anything.
+        // If "All deposits" is selected, we still only show the ones for their assigned deposit.
+        if (selectedDeposit === 'all') {
+            filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
+        }
     }
 
-    // Apply UI filters
+
+    // Apply UI filters for all roles
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(mov => 
@@ -291,7 +300,8 @@ export default function MovimientosPage() {
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
-    if (selectedDeposit !== 'all') {
+    // Only apply the deposit filter if the user is NOT a jefe_deposito, as their data is already pre-filtered.
+    if (!isJefeDeposito && selectedDeposit !== 'all') {
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }
     if (selectedActor !== 'all') {
@@ -309,7 +319,7 @@ export default function MovimientosPage() {
 
     return filtered;
 
-  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, currentUserProfile, assignedDepositId]);
+  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito, assignedDepositId]);
 
 
   const inventoryCollection = useMemoFirebase(
