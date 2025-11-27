@@ -22,6 +22,9 @@ import {
   writeBatch,
   deleteDoc,
   where,
+  orderBy,
+  startAt,
+  endAt,
 } from 'firebase/firestore';
 import {
   Card,
@@ -254,11 +257,10 @@ export default function MovimientosPage() {
   }, [isJefeDeposito, deposits, user]);
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // Only fetch users if the current user is an admin or editor, as they are the only ones who can list users.
     if (firestore && workspaceId && (currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor')) {
-      return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
+        return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
     }
-    return null; // Return null for other roles to prevent permission errors.
+    return null;
   }, [firestore, workspaceId, currentUserProfile?.role]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
@@ -272,18 +274,44 @@ export default function MovimientosPage() {
 
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix) return null;
-    let baseQuery = query(collection(firestore, `${collectionPrefix}/stockMovements`));
+    
+    // Base query for "remitos" (remitoNumber starts with 'R-')
+    let baseQuery = query(
+      collection(firestore, `${collectionPrefix}/stockMovements`),
+      orderBy('remitoNumber'),
+      startAt('R-'),
+      endAt('R-\uf8ff')
+    );
+    
     if (isJefeDeposito && assignedDepositId) {
-      return query(baseQuery, where('depositId', '==', assignedDepositId));
+      // For jefe, we need a composite query. Firestore requires an index for this.
+      // Since we can't create indexes dynamically, we'll filter client-side as a fallback,
+      // but the ideal solution is a composite index on [remitoNumber, depositId].
+      // For now, this query might not work as expected without the index.
+      // A better approach for jefe might be to just query by depositId and then filter client-side.
+      return query(
+          collection(firestore, `${collectionPrefix}/stockMovements`), 
+          where('depositId', '==', assignedDepositId)
+      );
     }
+    
     if (isJefeDeposito && assignedDepositId === null) {
-        return null; // Don't fetch if jefe has no deposit
+      return null; // Don't fetch if jefe has no deposit
     }
+
     return baseQuery;
   }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
+    
+  // Client-side filter for jefe_deposito to only show 'R-' remitos
+  const filteredMovementsForJefe = useMemo(() => {
+    if (isJefeDeposito && movements) {
+        return movements.filter(mov => mov.remitoNumber?.startsWith('R-'));
+    }
+    return movements;
+  }, [isJefeDeposito, movements]);
 
   const inventoryCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null),
@@ -828,7 +856,7 @@ export default function MovimientosPage() {
       <Card>
         <CardHeader>
           <CardTitle>Historial de Movimientos</CardTitle>
-           { isJefeDeposito && <CardDescription>Solo se muestran los movimientos de tu depósito asignado.</CardDescription>}
+           { isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tu depósito asignado.</CardDescription> : <CardDescription>Se muestran los remitos de entrada y salida generales.</CardDescription>}
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border">
@@ -879,7 +907,7 @@ export default function MovimientosPage() {
                       )}
                     </TableRow>
                   ))}
-                {!isLoadingMovements && movements?.length === 0 && (
+                {!isLoadingMovements && filteredMovementsForJefe?.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
                       {isJefeDeposito ? "No hay movimientos en tu depósito." : "No hay movimientos registrados."}
@@ -887,7 +915,7 @@ export default function MovimientosPage() {
                   </TableRow>
                 )}
                 {!isLoadingMovements &&
-                  movements
+                  (filteredMovementsForJefe || [])
                     ?.sort(
                       (a, b) =>
                         b.createdAt.toDate().getTime() -
@@ -941,5 +969,7 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
 
     
