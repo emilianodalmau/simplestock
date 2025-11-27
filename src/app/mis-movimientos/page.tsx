@@ -90,12 +90,12 @@ export default function MisMovimientosPage() {
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     
     // Solicitantes and Jefes MUST query by their own userId to comply with security rules
+    // This query is now guaranteed to include the where clause for these roles.
     if (['solicitante', 'jefe_deposito'].includes(currentUserProfile.role)) {
       return query(movementsCollectionRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
     }
     
-    // Admins and others can see all movements (if rules allow).
-    // For "Mis Movimientos", we'll still filter by userId for them too for consistency.
+    // For "Mis Movimientos", we'll still filter by userId for admins and others for consistency.
     return query(movementsCollectionRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
     
   }, [firestore, user, collectionPrefix, currentUserProfile?.role]);

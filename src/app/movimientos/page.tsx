@@ -25,6 +25,8 @@ import {
   startAt,
   endAt,
   query,
+  Query,
+  DocumentData,
 } from 'firebase/firestore';
 import {
   Card,
@@ -258,7 +260,7 @@ export default function MovimientosPage() {
   
     // Admins and Editors can see all movements
     if (role === 'administrador' || role === 'editor') {
-      return movementsCollectionRef;
+      return movementsCollectionRef as Query<DocumentData>;
     }
     
     // For jefe_deposito, they MUST query by their own userId to comply with security rules
@@ -300,7 +302,7 @@ export default function MovimientosPage() {
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
-    // Only apply the deposit filter if the user is NOT a jefe_deposito, as their data is already pre-filtered.
+    // Only apply the deposit filter if the user is NOT a jefe_deposito, as their data is already pre-filtered by their access rights.
     if (!isJefeDeposito && selectedDeposit !== 'all') {
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }

@@ -105,6 +105,7 @@ export default function PedidosPage() {
     ];
 
     // If jefe_deposito, only show requests for their assigned deposit.
+    // This is a security and performance optimization.
     if (currentUserProfile?.role === 'jefe_deposito') {
         if (!assignedDepositId) return null; // Don't query if no deposit is assigned.
         return query(
