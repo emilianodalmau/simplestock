@@ -112,45 +112,6 @@
         "name"
       ]
     },
-    "Client": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Client",
-      "type": "object",
-      "description": "Represents a client or area within the company.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Client entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "Name of the client or area."
-        },
-        "contactName": {
-          "type": "string",
-          "description": "Name of the person responsible for the client or area."
-        },
-        "phone": {
-          "type": "string",
-          "description": "Contact phone number."
-        },
-        "email": {
-          "type": "string",
-          "description": "Contact email address.",
-          "format": "email"
-        },
-        "address": {
-          "type": "string",
-          "description": "Physical address."
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "contactName",
-        "email"
-      ]
-    },
     "Product": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Product",
@@ -406,10 +367,6 @@
     "/workspaces/{workspaceId}": {
       "schema": { "$ref": "#/entities/Workspace" },
       "description": "Stores workspace definitions. Each is owned by an 'administrador' user."
-    },
-    "/workspaces/{workspaceId}/clients/{clientId}": {
-      "schema": { "$ref": "#/entities/Client" },
-      "description": "Stores clients for a specific workspace."
     },
     "/workspaces/{workspaceId}/categories/{categoryId}": {
       "schema": { "$ref": "#/entities/Category" },

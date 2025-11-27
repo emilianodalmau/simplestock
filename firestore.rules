@@ -112,9 +112,6 @@ service cloud.firestore {
         
         // --- Subcollection Rules ---
         
-        match /clients/{clientId} {
-          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-        }
         match /categories/{categoryId} {
           allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
         }

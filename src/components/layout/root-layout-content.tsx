@@ -118,8 +118,7 @@ function AppLayout({
     { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/clientes', label: 'Clientes', icon: Users, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
+    { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
     { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
   ];
