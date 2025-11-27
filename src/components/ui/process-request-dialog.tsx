@@ -196,7 +196,6 @@ export function ProcessRequestDialog({
           newTotalValue += (product.price || 0) * item.toDeliver;
       }
 
-      // CORRECTED: Create the new document in the stockMovements subcollection
       const newMovementRef = doc(collection(firestore, collectionPrefix, 'stockMovements'));
       
       const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
@@ -227,7 +226,6 @@ export function ProcessRequestDialog({
           processedFromRequestId: request.id,
       });
 
-      // CORRECTED: Reference the original request document to delete it
       const originalRequestRef = doc(firestore, collectionPrefix, 'stockMovements', request.id);
       transaction.delete(originalRequestRef);
     })
@@ -239,11 +237,11 @@ export function ProcessRequestDialog({
         onProcessed();
     })
     .catch((error: any) => {
-        // Emit the contextual error instead of using console.error
         const permissionError = new FirestorePermissionError({
-            path: collectionPrefix, // This path is now for general context, the real error is in the transaction
-            operation: 'write', // 'write' is a good generic for transactions
+            path: 'transaction', // Generic path for transaction failure
+            operation: 'write', 
             requestResourceData: {
+                message: error.message, // Include the actual internal error
                 originalRequestId: request.id,
                 itemsToDeliver: data.items,
             },
@@ -328,5 +326,3 @@ export function ProcessRequestDialog({
     </Dialog>
   );
 }
-
-    
