@@ -206,14 +206,15 @@ export default function MovimientosPage() {
     [firestore, user]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
-  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
-  const workspaceId = currentUserProfile?.workspaceId;
   
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile) return false;
     return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role!);
   }, [currentUserProfile]);
 
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  const workspaceId = currentUserProfile?.workspaceId;
+  
   const workspaceDocRef = useMemoFirebase(
     () => (firestore && workspaceId && canAccessPage ? doc(firestore, 'workspaces', workspaceId) : null),
     [firestore, workspaceId, canAccessPage]
@@ -278,7 +279,8 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix) return null;
+    // Crucial: Do not run the query if the user doesn't have access.
+    if (!canAccessPage || !firestore || !collectionPrefix) return null;
     
     // Base query for "remitos" (remitoNumber starts with 'R-')
     let baseQuery = query(
@@ -305,7 +307,7 @@ export default function MovimientosPage() {
     }
 
     return baseQuery;
-  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId]);
+  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId, canAccessPage]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -996,3 +998,4 @@ export default function MovimientosPage() {
     
 
     
+

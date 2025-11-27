@@ -82,7 +82,7 @@ type UserProfile = {
   id: string;
   firstName?: string;
   lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
   workspaceId?: string;
 };
 export type StockMovementItem = {
@@ -252,26 +252,34 @@ export default function SolicitudesPage() {
     useCollection<InventoryStock>(inventoryCollection);
 
  const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !collectionPrefix) return null;
+    if (!firestore || !user || !collectionPrefix || !currentUserProfile) return null;
     
     // Base query for "solicitudes" (remitoNumber starts with 'S-')
-    let baseQuery = query(
+    const baseQuery = query(
       collection(firestore, `${collectionPrefix}/stockMovements`),
       orderBy('remitoNumber'),
       startAt('S-'),
       endAt('S-\uf8ff')
     );
     
-    if (currentUserProfile?.role === 'administrador') {
+    // Only these roles can see any 'S-' remitos.
+    const canQuery = ['administrador', 'jefe_deposito', 'solicitante'].includes(currentUserProfile.role!);
+
+    if (!canQuery) {
+        return null; // Return null if the user role is not allowed to query at all
+    }
+
+    if (currentUserProfile.role === 'administrador') {
       return baseQuery; // Admins see all 'S-' remitos
     }
     
-    if (isJefeDeposito && assignedDepositId) {
-      // Jefe sees 'S-' remitos from their deposit
-      return query(baseQuery, where('depositId', '==', assignedDepositId));
+    if (isJefeDeposito) {
+        if (!assignedDepositId) return null; // If jefe has no deposit, don't query
+        // Jefe sees 'S-' remitos from their deposit
+        return query(baseQuery, where('depositId', '==', assignedDepositId));
     }
     
-    // Other users see only their own 'S-' requests
+    // 'solicitante' see only their own 'S-' requests
     return query(baseQuery, where('userId', '==', user.uid));
  }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId, collectionPrefix]);
 
