@@ -110,6 +110,10 @@ type InventoryStock = {
   depositId: string;
   quantity: number;
 };
+type Workspace = {
+    appName?: string;
+    logoUrl?: string;
+}
 
 // --- Zod Schemas ---
 const requestItemSchema = z.object({
@@ -171,22 +175,12 @@ function SolicitudesPageSkeleton() {
 // --- Main Page Component ---
 export default function SolicitudesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [pdfSettings, setPdfSettings] = useState<AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
   const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
 
-  // --- Settings Loading ---
-  useEffect(() => {
-    async function loadSettings() {
-      // This is a client-side fetch now, so we need to handle it properly.
-      // Since `getSettings` no longer uses 'use server', we can't call it here.
-      // We will rely on settings passed down, or use a default.
-      // For the PDF, we will pass settings to the component.
-    }
-    loadSettings();
-  }, []);
 
   // --- Data Loading ---
   const currentUserDocRef = useMemoFirebase(
@@ -196,6 +190,25 @@ export default function SolicitudesPage() {
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   const workspaceId = currentUserProfile?.workspaceId;
+  
+  const workspaceDocRef = useMemoFirebase(
+    () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
+    [firestore, workspaceId]
+  );
+  const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
+  
+  // --- Settings Loading for PDF ---
+  useEffect(() => {
+    if (!isLoadingWorkspace) {
+        setPdfSettings({
+            appName: workspaceData?.appName || 'Inventario',
+            logoUrl: workspaceData?.logoUrl || '',
+            workspaceAppName: workspaceData?.appName,
+            workspaceLogoUrl: workspaceData?.logoUrl,
+        });
+    }
+  }, [workspaceData, isLoadingWorkspace]);
+
 
   const collectionPrefix = useMemo(() => {
     if (!workspaceId) return null;
@@ -259,7 +272,8 @@ export default function SolicitudesPage() {
     isLoadingProducts ||
     isLoadingDeposits ||
     isLoadingInventory ||
-    isLoadingMovements;
+    isLoadingMovements ||
+    isLoadingWorkspace;
 
   // --- Form Setup ---
   const form = useForm<RequestFormValues>({
@@ -745,7 +759,7 @@ export default function SolicitudesPage() {
                         <TableCell className="text-right">
                            <RemitoActions 
                              movement={mov}
-                             settings={appSettings as any}
+                             settings={pdfSettings}
                              canDelete={isAdmin}
                              onDelete={() => handleDeleteMovement(mov)}
                            />
@@ -760,5 +774,3 @@ export default function SolicitudesPage() {
     </div>
   );
 }
-
-    
