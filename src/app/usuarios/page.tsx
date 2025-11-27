@@ -36,6 +36,7 @@ import {
   serverTimestamp,
   query,
   where,
+  setDoc,
 } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -61,7 +62,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { createUser } from '@/lib/auth-actions';
+import { createAuthUser } from '@/lib/auth-actions';
 
 const editFormSchema = z.object({
   firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -222,7 +223,7 @@ export default function UsuariosPage() {
   };
   
   const onCreateSubmit: SubmitHandler<CreateFormValues> = async (data) => {
-    if (!currentUserProfile?.workspaceId) {
+    if (!currentUserProfile?.workspaceId || !firestore) {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -232,14 +233,30 @@ export default function UsuariosPage() {
     }
     setIsCreateSubmitting(true);
     try {
-      const result = await createUser({
-        ...data,
-        workspaceId: currentUserProfile.workspaceId,
+      // Step 1: Call server action to create user in Auth
+      const result = await createAuthUser({
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
       });
 
-      if (result.error) {
-        throw new Error(result.error);
+      if (result.error || !result.uid) {
+        throw new Error(result.error || 'No se pudo obtener el UID del nuevo usuario.');
       }
+
+      // Step 2: Create the user document in Firestore from the client
+      const userDocRef = doc(firestore, 'users', result.uid);
+      await setDoc(userDocRef, {
+        id: result.uid,
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone || '',
+        address: data.address || '',
+        role: 'solicitante',
+        workspaceId: currentUserProfile.workspaceId,
+        createdAt: serverTimestamp(),
+      });
       
       setNewUserCredentials({
         email: data.email,

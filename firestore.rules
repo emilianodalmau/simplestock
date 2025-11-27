@@ -67,9 +67,7 @@ service cloud.firestore {
                      );
 
       // CREATE: Un administrador puede crear un usuario para su propio workspace.
-      allow create: if isOwner(userId) 
-                      || isSuperAdmin() 
-                      || (isWorkspaceAdmin(request.resource.data.workspaceId));
+      allow create: if isSuperAdmin() || (isWorkspaceAdmin(request.resource.data.workspaceId));
       
       // UPDATE: El rol 'solicitante' no puede ser cambiado por un admin normal a otro rol.
       // Solo un super-admin puede cambiar el rol de un solicitante.
