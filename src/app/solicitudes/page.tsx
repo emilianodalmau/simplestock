@@ -280,7 +280,11 @@ export default function SolicitudesPage() {
     }
     
     // 'solicitante' see only their own 'S-' requests
-    return query(baseQuery, where('userId', '==', user.uid));
+    if (currentUserProfile.role === 'solicitante') {
+        return query(baseQuery, where('userId', '==', user.uid));
+    }
+    
+    return null; // Default to no query if no condition is met
  }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId, collectionPrefix]);
 
  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
