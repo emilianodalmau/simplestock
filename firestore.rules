@@ -110,11 +110,28 @@ service cloud.firestore {
         // DELETE: Only super-admins can delete workspaces.
         allow delete: if isSuperAdmin();
         
-        // --- Subcollection Rules (CORREGIDO) ---
+        // --- Subcollection Rules ---
         
-        match /{subcollectionName}/{docId} {
-            allow read, write: if subcollectionName in ['clients', 'categories', 'products', 'depositos', 'suppliers', 'inventory', 'counters']
-                               && (isSuperAdmin() || isInWorkspace(workspaceId));
+        match /clients/{clientId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        match /categories/{categoryId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        match /products/{productId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        match /suppliers/{supplierId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        match /inventory/{inventoryId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        match /counters/{counterId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        }
+        match /deposits/{depositId} {
+          allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
         }
         
         // Specific rule for stock movements to allow 'jefe_deposito' to create movements.
