@@ -114,13 +114,11 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
 };
 
 // Generates a random, secure password.
-const generatePassword = (length = 12): string => {
+const generatePassword = (length = 8): string => {
   const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
   let password = "";
-  // This is a simple, non-cryptographically secure way to generate a password.
-  // For production, consider using a more robust library or window.crypto.
-  for (let i = 0, n = charset.length; i < n; ++i) {
-    password += charset.charAt(Math.floor(Math.random() * n));
+  for (let i = 0; i < length; ++i) {
+    password += charset.charAt(Math.floor(Math.random() * charset.length));
   }
   return password;
 };
@@ -280,6 +278,8 @@ export default function UsuariosPage() {
       let errorMessage = 'No se pudo crear el usuario. Revisa que el email no esté en uso.';
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = 'El email proporcionado ya está en uso por otro usuario.';
+      } else if (error.code === 'auth/weak-password') {
+          errorMessage = 'La contraseña generada es demasiado débil. Intenta de nuevo.';
       }
       toast({
         variant: "destructive",
