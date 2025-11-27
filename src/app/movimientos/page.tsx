@@ -593,6 +593,9 @@ export default function MovimientosPage() {
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor' ||
     currentUserProfile?.role === 'jefe_deposito';
+  
+  const canSelectActor = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
+  
   const isAdmin = currentUserProfile?.role === 'administrador';
   
   const formatPrice = (price: number) => {
@@ -669,7 +672,7 @@ export default function MovimientosPage() {
                       </FormItem>
                     )}
                   />
-                  {!(isJefeDeposito && movementType === 'salida') && (
+                  {movementType === 'entrada' || canSelectActor ? (
                     <FormField
                       control={form.control}
                       name="actorId"
@@ -698,7 +701,7 @@ export default function MovimientosPage() {
                         </FormItem>
                       )}
                     />
-                  )}
+                  ) : null}
                   <FormField
                     control={form.control}
                     name="remitoNumber"
@@ -938,3 +941,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
