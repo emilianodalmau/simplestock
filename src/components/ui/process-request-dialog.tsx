@@ -162,7 +162,7 @@ export function ProcessRequestDialog({
     const collectionPrefix = `workspaces/${workspaceId}`;
 
     runTransaction(firestore, async (transaction) => {
-      const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
+      const counterRef = doc(firestore, collectionPrefix, 'counters', 'remitoCounter');
       const counterSnap = await transaction.get(counterRef);
       const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
       const newRemitoNumber = lastNumber + 1;
@@ -177,7 +177,7 @@ export function ProcessRequestDialog({
           if (!product) throw new Error(`Producto ${item.productName} no encontrado.`);
 
           const inventoryDocId = `${item.productId}_${request.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
+          const stockDocRef = doc(firestore, collectionPrefix, 'inventory', inventoryDocId);
           
           const stockSnap = await transaction.get(stockDocRef);
           const currentStock = stockSnap.exists() ? stockSnap.data().quantity : 0;
@@ -197,7 +197,7 @@ export function ProcessRequestDialog({
       }
 
       // CORRECTED: Create the new document in the stockMovements subcollection
-      const newMovementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+      const newMovementRef = doc(collection(firestore, collectionPrefix, 'stockMovements'));
       
       const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
            const product = productMap.get(item.productId)!;
@@ -228,7 +228,7 @@ export function ProcessRequestDialog({
       });
 
       // CORRECTED: Reference the original request document to delete it
-      const originalRequestRef = doc(firestore, `${collectionPrefix}/stockMovements`, request.id);
+      const originalRequestRef = doc(firestore, collectionPrefix, 'stockMovements', request.id);
       transaction.delete(originalRequestRef);
     })
     .then(() => {
@@ -328,3 +328,5 @@ export function ProcessRequestDialog({
     </Dialog>
   );
 }
+
+    
