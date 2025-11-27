@@ -85,20 +85,16 @@ export default function MisMovimientosPage() {
   );
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !collectionPrefix || !currentUserProfile?.role) return null;
-
-    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+    if (!firestore || !collectionPrefix || !user) return null;
     
-    // Solicitantes and Jefes MUST query by their own userId to comply with security rules
-    // This query is now guaranteed to include the where clause for these roles.
-    if (['solicitante', 'jefe_deposito'].includes(currentUserProfile.role)) {
-      return query(movementsCollectionRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-    }
-    
-    // For "Mis Movimientos", we'll still filter by userId for admins and others for consistency.
-    return query(movementsCollectionRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-    
-  }, [firestore, user, collectionPrefix, currentUserProfile?.role]);
+    // OBLIGATORIO: Esta página es para "Mis Movimientos", por lo que siempre filtramos por el ID del usuario logueado.
+    // Esto cumple con las reglas de seguridad para roles como 'solicitante' y 'jefe_deposito'.
+    return query(
+        collection(firestore, `${collectionPrefix}/stockMovements`),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+    );
+  }, [firestore, collectionPrefix, user]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
