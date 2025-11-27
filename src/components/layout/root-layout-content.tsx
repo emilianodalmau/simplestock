@@ -121,7 +121,7 @@ function AppLayout({
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
     { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
     { href: '/solicitudes', label: 'Crear Solicitud', icon: ClipboardList, roles: ['administrador', 'editor', 'solicitante'] },
-    { href: '/mis-movimientos', label: 'Mis Movimientos', icon: History, roles: ['solicitante'] },
+    { href: '/mis-movimientos', label: 'Mis Movimientos', icon: History, roles: ['solicitante', 'jefe_deposito'] },
     { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
