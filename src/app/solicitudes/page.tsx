@@ -51,56 +51,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, PlusCircle } from 'lucide-react';
 import { ProductComboBox } from '@/components/ui/product-combobox';
+import type { Product, Deposit, UserProfile, StockMovementItem, InventoryStock } from '@/types/inventory';
 
-// --- Data Types ---
-type Product = {
-  id: string;
-  name: string;
-  unit: string;
-  code: string;
-  price: number;
-  isArchived?: boolean;
-};
-type Deposit = { id: string; name: string; jefeId?: string; };
-type UserProfile = { 
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
-  workspaceId?: string;
-};
-export type StockMovementItem = {
-  productId: string;
-  productName: string;
-  quantity: number;
-  unit: string;
-  price: number;
-  total: number;
-};
-export type StockMovement = {
-  id: string;
-  remitoNumber?: string;
-  type: 'entrada' | 'salida';
-  depositId: string;
-  depositName: string;
-  actorName?: string;
-  userId: string;
-  createdAt: {
-    toDate: () => Date;
-  };
-  items: StockMovementItem[];
-  totalValue: number;
-};
-type InventoryStock = {
-  id: string;
-  productId: string;
-  depositId: string;
-  quantity: number;
-};
-type Workspace = {
-    appName?: string;
-    logoUrl?: string;
-}
 
 // --- Zod Schemas ---
 const requestItemSchema = z.object({
@@ -166,6 +118,14 @@ export default function SolicitudesPage() {
     [firestore, user]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
+  
+  const canCreateRequest = useMemo(() => {
+    if (!currentUserProfile?.role) return false;
+    // Now only 'solicitante' can create requests from this page.
+    // Admins and editors will use the main movements page.
+    return currentUserProfile.role === 'solicitante';
+  }, [currentUserProfile?.role]);
+
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   const workspaceId = currentUserProfile?.workspaceId;
 
@@ -230,15 +190,12 @@ export default function SolicitudesPage() {
   
   const selectedDepositId = form.watch('depositId');
   
-  // Set the actorId and depositId if user is Jefe
+  // Set the actorId
   useEffect(() => {
     if (user?.uid) {
         form.setValue('actorId', user.uid);
     }
-    if (isJefeDeposito && assignedDepositId) {
-        form.setValue('depositId', assignedDepositId);
-    }
-  }, [user, form, isJefeDeposito, assignedDepositId]);
+  }, [user, form]);
 
   // --- Effects ---
   useEffect(() => {
@@ -263,12 +220,7 @@ export default function SolicitudesPage() {
   }, [inventory, selectedDepositId]);
 
   const availableProductsForRequest = useMemo(() => {
-    if (!products) return [];
-    if (!selectedDepositId || !inventory) {
-       // Return empty if jefe de deposito has no deposit selected yet.
-      if (isJefeDeposito) return [];
-      return products.filter((p) => !p.isArchived);
-    }
+    if (!products || !selectedDepositId || !inventory) return [];
 
     const productsWithStock = new Set(
       inventory
@@ -281,9 +233,7 @@ export default function SolicitudesPage() {
     return products.filter(
       (product) => !product.isArchived && productsWithStock.has(product.id)
     );
-  }, [selectedDepositId, products, inventory, isJefeDeposito]);
-  
-  const canCreateRequest = currentUserProfile?.role && ['administrador', 'editor', 'solicitante', 'jefe_deposito'].includes(currentUserProfile.role);
+  }, [selectedDepositId, products, inventory]);
 
   // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
@@ -303,68 +253,19 @@ export default function SolicitudesPage() {
     }
 
     setIsSubmitting(true);
-
-    const productChanges = new Map<string, number>();
-    for (const item of data.items) {
-      if (item.productId) {
-        const change = -item.quantity; // All requests are 'salida'
-        productChanges.set(
-          item.productId,
-          (productChanges.get(item.productId) || 0) + change
-        );
-      }
-    }
-
+    
+    // NOTE: This logic creates a "Solicitud" (S-XXXXX), NOT a "Remito" (R-XXXXX).
+    // The stock is NOT modified here. That happens when the Jefe de Deposito processes the request.
     try {
       await runTransaction(firestore, async (transaction) => {
-        // --- 2. Server-side Read & Validation (as a safeguard) ---
-        const stockDocRefs = new Map<string, any>();
         const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
-
-        // Pre-fetch all necessary stock documents
-        for (const [productId] of productChanges.entries()) {
-          const inventoryDocId = `${productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
-          stockDocRefs.set(productId, stockDocRef);
-        }
-        
-        const stockSnaps = await Promise.all(
-          Array.from(stockDocRefs.values()).map((ref) => transaction.get(ref))
-        );
-
-        // This validation is a final check. The main feedback is given on the client.
-        stockSnaps.forEach((snap, index) => {
-          const productId = Array.from(stockDocRefs.keys())[index];
-          const change = productChanges.get(productId)!;
-          const currentQuantity = snap.exists() ? snap.data().quantity : 0;
-          if (currentQuantity < -change) {
-            throw new Error(
-              `Stock insuficiente para ${productsMap.get(productId)?.name}.`
-            );
-          }
-        });
-
         const counterSnap = await transaction.get(counterRef);
-
-        // --- 3. WRITE PHASE ---
+        
         const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
         const newRemitoNumber = lastNumber + 1;
+        // The prefix "S-" marks this as a "Solicitud" (Request)
         const formattedRemitoNumber = `S-${String(newRemitoNumber).padStart(5, '0')}`;
         transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
-
-        for (const [productId, change] of productChanges.entries()) {
-          const stockDocRef = stockDocRefs.get(productId);
-          transaction.set(
-            stockDocRef,
-            {
-              quantity: increment(change),
-              lastUpdated: serverTimestamp(),
-              productId: productId,
-              depositId: data.depositId,
-            },
-            { merge: true }
-          );
-        }
 
         const movementItemsForDoc: StockMovementItem[] = data.items.map((item) => {
             const product = productsMap.get(item.productId);
@@ -384,6 +285,9 @@ export default function SolicitudesPage() {
         const actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
 
         const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+        
+        // This is a "salida" type, but it's a REQUEST, not a confirmed movement.
+        // The `remitoNumber` "S-" prefix is the key differentiator.
         transaction.set(movementRef, {
           id: movementRef.id,
           remitoNumber: formattedRemitoNumber,
@@ -401,11 +305,11 @@ export default function SolicitudesPage() {
       });
 
       toast({
-        title: 'Solicitud Registrada',
-        description: 'El pedido ha sido registrado como un remito de salida.',
+        title: 'Solicitud Enviada',
+        description: `Tu pedido ${form.getValues('remitoNumber')} ha sido enviado para su aprobación.`,
       });
       form.reset({
-        depositId: isJefeDeposito ? assignedDepositId || '' : '',
+        depositId: '',
         actorId: user.uid,
         items: [{ productId: '', quantity: 1 }],
       });
@@ -444,10 +348,10 @@ export default function SolicitudesPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
        <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">
-          Solicitudes de Productos
+          Solicitud de Productos
         </h1>
         <p className="text-muted-foreground">
-          Crea un pedido de productos desde un depósito.
+          Crea un pedido de productos desde un depósito para que sea aprobado.
         </p>
       </div>
       
@@ -457,9 +361,7 @@ export default function SolicitudesPage() {
             <CardHeader>
               <CardTitle>Crear Pedido de Productos</CardTitle>
               <CardDescription>
-                {isJefeDeposito && !assignedDepositId 
-                  ? 'Debes tener un depósito asignado para poder crear pedidos.' 
-                  : 'Completa el formulario para generar un remito de salida. El stock disponible se mostrará al seleccionar un producto.'}
+                 Completa el formulario para generar una solicitud. El stock disponible se mostrará al seleccionar un producto.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -470,7 +372,7 @@ export default function SolicitudesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Depósito de Origen</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona un depósito" />
@@ -595,7 +497,7 @@ export default function SolicitudesPage() {
             <CardFooter>
               <Button type="submit" disabled={isSubmitting || !selectedDepositId || !form.formState.isValid}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Generar Pedido
+                Enviar Solicitud
               </Button>
             </CardFooter>
           </form>

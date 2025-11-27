@@ -340,6 +340,21 @@
       },
       "required": ["productId", "productName", "quantity", "unit", "price", "total"]
     },
+    "RequestItem": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "RequestItem",
+        "type": "object",
+        "description": "Represents a single item within a product request, used for processing.",
+        "properties": {
+          "productId": { "type": "string" },
+          "productName": { "type": "string" },
+          "requested": { "type": "number" },
+          "inStock": { "type": "number" },
+          "unit": { "type": "string" },
+          "toDeliver": { "type": "number" }
+        },
+        "required": ["productId", "productName", "requested", "inStock", "unit", "toDeliver"]
+    },
     "Counter": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Counter",

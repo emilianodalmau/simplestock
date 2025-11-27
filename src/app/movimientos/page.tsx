@@ -79,56 +79,14 @@ import { es } from 'date-fns/locale';
 import { ProductComboBox } from '@/components/ui/product-combobox';
 import { RemitoActions } from '@/components/remito-actions';
 import type { AppSettings } from '@/types/settings';
+import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock } from '@/types/inventory';
 
-// --- Data Types ---
-export type Product = {
-  id: string;
-  name: string;
-  unit: string;
-  code: string;
-  price: number;
-  isArchived?: boolean;
-};
-export type Deposit = { id: string; name: string; jefeId?: string };
-export type Supplier = { id: string; name: string };
-export type UserProfile = { 
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
-  workspaceId?: string;
-};
+
 type Workspace = {
     appName?: string;
     logoUrl?: string;
 }
-export type StockMovementItem = {
-  productId: string;
-  productName: string;
-  quantity: number;
-  unit: string;
-  price: number;
-  total: number;
-};
-export type StockMovement = {
-  id: string;
-  remitoNumber?: string;
-  type: 'entrada' | 'salida';
-  depositId: string;
-  depositName: string;
-  actorName?: string;
-  createdAt: {
-    toDate: () => Date;
-  };
-  items: StockMovementItem[];
-  totalValue: number;
-};
-export type InventoryStock = {
-  id: string;
-  productId: string;
-  depositId: string;
-  quantity: number;
-};
+
 
 // --- Zod Schemas ---
 const movementItemSchema = z.object({

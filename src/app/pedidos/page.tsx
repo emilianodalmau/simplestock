@@ -37,22 +37,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { ProcessRequestDialog } from '@/components/ui/process-request-dialog';
+import type { StockMovement, InventoryStock, Product } from '@/types/inventory';
+
 
 // --- Data Types ---
-type StockMovement = {
-  id: string;
-  remitoNumber?: string;
-  type: 'entrada' | 'salida';
-  depositId: string;
-  depositName: string;
-  actorName?: string;
-  userId: string;
-  createdAt: {
-    toDate: () => Date;
-  };
-  items: any[]; // Simple for now
-};
-
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'jefe_deposito';
@@ -61,6 +50,7 @@ type UserProfile = {
 
 // --- Main Page Component ---
 export default function PedidosPage() {
+  const [selectedRequest, setSelectedRequest] = useState<StockMovement | null>(null);
   const firestore = useFirestore();
   const { user } = useUser();
 
@@ -105,10 +95,24 @@ export default function PedidosPage() {
 
   const { data: requests, isLoading: isLoadingRequests } =
     useCollection<StockMovement>(requestsQuery);
+    
+  const inventoryCollection = useMemoFirebase(
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null),
+    [firestore, collectionPrefix]
+  );
+  const { data: inventory, isLoading: isLoadingInventory } =
+    useCollection<InventoryStock>(inventoryCollection);
+    
+  const productsCollection = useMemoFirebase(
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/products`) : null),
+    [firestore, collectionPrefix]
+  );
+  const { data: products, isLoading: isLoadingProducts } =
+    useCollection<Product>(productsCollection);
 
-  const isLoading = isLoadingProfile || isLoadingRequests;
+  const isLoading = isLoadingProfile || isLoadingRequests || isLoadingInventory || isLoadingProducts;
 
-  if (isLoading) {
+  if (isLoading && !selectedRequest) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <div className="mb-6">
@@ -145,97 +149,112 @@ export default function PedidosPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Pedidos Pendientes</h1>
-        <p className="text-muted-foreground">
-          Solicitudes de productos que requieren tu acción para ser procesadas.
-        </p>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Solicitudes</CardTitle>
-          <CardDescription>
-            Revisa cada solicitud y procésala para generar un remito de salida.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Solicitud Nº</TableHead>
-                  <TableHead>Solicitante</TableHead>
-                  <TableHead>Depósito</TableHead>
-                  <TableHead>Nº de Items</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoadingRequests &&
-                  [...Array(3)].map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Skeleton className="h-4 w-36" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-10" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-8 w-32 ml-auto" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                {!isLoadingRequests && requests?.length === 0 && (
+    <>
+      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight">Pedidos Pendientes</h1>
+          <p className="text-muted-foreground">
+            Solicitudes de productos que requieren tu acción para ser procesadas.
+          </p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Lista de Solicitudes</CardTitle>
+            <CardDescription>
+              Revisa cada solicitud y procésala para generar un remito de salida.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center h-24">
-                      No hay pedidos pendientes.
-                    </TableCell>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Solicitud Nº</TableHead>
+                    <TableHead>Solicitante</TableHead>
+                    <TableHead>Depósito</TableHead>
+                    <TableHead>Nº de Items</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                )}
-                {!isLoadingRequests &&
-                  (requests || [])
-                    .sort(
-                      (a, b) =>
-                        b.createdAt.toDate().getTime() -
-                        a.createdAt.toDate().getTime()
-                    )
-                    .map((req) => (
-                      <TableRow key={req.id}>
-                        <TableCell className="font-medium">
-                          {format(req.createdAt.toDate(), 'PPpp', {
-                            locale: es,
-                          })}
+                </TableHeader>
+                <TableBody>
+                  {isLoadingRequests &&
+                    [...Array(3)].map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Skeleton className="h-4 w-36" />
                         </TableCell>
-                        <TableCell className="font-mono">
-                          {req.remitoNumber || '-'}
+                        <TableCell>
+                          <Skeleton className="h-4 w-20" />
                         </TableCell>
-                        <TableCell>{req.actorName || '-'}</TableCell>
-                        <TableCell>{req.depositName}</TableCell>
-                        <TableCell>{req.items.length}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="outline" size="sm" disabled>
-                             Procesar Pedido
-                          </Button>
+                        <TableCell>
+                          <Skeleton className="h-4 w-24" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-24" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-10" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-8 w-32 ml-auto" />
                         </TableCell>
                       </TableRow>
                     ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+                  {!isLoadingRequests && requests?.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center h-24">
+                        No hay pedidos pendientes.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!isLoadingRequests &&
+                    (requests || [])
+                      .sort(
+                        (a, b) =>
+                          b.createdAt.toDate().getTime() -
+                          a.createdAt.toDate().getTime()
+                      )
+                      .map((req) => (
+                        <TableRow key={req.id}>
+                          <TableCell className="font-medium">
+                            {format(req.createdAt.toDate(), 'PPpp', {
+                              locale: es,
+                            })}
+                          </TableCell>
+                          <TableCell className="font-mono">
+                            {req.remitoNumber || '-'}
+                          </TableCell>
+                          <TableCell>{req.actorName || '-'}</TableCell>
+                          <TableCell>{req.depositName}</TableCell>
+                          <TableCell>{req.items.length}</TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm" onClick={() => setSelectedRequest(req)}>
+                              Procesar Pedido
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {selectedRequest && inventory && products && (
+        <ProcessRequestDialog
+          request={selectedRequest}
+          inventory={inventory}
+          products={products}
+          isOpen={!!selectedRequest}
+          onClose={() => setSelectedRequest(null)}
+          onSubmit={() => {
+            // Logic to be implemented in the next step
+            console.log("Submitting...");
+          }}
+        />
+      )}
+    </>
   );
 }
-
