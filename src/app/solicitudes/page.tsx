@@ -253,41 +253,47 @@ export default function SolicitudesPage() {
 
  const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !user || !collectionPrefix || !currentUserProfile) return null;
-    
-    // Base query for "solicitudes" (remitoNumber starts with 'S-')
-    const baseQuery = query(
-      collection(firestore, `${collectionPrefix}/stockMovements`),
-      orderBy('remitoNumber'),
-      startAt('S-'),
-      endAt('S-\uf8ff')
-    );
-    
-    // Only these roles can see any 'S-' remitos.
-    const canQuery = ['administrador', 'jefe_deposito', 'solicitante'].includes(currentUserProfile.role!);
 
-    if (!canQuery) {
-        return null; // Return null if the user role is not allowed to query at all
-    }
+    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
 
     if (currentUserProfile.role === 'administrador') {
-      return baseQuery; // Admins see all 'S-' remitos
+      // Admins can query by remitoNumber range
+      return query(
+        movementsCollectionRef,
+        orderBy('remitoNumber'),
+        startAt('S-'),
+        endAt('S-\uf8ff')
+      );
     }
     
-    if (isJefeDeposito) {
-        if (!assignedDepositId) return null; // If jefe has no deposit, don't query
-        // Jefe sees 'S-' remitos from their deposit
-        return query(baseQuery, where('depositId', '==', assignedDepositId));
+    if (currentUserProfile.role === 'jefe_deposito') {
+       if (!assignedDepositId) return null;
+       // Jefes query by depositId
+       return query(movementsCollectionRef, where('depositId', '==', assignedDepositId));
     }
     
-    // 'solicitante' see only their own 'S-' requests
     if (currentUserProfile.role === 'solicitante') {
-        return query(baseQuery, where('userId', '==', user.uid));
+        // Solicitantes MUST query by their own userId to comply with security rules
+        return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
     
-    return null; // Default to no query if no condition is met
- }, [firestore, user, currentUserProfile, isJefeDeposito, assignedDepositId, collectionPrefix]);
+    return null; // Default to no query if no appropriate role
+ }, [firestore, user, currentUserProfile, assignedDepositId, collectionPrefix]);
 
  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
+
+  const filteredMovements = useMemo(() => {
+      if (!movements || !currentUserProfile) return [];
+      
+      // For roles other than admin, we need to manually filter for 'S-' remitos
+      // because their queries might fetch other types of movements (e.g., 'R-')
+      if (currentUserProfile.role !== 'administrador') {
+          return movements.filter(mov => mov.remitoNumber?.startsWith('S-'));
+      }
+      
+      // Admins already have their data pre-filtered by the query
+      return movements;
+  }, [movements, currentUserProfile]);
   
   const isLoading =
     isLoadingProfile ||
@@ -759,7 +765,7 @@ export default function SolicitudesPage() {
                       <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
                     </TableRow>
                   ))}
-                {!isLoadingMovements && movements?.length === 0 && (
+                {!isLoadingMovements && filteredMovements.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center h-24">
                       {isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado para ver pedidos." : "No se encontraron pedidos."}
@@ -767,8 +773,8 @@ export default function SolicitudesPage() {
                   </TableRow>
                 )}
                 {!isLoadingMovements &&
-                  movements
-                    ?.sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
+                  filteredMovements
+                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
                     .map((mov) => (
                       <TableRow key={mov.id}>
                         <TableCell className="font-medium">
