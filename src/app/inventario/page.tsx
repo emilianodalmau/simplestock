@@ -104,6 +104,7 @@ export default function InventarioPage() {
   // State for filters and search
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedDeposit, setSelectedDeposit] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState<StockStatus | 'all'>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'productName', direction: 'ascending' });
 
@@ -137,7 +138,10 @@ export default function InventarioPage() {
   useEffect(() => {
     if (isJefeDeposito && deposits) {
       const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
-      setAssignedDepositId(assignedDeposit?.id || null);
+      if (assignedDeposit) {
+        setAssignedDepositId(assignedDeposit.id);
+        setSelectedDeposit(assignedDeposit.id); // Pre-select the assigned deposit for 'jefe_deposito'
+      }
     }
   }, [isJefeDeposito, deposits, user]);
 
@@ -159,14 +163,13 @@ export default function InventarioPage() {
 
   const inventoryQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix) return null;
-    // For Jefe de Deposito, we filter the inventory later in the processing logic,
-    // so we fetch all inventory they have access to first. If they have an assigned
-    // deposit, the query is already filtered. If not, we still need all inventory
-    // for other roles.
+    
+    // For 'jefe_deposito' with an assigned deposit, we can optimize the query
     if (isJefeDeposito && assignedDepositId) {
         return query(collection(firestore, `${collectionPrefix}/inventory`), where('depositId', '==', assignedDepositId));
     }
-    // Admins/Editors/Viewers see all inventory.
+    
+    // Admins/Editors/Viewers see all inventory. 'jefe_deposito' without an assigned deposit also fetches all to show an empty state.
     return collection(firestore, `${collectionPrefix}/inventory`);
   }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId]);
 
@@ -193,15 +196,17 @@ export default function InventarioPage() {
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
     const stockMap = new Map<string, number>();
     
-    // The inventory data is pre-filtered by the query for 'jefe_deposito'.
-    // For other roles, it contains all stock.
-    for (const stockItem of inventory) {
+    // Filter inventory by selected deposit first, or use all inventory if 'all' is selected
+    const relevantInventory = selectedDeposit === 'all' 
+      ? inventory 
+      : inventory.filter(stock => stock.depositId === selectedDeposit);
+
+    for (const stockItem of relevantInventory) {
       const currentStock = stockMap.get(stockItem.productId) || 0;
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
     }
 
     const combinedData: InventoryItem[] = products.map((product) => {
-      // The stockMap now correctly contains either all stock or just the assigned deposit's stock.
       const totalStock = stockMap.get(product.id) || 0;
       const minStock = product.minStock;
       const totalValue = (product.price || 0) * totalStock;
@@ -225,16 +230,12 @@ export default function InventarioPage() {
         status: status,
       };
     }).filter(item => {
-        // If user is jefe, we only want to show products that actually exist in their deposit.
-        // Products with 0 stock but present in other deposits should not be shown to them.
-        if (isJefeDeposito) {
-            return stockMap.has(item.productId);
-        }
-        // Other roles see all products.
-        return true;
+        // Only show products that have a stock entry in the relevant inventory
+        // This is important for when a deposit filter is active.
+        return stockMap.has(item.productId);
     });
 
-    // Apply filters and search
+    // Apply other filters and search
     let filteredData = combinedData.filter((item) => {
       const matchesCategory =
         selectedCategory === 'all' || item.categoryId === selectedCategory;
@@ -282,9 +283,9 @@ export default function InventarioPage() {
     inventory,
     searchTerm,
     selectedCategory,
+    selectedDeposit, // Add dependency
     selectedStatus,
     sortConfig,
-    isJefeDeposito
   ]);
 
   // Memoize data for the detail modal, now with aggregation
@@ -349,7 +350,7 @@ export default function InventarioPage() {
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventario');
-    XLSX.writeFile(workbook, 'Inventario.xlsx');
+    XLSX.writeFile(workbook, `Inventario_${selectedDeposit === 'all' ? 'General' : deposits?.find(d => d.id === selectedDeposit)?.name || 'Filtrado'}.xlsx`);
   };
 
   return (
@@ -369,13 +370,30 @@ export default function InventarioPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:flex-wrap">
             <Input
               placeholder="Buscar por nombre o código..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="flex-grow"
             />
+            <Select
+              value={selectedDeposit}
+              onValueChange={setSelectedDeposit}
+              disabled={isLoadingDeposits || isJefeDeposito}
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filtrar por depósito" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los depósitos</SelectItem>
+                {deposits?.map((dep) => (
+                  <SelectItem key={dep.id} value={dep.id}>
+                    {dep.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select
               value={selectedCategory}
               onValueChange={setSelectedCategory}
