@@ -408,19 +408,18 @@ export default function MovimientosPage() {
 
     try {
       await runTransaction(firestore, async (transaction) => {
-        
         // --- 1. READ PHASE ---
-        const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
+        const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
         const counterSnap = await transaction.get(counterRef);
+
+        const stockReads = await Promise.all(
+          data.items.map(item => {
+            const inventoryDocId = `${item.productId}_${data.depositId}`;
+            const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+            return transaction.get(stockDocRef);
+          })
+        );
         
-        const stockReads = data.items.map(item => {
-          const inventoryDocId = `${item.productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
-          return transaction.get(stockDocRef);
-        });
-
-        const stockSnaps = await Promise.all(stockReads);
-
         // --- 2. VALIDATION & LOGIC PHASE ---
         const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
         const newRemitoNumber = lastNumber + 1;
@@ -431,7 +430,7 @@ export default function MovimientosPage() {
 
         for (let i = 0; i < data.items.length; i++) {
           const item = data.items[i];
-          const stockSnap = stockSnaps[i];
+          const stockSnap = stockReads[i];
           const product = productsMap.get(item.productId);
 
           if (!product) throw new Error(`Producto con ID ${item.productId} no encontrado.`);
@@ -453,7 +452,7 @@ export default function MovimientosPage() {
 
         for (const [productId, change] of productChanges.entries()) {
           const inventoryDocId = `${productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
           transaction.set(
             stockDocRef,
             {
@@ -546,18 +545,17 @@ export default function MovimientosPage() {
 
     try {
       await runTransaction(firestore, async (transaction) => {
-        // First read all necessary documents. This part is implicitly handled by the SDK
-        // when you provide the references in the write operations. The important part is
-        // not mixing .get() after .set()/.update()/.delete().
+        // --- 1. Read Phase ---
+        // Nothing to read, as we have all info in the `movement` object
         
-        // Then perform all writes
+        // --- 2. Write Phase ---
         for (const item of movement.items) {
           const inventoryDocId = `${item.productId}_${movement.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory`, inventoryDocId);
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
           const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
           transaction.set(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() }, { merge: true });
         }
-        const movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements`, movement.id);
+        const movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
         transaction.delete(movementDocRef);
       });
 
