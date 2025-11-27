@@ -37,6 +37,7 @@ import {
   ClipboardList,
   Shield,
   FileCode,
+  History,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -114,7 +115,8 @@ function AppLayout({
     { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
     { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
-    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['administrador', 'editor', 'visualizador', 'solicitante'] },
+    { href: '/solicitudes', label: 'Crear Solicitud', icon: ClipboardList, roles: ['administrador', 'editor', 'solicitante'] },
+    { href: '/mis-movimientos', label: 'Mis Movimientos', icon: History, roles: ['solicitante', 'jefe_deposito'] },
     { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
