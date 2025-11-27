@@ -61,7 +61,9 @@ service cloud.firestore {
       // - Super-admins can list all users.
       // - Workspace admins and jefe_deposito can list users filtered by their workspaceId.
       allow list: if isSuperAdmin() 
-                    || (request.query.workspaceId != null && (isWorkspaceAdmin(request.query.workspaceId) || hasWorkspaceRole(request.query.workspaceId, 'jefe_deposito')));
+                    || (request.query.workspaceId != null && 
+                         (isWorkspaceAdmin(request.query.workspaceId) || hasWorkspaceRole(request.query.workspaceId, 'jefe_deposito'))
+                       );
 
       // CREATE:
       // - Any authenticated user can create their OWN user document (e.g., during sign-up).

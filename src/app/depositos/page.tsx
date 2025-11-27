@@ -118,16 +118,18 @@ export default function DepositosPage() {
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
   
+  const canAssignJefe =
+    currentUserProfile?.role === 'administrador' ||
+    currentUserProfile?.role === 'jefe_deposito';
+
   const usersCollectionQuery = useMemoFirebase(() => {
-    if (!firestore || !currentUserProfile?.workspaceId) return null;
     // Only admins and jefes can list users from their workspace
-    const allowedRoles = ['administrador', 'jefe_deposito'];
-    if (!currentUserProfile.role || !allowedRoles.includes(currentUserProfile.role)) {
-        return null;
+    if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
+        // This query MUST be filtered by workspaceId to comply with security rules
+        return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
-    // This query MUST be filtered by workspaceId to comply with security rules
-    return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
-  }, [firestore, currentUserProfile]);
+    return null;
+  }, [firestore, currentUserProfile, canAssignJefe]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
@@ -285,9 +287,6 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
     
-  const canAssignJefe =
-    currentUserProfile?.role === 'administrador' ||
-    currentUserProfile?.role === 'jefe_deposito';
   
   const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers);
 
