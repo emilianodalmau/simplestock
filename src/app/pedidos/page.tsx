@@ -46,6 +46,7 @@ type UserProfile = {
   id: string;
   role?: 'administrador' | 'jefe_deposito';
   workspaceId?: string;
+  jefeId?: string;
 };
 
 // --- Main Page Component ---
@@ -76,6 +77,18 @@ export default function PedidosPage() {
     [currentUserProfile]
   );
 
+  const depositsCollection = useMemoFirebase(
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
+    [firestore, collectionPrefix]
+  );
+  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<{id: string, jefeId?: string}>(depositsCollection);
+
+  const assignedDepositId = useMemo(() => {
+      if (currentUserProfile?.role !== 'jefe_deposito' || !deposits) return null;
+      return deposits.find(d => d.jefeId === user?.uid)?.id;
+  }, [currentUserProfile, deposits, user]);
+
+
   const requestsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !canAccessPage) return null;
 
@@ -83,15 +96,28 @@ export default function PedidosPage() {
       firestore,
       `${collectionPrefix}/stockMovements`
     );
-
-    // Query for all documents where remitoNumber starts with "S-"
-    return query(
-      movementsCollectionRef,
+    
+    // Base query for "Solicitudes"
+    const baseQuery = [
       orderBy('remitoNumber'),
       startAt('S-'),
       endAt('S-\uf8ff')
-    );
-  }, [firestore, collectionPrefix, canAccessPage]);
+    ];
+
+    // If jefe_deposito, only show requests for their assigned deposit.
+    if (currentUserProfile?.role === 'jefe_deposito') {
+        if (!assignedDepositId) return null; // Don't query if no deposit is assigned.
+        return query(
+            movementsCollectionRef,
+            where('depositId', '==', assignedDepositId),
+            ...baseQuery
+        );
+    }
+    
+    // Admin can see all requests
+    return query(movementsCollectionRef, ...baseQuery);
+
+  }, [firestore, collectionPrefix, canAccessPage, currentUserProfile, assignedDepositId]);
 
   const { data: requests, isLoading: isLoadingRequests, forceRefetch: refetchRequests } =
     useCollection<StockMovement>(requestsQuery);
@@ -110,7 +136,7 @@ export default function PedidosPage() {
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
-  const isLoading = isLoadingProfile || isLoadingRequests || isLoadingInventory || isLoadingProducts;
+  const isLoading = isLoadingProfile || isLoadingRequests || isLoadingInventory || isLoadingProducts || isLoadingDeposits;
   
   const handleRequestProcessed = () => {
     setSelectedRequest(null);
@@ -210,7 +236,9 @@ export default function PedidosPage() {
                   {!isLoadingRequests && requests?.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center h-24">
-                        No hay pedidos pendientes.
+                        {currentUserProfile?.role === 'jefe_deposito' && !assignedDepositId
+                          ? 'No tienes un depósito asignado.'
+                          : 'No hay pedidos pendientes.'}
                       </TableCell>
                     </TableRow>
                   )}

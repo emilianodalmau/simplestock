@@ -14,6 +14,7 @@ import {
   doc,
   query,
   where,
+  orderBy,
 } from 'firebase/firestore';
 import {
   Card,
@@ -84,17 +85,20 @@ export default function MisMovimientosPage() {
   );
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !collectionPrefix || !currentUserProfile) return null;
+    if (!firestore || !user || !collectionPrefix || !currentUserProfile?.role) return null;
 
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     
     // Solicitantes and Jefes MUST query by their own userId to comply with security rules
-    if (currentUserProfile.role === 'solicitante' || currentUserProfile.role === 'jefe_deposito') {
-      return query(movementsCollectionRef, where('userId', '==', user.uid));
+    if (['solicitante', 'jefe_deposito'].includes(currentUserProfile.role)) {
+      return query(movementsCollectionRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
     }
     
-    return null;
-  }, [firestore, user, collectionPrefix, currentUserProfile]);
+    // Admins and others can see all movements (if rules allow).
+    // For "Mis Movimientos", we'll still filter by userId for them too for consistency.
+    return query(movementsCollectionRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+    
+  }, [firestore, user, collectionPrefix, currentUserProfile?.role]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -176,7 +180,6 @@ export default function MisMovimientosPage() {
                 )}
                 {!isLoadingMovements &&
                   (movements || [])
-                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
                     .map((mov) => (
                       <TableRow key={mov.id}>
                         <TableCell className="font-medium">
@@ -188,7 +191,9 @@ export default function MisMovimientosPage() {
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${
                               mov.type === 'entrada'
                                 ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
+                                : mov.type === 'salida'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-blue-100 text-blue-800'
                             }`}
                           >
                             {mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}
@@ -198,7 +203,8 @@ export default function MisMovimientosPage() {
                         <TableCell>{mov.actorName || '-'}</TableCell>
                         <TableCell>{mov.items.length}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatPrice(mov.totalValue || 0)}
+                           {mov.type === 'ajuste' && mov.totalValue < 0 ? '-' : ''}
+                           {formatPrice(Math.abs(mov.totalValue || 0))}
                         </TableCell>
                         <TableCell className="text-right">
                            <RemitoActions 
@@ -218,4 +224,3 @@ export default function MisMovimientosPage() {
     </div>
   );
 }
-
