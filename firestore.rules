@@ -109,7 +109,7 @@ service cloud.firestore {
         
         // Reglas específicas para movimientos de stock
         match /stockMovements/{movementId} {
-             // El 'solicitante' ahora puede crear movimientos (sus solicitudes).
+             // El 'solicitante' puede crear movimientos (sus solicitudes).
              allow create: if isSuperAdmin() 
                             || hasWorkspaceRole(workspaceId, 'administrador') 
                             || hasWorkspaceRole(workspaceId, 'editor') 
@@ -121,11 +121,12 @@ service cloud.firestore {
                          || hasWorkspaceRole(workspaceId, 'administrador')
                          || (resource.data.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
             
-             // LIST: Se pueden listar movimientos si eres admin, o si filtras por tu propio userId.
+             // LIST: Se pueden listar movimientos si eres admin, editor, o si filtras por tu propio userId.
+             // Se quita 'solicitante' de aquí para forzar el uso de la página 'mis-movimientos'.
              allow list: if isSuperAdmin() 
                          || hasWorkspaceRole(workspaceId, 'administrador')
                          || hasWorkspaceRole(workspaceId, 'editor')
-                         || (request.query.where.userId == request.auth.uid && (hasWorkspaceRole(workspaceId, 'solicitante') || hasWorkspaceRole(workspaceId, 'jefe_deposito')));
+                         || (request.query.where.userId == request.auth.uid && hasWorkspaceRole(workspaceId, 'jefe_deposito'));
 
              allow update, delete: if isSuperAdmin() || hasWorkspaceRole(workspaceId, 'administrador');
         }
