@@ -543,33 +543,31 @@ export default function MovimientosPage() {
   const handleDeleteMovement = (movement: StockMovement) => {
     if (!firestore || !collectionPrefix) return;
     
-    let movementDocRef: any;
-    try {
-        runTransaction(firestore, async (transaction) => {
-            movementDocRef = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
-            // No reads needed, we have the info.
-            
-            // Write phase
-            for (const item of movement.items) {
-              const inventoryDocId = `${item.productId}_${movement.depositId}`;
-              const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
-              const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
-              transaction.set(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() }, { merge: true });
-            }
-            transaction.delete(movementDocRef);
-        }).then(() => {
-            toast({
-                title: 'Remito Anulado',
-                description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
-            });
+    let movementDocRef: any = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
+    
+    runTransaction(firestore, async (transaction) => {
+        // No reads needed, we have the info.
+        
+        // Write phase
+        for (const item of movement.items) {
+          const inventoryDocId = `${item.productId}_${movement.depositId}`;
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+          const change = movement.type === 'entrada' ? -item.quantity : item.quantity;
+          transaction.set(stockDocRef, { quantity: increment(change), lastUpdated: serverTimestamp() }, { merge: true });
+        }
+        transaction.delete(movementDocRef);
+    }).then(() => {
+        toast({
+            title: 'Remito Anulado',
+            description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
         });
-    } catch(error: any) {
+    }).catch((error: any) => {
         const permissionError = new FirestorePermissionError({
-            path: movementDocRef ? movementDocRef.path : `${collectionPrefix}/stockMovements/${movement.id}`,
+            path: movementDocRef.path,
             operation: 'delete',
         });
         errorEmitter.emit('permission-error', permissionError);
-    }
+    });
   };
 
   const handleExportToExcel = () => {
@@ -881,6 +879,7 @@ export default function MovimientosPage() {
                     <SelectItem value="all">Todos los tipos</SelectItem>
                     <SelectItem value="entrada">Entrada</SelectItem>
                     <SelectItem value="salida">Salida</SelectItem>
+                    <SelectItem value="ajuste">Ajuste</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -1022,7 +1021,9 @@ export default function MovimientosPage() {
                                 className={`px-2 py-1 text-xs font-semibold rounded-full ${
                                   mov.type === 'entrada'
                                     ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
+                                    : mov.type === 'salida'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-blue-100 text-blue-800'
                                 }`}
                               >
                                 {mov.type.charAt(0).toUpperCase() +
@@ -1033,7 +1034,8 @@ export default function MovimientosPage() {
                             <TableCell>{mov.actorName || '-'}</TableCell>
                             <TableCell>{mov.items.length}</TableCell>
                             <TableCell className="text-right font-medium">
-                              {formatPrice(mov.totalValue || 0)}
+                               {mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}
+                               {formatPrice(Math.abs(mov.totalValue || 0))}
                             </TableCell>
                             {canManageMovements && (
                               <TableCell className="text-right">
@@ -1057,3 +1059,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    

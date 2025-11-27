@@ -279,7 +279,7 @@
         "type": {
           "type": "string",
           "description": "The type of movement.",
-          "enum": ["entrada", "salida"]
+          "enum": ["entrada", "salida", "ajuste"]
         },
         "depositId": {
           "type": "string",
@@ -414,3 +414,6 @@
     }
   }
 }
+
+
+    

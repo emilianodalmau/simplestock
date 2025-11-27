@@ -1,7 +1,8 @@
+
 'use client';
 
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useEffect, useMemo } from 'react';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -31,16 +32,20 @@ import {
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import {
+  collection,
+  doc,
+  query,
+  where,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+import type { Product, Deposit, UserProfile, InventoryStock } from '@/types/inventory';
+import { ProductComboBox } from '@/components/ui/product-combobox';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
-// Dummy data for now
-const products = [
-  { id: '1', name: 'Producto A' },
-  { id: '2', name: 'Producto B' },
-];
-const deposits = [
-  { id: '1', name: 'Depósito Central' },
-  { id: '2', name: 'Depósito Secundario' },
-];
 
 const adjustmentSchema = z.object({
   productId: z.string().min(1, 'Debe seleccionar un producto.'),
@@ -54,6 +59,38 @@ export default function AjustesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const [currentStock, setCurrentStock] = useState<number | null>(null);
+  const [isLoadingStock, setIsLoadingStock] = useState(false);
+
+  const firestore = useFirestore();
+  const { user } = useUser();
+
+  const currentUserDocRef = useMemoFirebase(
+    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+  const { data: currentUserProfile } = useDoc<UserProfile>(currentUserDocRef);
+  const workspaceId = currentUserProfile?.workspaceId;
+
+  const collectionPrefix = useMemo(() => {
+    if (!workspaceId) return null;
+    return `workspaces/${workspaceId}`;
+  }, [workspaceId]);
+
+  const productsCollection = useMemoFirebase(
+    () =>
+      firestore && collectionPrefix
+        ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true))
+        : null,
+    [firestore, collectionPrefix]
+  );
+  const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
+
+  const depositsCollection = useMemoFirebase(
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
+    [firestore, collectionPrefix]
+  );
+  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
+
 
   const form = useForm<AdjustmentFormValues>({
     resolver: zodResolver(adjustmentSchema),
@@ -64,35 +101,130 @@ export default function AjustesPage() {
     },
   });
 
-  const selectedProduct = form.watch('productId');
-  const selectedDeposit = form.watch('depositId');
+  const selectedProductId = form.watch('productId');
+  const selectedDepositId = form.watch('depositId');
 
-  // Simulate fetching current stock
-  useState(() => {
-    if (selectedProduct && selectedDeposit) {
-      // In a real scenario, you would fetch this from Firestore
-      const dummyStock = Math.floor(Math.random() * 100);
-      setCurrentStock(dummyStock);
-    } else {
-      setCurrentStock(null);
-    }
-  });
+  useEffect(() => {
+    const fetchCurrentStock = async () => {
+      if (selectedProductId && selectedDepositId && firestore && collectionPrefix) {
+        setIsLoadingStock(true);
+        setCurrentStock(null);
+        try {
+          const inventoryDocId = `${selectedProductId}_${selectedDepositId}`;
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+          await runTransaction(firestore, async (transaction) => {
+            const stockDoc = await transaction.get(stockDocRef);
+            if (stockDoc.exists()) {
+              setCurrentStock(stockDoc.data().quantity);
+            } else {
+              setCurrentStock(0);
+            }
+          });
+        } catch (error) {
+          console.error("Error fetching stock:", error);
+          setCurrentStock(null);
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'No se pudo obtener el stock actual.',
+          });
+        } finally {
+          setIsLoadingStock(false);
+        }
+      } else {
+        setCurrentStock(null);
+      }
+    };
 
-  const onSubmit = async (data: AdjustmentFormValues) => {
+    fetchCurrentStock();
+  }, [selectedProductId, selectedDepositId, firestore, collectionPrefix, toast]);
+
+  const onSubmit: SubmitHandler<AdjustmentFormValues> = async (data) => {
+    if (!firestore || !collectionPrefix || currentStock === null || !user) return;
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const stockDifference = data.actualQuantity - (currentStock ?? 0);
-
-    toast({
-      title: 'Ajuste Registrado',
-      description: `Se registró un ajuste de ${stockDifference} unidades para el producto seleccionado en el depósito.`,
-    });
     
-    form.reset();
-    setCurrentStock(null);
-    setIsSubmitting(false);
+    const { productId, depositId, actualQuantity } = data;
+    const stockDifference = actualQuantity - currentStock;
+
+    if (stockDifference === 0) {
+      toast({
+        title: 'Sin Cambios',
+        description: 'La cantidad real es igual al stock del sistema. No se realizó ningún ajuste.',
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      await runTransaction(firestore, async (transaction) => {
+        const product = products?.find(p => p.id === productId);
+        const deposit = deposits?.find(d => d.id === depositId);
+        
+        if (!product || !deposit) {
+            throw new Error("Producto o depósito no encontrado.");
+        }
+
+        // 1. Update Inventory Stock
+        const inventoryDocId = `${productId}_${depositId}`;
+        const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+        transaction.set(stockDocRef, 
+            { 
+                quantity: actualQuantity,
+                lastUpdated: serverTimestamp(),
+                productId: productId,
+                depositId: depositId,
+            }, 
+            { merge: true }
+        );
+
+        // 2. Create Stock Movement for Auditing
+        const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+        const movementData = {
+          id: movementRef.id,
+          remitoNumber: `AJ-${Date.now()}`,
+          type: 'ajuste' as const, // New type
+          depositId: depositId,
+          depositName: deposit.name,
+          actorName: `Ajuste manual por ${user.displayName || user.email}`,
+          actorId: user.uid,
+          createdAt: serverTimestamp(),
+          userId: user.uid,
+          totalValue: 0, // Adjustments typically don't have a monetary value unless specified
+          items: [{
+            productId: productId,
+            productName: product.name,
+            quantity: stockDifference, // Log the difference
+            unit: product.unit,
+            price: product.price,
+            total: product.price * stockDifference,
+          }],
+        };
+        transaction.set(movementRef, movementData);
+      });
+      
+      toast({
+        title: 'Ajuste Registrado',
+        description: `Se registró un ajuste de ${stockDifference} ${products?.find(p => p.id === productId)?.unit || 'unidades'} para el producto seleccionado.`,
+      });
+      
+      form.reset({
+        productId: '',
+        depositId: '',
+        actualQuantity: 0
+      });
+      setCurrentStock(null);
+
+    } catch (error: any) {
+        console.error("Error procesando el ajuste:", error);
+        const permissionError = new FirestorePermissionError({
+            path: `${collectionPrefix}/inventory/${productId}_${depositId}`,
+            operation: 'write',
+            requestResourceData: { quantity: actualQuantity },
+        });
+        errorEmitter.emit('permission-error', permissionError);
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   return (
@@ -115,44 +247,20 @@ export default function AjustesPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="productId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Producto</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona un producto" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {products.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
+                 <FormField
                   control={form.control}
                   name="depositId"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Depósito</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingDeposits}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona un depósito" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {deposits.map((d) => (
+                          {deposits?.map((d) => (
                             <SelectItem key={d.id} value={d.id}>
                               {d.name}
                             </SelectItem>
@@ -163,13 +271,31 @@ export default function AjustesPage() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="productId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Producto</FormLabel>
+                       <ProductComboBox
+                          products={products || []}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={isLoadingProducts || !selectedDepositId}
+                          noStockMessage={!selectedDepositId ? "Selecciona un depósito" : "Selecciona un producto"}
+                        />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              {currentStock !== null && (
-                <div className="p-4 bg-secondary rounded-md">
-                  <p className="text-center font-medium">
-                    Stock Actual en Sistema: <span className="text-lg font-bold">{currentStock}</span>
+              {(isLoadingStock || currentStock !== null) && (
+                <div className="p-4 bg-secondary rounded-md text-center">
+                  <p className="font-medium">
+                    Stock Actual en Sistema:
                   </p>
+                  {isLoadingStock ? <Loader2 className="h-6 w-6 animate-spin inline-block mt-1" /> : <span className="text-lg font-bold">{currentStock}</span>}
                 </div>
               )}
 
@@ -184,7 +310,7 @@ export default function AjustesPage() {
                         type="number"
                         placeholder="Ingresa la cantidad física"
                         {...field}
-                        disabled={!selectedProduct || !selectedDeposit}
+                        disabled={currentStock === null || isLoadingStock}
                       />
                     </FormControl>
                     <FormMessage />
@@ -193,7 +319,7 @@ export default function AjustesPage() {
               />
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={isSubmitting || currentStock === null}>
+              <Button type="submit" disabled={isSubmitting || currentStock === null || isLoadingStock}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Registrar Ajuste
               </Button>
@@ -204,3 +330,6 @@ export default function AjustesPage() {
     </div>
   );
 }
+
+
+    

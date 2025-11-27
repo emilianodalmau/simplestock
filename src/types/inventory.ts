@@ -1,4 +1,5 @@
 
+
 export type Product = {
   id: string;
   name: string;
@@ -39,7 +40,7 @@ export type StockMovementItem = {
 export type StockMovement = {
   id: string;
   remitoNumber?: string;
-  type: 'entrada' | 'salida';
+  type: 'entrada' | 'salida' | 'ajuste';
   depositId: string;
   depositName: string;
   actorName?: string;
@@ -67,3 +68,5 @@ export type RequestItem = {
     unit: string;
     toDeliver: number;
 }
+
+    
