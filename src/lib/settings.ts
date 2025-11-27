@@ -1,3 +1,4 @@
+
 import fs from 'fs/promises';
 import path from 'path';
 import type { AppSettings } from '@/types/settings';
@@ -16,7 +17,7 @@ export async function getSettings(): Promise<AppSettings> {
   } catch (error) {
     // If the file doesn't exist, return default settings
     return {
-      appName: 'Inventario App',
+      appName: 'SIMPLESTOCK',
       logoUrl: '',
     };
   }

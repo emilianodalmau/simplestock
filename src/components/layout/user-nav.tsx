@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,14 +48,14 @@ export function UserNav() {
     return `${firstInitial}${lastInitial}`.toUpperCase();
   };
 
-  const displayName = userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : (user?.displayName || 'User');
+  const displayName = userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : (user?.displayName || 'Usuario');
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user?.photoURL || ""} alt="User avatar" />
+            <AvatarImage src={user?.photoURL || ""} alt="Avatar de usuario" />
             <AvatarFallback>{getInitials(userProfile?.firstName, userProfile?.lastName)}</AvatarFallback>
           </Avatar>
         </Button>
@@ -74,13 +75,13 @@ export function UserNav() {
         <DropdownMenuGroup>
           <DropdownMenuItem disabled>
             <UserIcon className="mr-2 h-4 w-4" />
-            <span>Profile</span>
+            <span>Perfil</span>
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
+          <span>Cerrar Sesión</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

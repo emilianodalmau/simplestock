@@ -121,7 +121,7 @@ export default function AjustesPage() {
             }
           });
         } catch (error) {
-          console.error("Error fetching stock:", error);
+          console.error("Error al obtener el stock:", error);
           setCurrentStock(null);
           toast({
             variant: 'destructive',
@@ -182,18 +182,18 @@ export default function AjustesPage() {
         const movementData = {
           id: movementRef.id,
           remitoNumber: `AJ-${Date.now()}`,
-          type: 'ajuste' as const, // New type
+          type: 'ajuste' as const,
           depositId: depositId,
           depositName: deposit.name,
           actorName: `Ajuste manual por ${user.displayName || user.email}`,
           actorId: user.uid,
           createdAt: serverTimestamp(),
           userId: user.uid,
-          totalValue: 0, // Adjustments typically don't have a monetary value unless specified
+          totalValue: 0, 
           items: [{
             productId: productId,
             productName: product.name,
-            quantity: stockDifference, // Log the difference
+            quantity: stockDifference, 
             unit: product.unit,
             price: product.price,
             total: product.price * stockDifference,
@@ -330,6 +330,3 @@ export default function AjustesPage() {
     </div>
   );
 }
-
-
-    

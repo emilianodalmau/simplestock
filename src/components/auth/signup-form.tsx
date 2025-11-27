@@ -24,12 +24,12 @@ import Link from "next/link";
 import { doc, setDoc } from "firebase/firestore";
 
 const formSchema = z.object({
-  firstName: z.string().min(1, { message: "Please enter your first name." }),
-  lastName: z.string().min(1, { message: "Please enter your last name." }),
-  email: z.string().email({ message: "Please enter a valid email." }),
+  firstName: z.string().min(1, { message: "Por favor, ingresa tu nombre." }),
+  lastName: z.string().min(1, { message: "Por favor, ingresa tu apellido." }),
+  email: z.string().email({ message: "Por favor, ingresa un email válido." }),
   password: z
     .string()
-    .min(6, { message: "Password must be at least 6 characters." }),
+    .min(6, { message: "La contraseña debe tener al menos 6 caracteres." }),
 });
 
 export function SignupForm() {
@@ -54,7 +54,7 @@ export function SignupForm() {
     if (!firestore) {
       toast({
         title: "Error",
-        description: "Firestore is not available.",
+        description: "El servicio de base de datos no está disponible.",
         variant: "destructive",
       });
       setIsLoading(false);
@@ -99,14 +99,14 @@ export function SignupForm() {
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
         toast({
-          title: "Email already in use",
-          description: "This email is already registered. Try logging in.",
+          title: "Email ya en uso",
+          description: "Este email ya está registrado. Intenta iniciar sesión.",
           variant: "destructive",
         });
       } else {
         toast({
-          title: "Sign Up Failed",
-          description: "An unexpected error occurred. Please try again.",
+          title: "Registro Fallido",
+          description: "Ocurrió un error inesperado. Por favor, intenta de nuevo.",
           variant: "destructive",
         });
       }
@@ -124,9 +124,9 @@ export function SignupForm() {
               name="firstName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>First Name</FormLabel>
+                  <FormLabel>Nombre</FormLabel>
                   <FormControl>
-                    <Input placeholder="John" {...field} />
+                    <Input placeholder="Juan" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -137,9 +137,9 @@ export function SignupForm() {
               name="lastName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Last Name</FormLabel>
+                  <FormLabel>Apellido</FormLabel>
                   <FormControl>
-                    <Input placeholder="Doe" {...field} />
+                    <Input placeholder="Pérez" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -153,7 +153,7 @@ export function SignupForm() {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder="name@example.com" {...field} />
+                <Input placeholder="nombre@ejemplo.com" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -164,7 +164,7 @@ export function SignupForm() {
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>Contraseña</FormLabel>
               <FormControl>
                 <Input type="password" placeholder="••••••••" {...field} />
               </FormControl>
@@ -174,12 +174,12 @@ export function SignupForm() {
         />
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Create Account
+          Crear Cuenta
         </Button>
         <div className="text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
+          ¿Ya tienes una cuenta?{" "}
           <Link href="/login" className="underline hover:text-primary-foreground/80">
-            Log in
+            Inicia Sesión
           </Link>
         </div>
       </form>

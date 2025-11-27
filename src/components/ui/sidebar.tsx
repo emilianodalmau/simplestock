@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -47,7 +48,7 @@ const SidebarContext = React.createContext<SidebarContext | null>(null)
 function useSidebar() {
   const context = React.useContext(SidebarContext)
   if (!context) {
-    throw new Error("useSidebar must be used within a SidebarProvider.")
+    throw new Error("useSidebar debe ser usado dentro de un SidebarProvider.")
   }
 
   return context
@@ -213,9 +214,9 @@ const Sidebar = React.forwardRef<
             side={side}
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>Navigation</SheetTitle>
+              <SheetTitle>Navegación</SheetTitle>
               <SheetDescription>
-                The main navigation for the application.
+                La navegación principal de la aplicación.
               </SheetDescription>
             </SheetHeader>
             <div className="flex h-full w-full flex-col">{children}</div>
@@ -291,7 +292,7 @@ const SidebarTrigger = React.forwardRef<
       {...props}
     >
       <PanelLeft />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">Alternar Menú Lateral</span>
     </Button>
   )
 })
@@ -307,10 +308,10 @@ const SidebarRail = React.forwardRef<
     <button
       ref={ref}
       data-sidebar="rail"
-      aria-label="Toggle Sidebar"
+      aria-label="Alternar Menú Lateral"
       tabIndex={-1}
       onClick={toggleSidebar}
-      title="Toggle Sidebar"
+      title="Alternar Menú Lateral"
       className={cn(
         "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex",
         "[[data-side=left]_&]:cursor-w-resize [[data-side=right]_&]:cursor-e-resize",

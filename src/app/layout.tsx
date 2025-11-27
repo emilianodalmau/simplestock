@@ -12,7 +12,7 @@ export default async function RootLayout({
   const globalSettings = await getSettings();
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link

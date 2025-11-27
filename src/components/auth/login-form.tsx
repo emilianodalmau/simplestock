@@ -24,10 +24,10 @@ import Link from "next/link";
 import { doc, getDoc } from 'firebase/firestore';
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Invalid email address." }),
+  email: z.string().email({ message: "La dirección de email no es válida." }),
   password: z
     .string()
-    .min(1, { message: "Password is required." }),
+    .min(1, { message: "La contraseña es requerida." }),
 });
 
 export function LoginForm() {
@@ -73,8 +73,8 @@ export function LoginForm() {
 
     } catch (error: any) {
       toast({
-        title: "Login Failed",
-        description: "Please check your credentials and try again.",
+        title: "Inicio de Sesión Fallido",
+        description: "Por favor, revisa tus credenciales e intenta de nuevo.",
         variant: "destructive",
       });
     } finally {
@@ -92,7 +92,7 @@ export function LoginForm() {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder="name@example.com" {...field} />
+                <Input placeholder="nombre@ejemplo.com" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -103,7 +103,7 @@ export function LoginForm() {
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <FormLabel>Contraseña</FormLabel>
               <FormControl>
                 <Input type="password" placeholder="••••••••" {...field} />
               </FormControl>
@@ -113,12 +113,12 @@ export function LoginForm() {
         />
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Log In
+          Iniciar Sesión
         </Button>
         <div className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
+          ¿No tienes una cuenta?{" "}
           <Link href="/signup" className="underline hover:text-primary-foreground/80">
-            Sign up
+            Regístrate
           </Link>
         </div>
       </form>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -27,7 +28,7 @@ export function Header() {
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
             </svg>
             <span className="font-bold sm:inline-block">
-              Firebase Blank Slate
+              SIMPLESTOCK
             </span>
           </Link>
         </div>
@@ -42,10 +43,10 @@ export function Header() {
           ) : (
             <div className="flex items-center space-x-2">
               <Button asChild variant="ghost">
-                <Link href="/login">Log In</Link>
+                <Link href="/login">Iniciar Sesión</Link>
               </Button>
               <Button asChild>
-                <Link href="/signup">Sign Up</Link>
+                <Link href="/signup">Registrarse</Link>
               </Button>
             </div>
           )}

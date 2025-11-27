@@ -99,7 +99,7 @@ function CreateWorkspaceForm() {
       router.refresh();
       
     } catch (error: any) {
-      console.error('Error creating workspace:', error);
+      console.error('Error creando el workspace:', error);
       toast({
         variant: 'destructive',
         title: 'Error de Permisos',
