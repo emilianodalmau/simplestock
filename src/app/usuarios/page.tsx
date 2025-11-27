@@ -29,11 +29,18 @@ import {
   useUser,
   useDoc,
 } from '@/firebase';
-import { collection, doc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  query,
+  where,
+} from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Edit, Loader2 } from 'lucide-react';
+import { Edit, Loader2, PlusCircle, Copy } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -42,6 +49,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Form,
@@ -52,19 +60,26 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { createUser } from '@/lib/auth-actions';
 
-const formSchema = z.object({
-  firstName: z
-    .string()
-    .min(1, { message: 'El nombre es requerido.' }),
-  lastName: z
-    .string()
-    .min(1, { message: 'El apellido es requerido.' }),
+const editFormSchema = z.object({
+  firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
+  lastName: z.string().min(1, { message: 'El apellido es requerido.' }),
   phone: z.string().optional(),
   address: z.string().optional(),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type EditFormValues = z.infer<typeof editFormSchema>;
+
+const createFormSchema = z.object({
+  email: z.string().email({ message: 'El email no es válido.' }),
+  firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
+  lastName: z.string().min(1, { message: 'El apellido es requerido.' }),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
+
+type CreateFormValues = z.infer<typeof createFormSchema>;
 
 type UserProfile = {
   id: string;
@@ -75,8 +90,14 @@ type UserProfile = {
   phone?: string;
   address?: string;
   workspaceId?: string | null;
-  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
 };
+
+type NewUserCredentials = {
+  email: string;
+  password?: string;
+};
+
 
 const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
   'super-admin': 'destructive',
@@ -84,45 +105,65 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
   editor: 'default',
   visualizador: 'secondary',
   jefe_deposito: 'secondary',
+  solicitante: 'secondary',
 };
 
 export default function UsuariosPage() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newUserCredentials, setNewUserCredentials] = useState<NewUserCredentials | null>(null);
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
   const { toast } = useToast();
 
   const currentUserDocRef = useMemoFirebase(
-    () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
+    () =>
+      firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null,
     [firestore, currentUser]
   );
-  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
-  
+  const { data: currentUserProfile, isLoading: isLoadingProfile } =
+    useDoc<UserProfile>(currentUserDocRef);
+
   const usersCollectionQuery = useMemoFirebase(() => {
     if (!firestore || !currentUserProfile) return null;
-    
-    // Super-admin sees all users.
+
     if (currentUserProfile.role === 'super-admin') {
       return collection(firestore, 'users');
     }
-    
-    // Workspace admin sees users ONLY from their own workspace.
-    // This requires the frontend to apply the filter that the security rules expect.
-    if (currentUserProfile.role === 'administrador' && currentUserProfile.workspaceId) {
-      return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
+
+    if (
+      currentUserProfile.role === 'administrador' &&
+      currentUserProfile.workspaceId
+    ) {
+      return query(
+        collection(firestore, 'users'),
+        where('workspaceId', '==', currentUserProfile.workspaceId)
+      );
     }
-    
-    // For any other role, they should not be able to list users.
+
     return null;
   }, [firestore, currentUserProfile]);
 
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
+  const { data: users, isLoading: isLoadingUsers } =
+    useCollection<UserProfile>(usersCollectionQuery);
 
-  const editForm = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  const editForm = useForm<EditFormValues>({
+    resolver: zodResolver(editFormSchema),
   });
   
+  const createForm = useForm<CreateFormValues>({
+    resolver: zodResolver(createFormSchema),
+    defaultValues: {
+        email: '',
+        firstName: '',
+        lastName: '',
+        phone: '',
+        address: '',
+    },
+  });
+
   useEffect(() => {
     if (editingUser) {
       editForm.reset({
@@ -133,7 +174,6 @@ export default function UsuariosPage() {
       });
     }
   }, [editingUser, editForm]);
-
 
   const handleRoleChange = async (userId: string, role: string) => {
     if (!firestore) return;
@@ -153,8 +193,8 @@ export default function UsuariosPage() {
       });
     }
   };
-  
-  const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
+
+  const onEditSubmit: SubmitHandler<EditFormValues> = async (data) => {
     if (!firestore || !editingUser) return;
     setIsEditSubmitting(true);
     try {
@@ -179,6 +219,45 @@ export default function UsuariosPage() {
       setIsEditSubmitting(false);
     }
   };
+  
+  const onCreateSubmit: SubmitHandler<CreateFormValues> = async (data) => {
+    if (!currentUserProfile?.workspaceId) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No se ha podido identificar tu espacio de trabajo.',
+      });
+      return;
+    }
+    setIsCreateSubmitting(true);
+    try {
+      const result = await createUser({
+        ...data,
+        workspaceId: currentUserProfile.workspaceId,
+      });
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      setNewUserCredentials({
+        email: data.email,
+        password: result.password,
+      });
+
+      createForm.reset();
+      setIsCreateDialogOpen(false);
+
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error al Crear Usuario',
+        description: error.message || 'No se pudo crear el usuario. Revisa que el email no esté en uso.',
+      });
+    } finally {
+      setIsCreateSubmitting(false);
+    }
+  };
 
   const getInitials = (firstName?: string, lastName?: string) => {
     if (!firstName) return 'U';
@@ -187,17 +266,90 @@ export default function UsuariosPage() {
     return `${firstInitial}${lastInitial}`.toUpperCase();
   };
 
-  const currentUserIsAdmin = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'super-admin';
+  const currentUserIsAdmin =
+    currentUserProfile?.role === 'administrador' ||
+    currentUserProfile?.role === 'super-admin';
   const currentUserIsSuperAdmin = currentUserProfile?.role === 'super-admin';
   const isLoading = isLoadingProfile || isLoadingUsers;
 
   return (
+    <>
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Usuarios</h1>
-        <p className="text-muted-foreground">
-          {currentUserIsSuperAdmin ? 'Administra todos los usuarios del sistema.' : 'Administra los usuarios de tu workspace.'}
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight">Usuarios</h1>
+            <p className="text-muted-foreground">
+            {currentUserIsSuperAdmin
+                ? 'Administra todos los usuarios del sistema.'
+                : 'Administra los usuarios de tu workspace.'}
+            </p>
+        </div>
+        {currentUserProfile?.role === 'administrador' && (
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Crear Usuario
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                     <DialogHeader>
+                        <DialogTitle>Crear Nuevo Usuario Solicitante</DialogTitle>
+                        <DialogDescription>
+                            Completa los datos para crear un nuevo usuario con rol 'solicitante'. Se generará una contraseña aleatoria.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Form {...createForm}>
+                        <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
+                            <FormField control={createForm.control} name="email" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Email</FormLabel>
+                                    <FormControl><Input placeholder="usuario@ejemplo.com" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                             <div className="grid grid-cols-2 gap-4">
+                                <FormField control={createForm.control} name="firstName" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nombre</FormLabel>
+                                        <FormControl><Input placeholder="Juan" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField control={createForm.control} name="lastName" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Apellido</FormLabel>
+                                        <FormControl><Input placeholder="Pérez" {...field} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                             </div>
+                             <FormField control={createForm.control} name="phone" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Teléfono (Opcional)</FormLabel>
+                                    <FormControl><Input placeholder="1122334455" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <FormField control={createForm.control} name="address" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Dirección (Opcional)</FormLabel>
+                                    <FormControl><Input placeholder="Av. Siempre Viva 123" {...field} /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
+                            <DialogFooter>
+                                <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+                                <Button type="submit" disabled={isCreateSubmitting}>
+                                    {isCreateSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Crear Usuario
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </Form>
+                </DialogContent>
+            </Dialog>
+        )}
       </div>
 
       <div className="rounded-lg border">
@@ -209,7 +361,9 @@ export default function UsuariosPage() {
               <TableHead>Teléfono</TableHead>
               <TableHead>Dirección</TableHead>
               <TableHead>Rol</TableHead>
-              {currentUserIsAdmin && <TableHead className="text-right">Acciones</TableHead>}
+              {currentUserIsAdmin && (
+                <TableHead className="text-right">Acciones</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -236,9 +390,11 @@ export default function UsuariosPage() {
                   <TableCell>
                     <Skeleton className="h-6 w-24 rounded-full" />
                   </TableCell>
-                  {currentUserIsAdmin && <TableCell className="text-right">
-                    <Skeleton className="h-10 w-48 ml-auto" />
-                  </TableCell>}
+                  {currentUserIsAdmin && (
+                    <TableCell className="text-right">
+                      <Skeleton className="h-10 w-48 ml-auto" />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             {!isLoading &&
@@ -275,44 +431,63 @@ export default function UsuariosPage() {
                       <span className="text-muted-foreground">Sin rol</span>
                     )}
                   </TableCell>
-                  {currentUserIsAdmin && <TableCell className="text-right">
-                     <>
+                  {currentUserIsAdmin && (
+                    <TableCell className="text-right">
+                      <>
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => setEditingUser(user)}
+                          disabled={user.role === 'solicitante' && !currentUserIsSuperAdmin}
                         >
                           <Edit className="h-4 w-4" />
                           <span className="sr-only">Editar</span>
                         </Button>
                         <Select
                           defaultValue={user.role}
-                          onValueChange={(value) => handleRoleChange(user.id, value)}
-                          disabled={user.id === currentUser?.uid || (user.role === 'super-admin' && !currentUserIsSuperAdmin)}
+                          onValueChange={(value) =>
+                            handleRoleChange(user.id, value)
+                          }
+                          disabled={
+                            user.id === currentUser?.uid ||
+                            (user.role === 'super-admin' &&
+                              !currentUserIsSuperAdmin) ||
+                            (user.role === 'solicitante' && !currentUserIsSuperAdmin)
+                          }
                         >
-                          <SelectTrigger className="w-36 ml-auto inline-flex">
+                          <SelectTrigger className="w-40 ml-auto inline-flex">
                             <SelectValue placeholder="Seleccionar rol" />
                           </SelectTrigger>
                           <SelectContent>
-                            {currentUserIsSuperAdmin && <SelectItem value="super-admin">Super Admin</SelectItem>}
+                            {currentUserIsSuperAdmin && (
+                              <SelectItem value="super-admin">
+                                Super Admin
+                              </SelectItem>
+                            )}
                             <SelectItem value="administrador">
                               Administrador
                             </SelectItem>
                             <SelectItem value="editor">Editor</SelectItem>
-                            <SelectItem value="visualizador">Visualizador</SelectItem>
+                            <SelectItem value="visualizador">
+                              Visualizador
+                            </SelectItem>
                             <SelectItem value="jefe_deposito">
                               Jefe de Depósito
+                            </SelectItem>
+                            <SelectItem value="solicitante" disabled={!currentUserIsSuperAdmin}>
+                              Solicitante
                             </SelectItem>
                           </SelectContent>
                         </Select>
                       </>
-                  </TableCell>}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
           </TableBody>
         </Table>
       </div>
-      
+
       {/* Edit User Dialog */}
       <Dialog
         open={!!editingUser}
@@ -344,7 +519,7 @@ export default function UsuariosPage() {
                     </FormItem>
                   )}
                 />
-                 <FormField
+                <FormField
                   control={editForm.control}
                   name="lastName"
                   render={({ field }) => (
@@ -399,6 +574,42 @@ export default function UsuariosPage() {
           </Form>
         </DialogContent>
       </Dialog>
+      
+      {/* New User Credentials Dialog */}
+      <Dialog
+        open={!!newUserCredentials}
+        onOpenChange={() => setNewUserCredentials(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Usuario Creado Exitosamente</DialogTitle>
+            <DialogDescription>
+              Comparte estas credenciales con el nuevo usuario. Esta es la única vez que se mostrará la contraseña.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+             <div className="space-y-1">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" readOnly value={newUserCredentials?.email} />
+             </div>
+              <div className="space-y-1">
+                <Label htmlFor="password">Contraseña Generada</Label>
+                <div className="flex items-center gap-2">
+                    <Input id="password" readOnly value={newUserCredentials?.password} />
+                    <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(newUserCredentials?.password || '')}>
+                        <Copy className="h-4 w-4" />
+                    </Button>
+                </div>
+             </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button>Cerrar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+    </>
   );
 }
