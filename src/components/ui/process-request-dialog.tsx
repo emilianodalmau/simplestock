@@ -196,7 +196,9 @@ export function ProcessRequestDialog({
           newTotalValue += (product.price || 0) * item.toDeliver;
       }
 
+      // CORRECT: Create the new document in the stockMovements subcollection
       const newMovementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+      
       const newMovementItems: StockMovementItem[] = itemsToDeliver.map(item => {
            const product = productMap.get(item.productId)!;
            return {
@@ -225,6 +227,7 @@ export function ProcessRequestDialog({
           processedFromRequestId: request.id,
       });
 
+      // CORRECT: Reference the original request document to delete it
       const originalRequestRef = doc(firestore, `${collectionPrefix}/stockMovements`, request.id);
       transaction.delete(originalRequestRef);
     })
@@ -238,7 +241,7 @@ export function ProcessRequestDialog({
     .catch((error: any) => {
         // Emit the contextual error instead of using console.error
         const permissionError = new FirestorePermissionError({
-            path: collectionPrefix,
+            path: collectionPrefix, // This path is now for general context, the real error is in the transaction
             operation: 'write', // 'write' is a good generic for transactions
             requestResourceData: {
                 originalRequestId: request.id,
