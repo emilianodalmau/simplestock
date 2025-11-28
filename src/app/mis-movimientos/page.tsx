@@ -87,13 +87,11 @@ export default function MisMovimientosPage() {
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !user) return null;
     
-    // OBLIGATORIO: Esta página es para "Mis Movimientos", por lo que siempre filtramos por el ID del usuario logueado.
-    // Esto cumple con las reglas de seguridad para roles como 'solicitante' y 'jefe_deposito'.
     return query(
         collection(firestore, `${collectionPrefix}/stockMovements`),
-        where('userId', '==', user.uid),
         orderBy('createdAt', 'desc')
     );
+
   }, [firestore, collectionPrefix, user]);
     
   const { data: movements, isLoading: isLoadingMovements } =
@@ -105,6 +103,12 @@ export default function MisMovimientosPage() {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   }
+  
+  const totalMovementsValue = useMemo(() => {
+    if (!movements) return 0;
+    return movements.reduce((acc, mov) => acc + (mov.totalValue || 0), 0);
+  }, [movements]);
+
   
   if (isLoading) {
       return (
@@ -128,9 +132,20 @@ export default function MisMovimientosPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Mis Movimientos</h1>
-        <p className="text-muted-foreground">Historial de todos tus remitos generados.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Historial de Movimientos</h1>
+        <p className="text-muted-foreground">Historial de todos los remitos generados en el workspace.</p>
       </div>
+
+       <Card>
+        <CardHeader>
+          <CardTitle>Valor Total de Movimientos</CardTitle>
+          <CardDescription>Suma total del valor de todos los remitos registrados.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-3xl font-bold">{formatPrice(totalMovementsValue)}</p>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Historial de Remitos</CardTitle>
