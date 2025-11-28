@@ -1,3 +1,21 @@
+
+'use client';
+
+import { useMemo } from 'react';
+import {
+  useFirestore,
+  useCollection,
+  useMemoFirebase,
+  useUser,
+  useDoc,
+} from '@/firebase';
+import {
+  collection,
+  doc,
+  query,
+  where,
+  orderBy,
+} from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -14,9 +32,11 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getMyMovements } from '@/lib/actions/movements';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { StockMovement, UserProfile } from '@/types/inventory';
+import { Loader2 } from 'lucide-react';
 
 // --- Helper Functions ---
 const formatPrice = (price: number) => {
@@ -37,18 +57,82 @@ const getStatus = (remitoNumber?: string) => {
   return { text: 'Desconocido', color: 'bg-gray-500' };
 };
 
-// --- Main Page Component (Server Component) ---
-export default async function MisMovimientosPage() {
-  const { movements, error } = await getMyMovements();
+// --- Main Page Component (Client Component) ---
+export default function MisMovimientosPage() {
+  const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
 
-  if (error) {
+  const currentUserDocRef = useMemoFirebase(
+    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+  const { data: currentUserProfile, isLoading: isLoadingProfile } =
+    useDoc<UserProfile>(currentUserDocRef);
+  
+  const canAccessPage = useMemo(() => {
+      if (!currentUserProfile) return false;
+      return currentUserProfile.role === 'solicitante';
+  }, [currentUserProfile]);
+
+  const collectionPrefix = useMemo(
+    () =>
+      currentUserProfile?.workspaceId
+        ? `workspaces/${currentUserProfile.workspaceId}`
+        : null,
+    [currentUserProfile]
+  );
+
+  // This is the secure query. It will only be built when firestore, collectionPrefix and user.uid are available.
+  const movementsQuery = useMemoFirebase(() => {
+    if (!firestore || !collectionPrefix || !user?.uid || !canAccessPage) {
+        return null;
+    }
+    
+    // The query is built with the mandatory 'where' clause for security rules.
+    // The 'orderBy' clause is also included, which may require a composite index.
+    return query(
+      collection(firestore, `${collectionPrefix}/stockMovements`),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, collectionPrefix, user?.uid, canAccessPage]);
+
+  const { data: movements, isLoading: isLoadingMovements, error } =
+    useCollection<StockMovement>(movementsQuery);
+
+  const isLoading = isUserLoading || isLoadingProfile || isLoadingMovements;
+  
+  if (isLoading) {
+      return (
+          <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center">
+              <Loader2 className="h-12 w-12 animate-spin" />
+          </div>
+      );
+  }
+
+  if (!canAccessPage) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <Card>
           <CardHeader>
-            <CardTitle className="text-destructive">Acceso Denegado</CardTitle>
+            <CardTitle>Acceso Denegado</CardTitle>
             <CardDescription>
-              {error} Contacta al administrador si crees que esto es un error.
+              No tienes los permisos necesarios para ver esta página.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+  
+  if (error) {
+     return (
+      <div className="container mx-auto p-4 sm:p-6 md:p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-destructive">Error al cargar movimientos</CardTitle>
+            <CardDescription>
+              Ocurrió un error al cargar tu historial. Es posible que necesites crear un índice en Firestore. Revisa la consola del navegador para ver un enlace de creación de índice.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -56,10 +140,10 @@ export default async function MisMovimientosPage() {
     );
   }
 
-  const totalValue = movements.reduce(
+  const totalValue = movements?.reduce(
     (acc, mov) => acc + Math.abs(mov.totalValue || 0),
     0
-  );
+  ) || 0;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
@@ -99,19 +183,30 @@ export default async function MisMovimientosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {movements.length === 0 && (
+                {isLoadingMovements &&
+                  [...Array(3)].map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-36" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-10" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-24 rounded-full" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                    </TableRow>
+                  ))}
+                {!isLoadingMovements && movements?.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center h-24">
                       No has realizado ningún movimiento todavía.
                     </TableCell>
                   </TableRow>
                 )}
-                {movements.map((mov) => {
+                {!isLoadingMovements && movements?.map((mov) => {
                   const status = getStatus(mov.remitoNumber);
                   return (
                     <TableRow key={mov.id}>
                       <TableCell className="font-medium">
-                        {format(new Date(mov.createdAt), 'PPpp', {
+                        {format(mov.createdAt.toDate(), 'PPpp', {
                           locale: es,
                         })}
                       </TableCell>
