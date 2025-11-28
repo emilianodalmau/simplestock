@@ -51,6 +51,10 @@
             "jefe_deposito",
             "solicitante"
           ]
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "If true, the user is disabled and cannot log in."
         }
       },
       "required": [
@@ -414,6 +418,3 @@
     }
   }
 }
-
-
-    

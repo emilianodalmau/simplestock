@@ -47,24 +47,38 @@ export function LoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
-    if (!firestore) {
+    if (!auth || !firestore) {
       setIsLoading(false);
       toast({
         title: "Error",
-        description: "El servicio de base de datos no está disponible.",
+        description: "El servicio de autenticación no está disponible.",
         variant: "destructive",
       });
       return;
     }
     
     try {
+      // First, just sign in to get the user object.
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
-      // Fetch user role from Firestore
+      // Then, check their status in Firestore.
       const userDocRef = doc(firestore, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
 
+      if (userDoc.exists() && userDoc.data().disabled === true) {
+        // If user is disabled, sign them out immediately and show an error.
+        await auth.signOut();
+        toast({
+          title: "Cuenta Desactivada",
+          description: "Esta cuenta ha sido desactivada por un administrador.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return; // Stop the login process.
+      }
+      
+      // If user is not disabled, proceed with role-based redirection.
       if (userDoc.exists() && userDoc.data().role === 'super-admin') {
         router.push("/super-admin");
       } else {
@@ -78,7 +92,10 @@ export function LoginForm() {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      // This will only be reached on success or credential failure, not on disabled account.
+      if (isLoading) {
+          setIsLoading(false);
+      }
     }
   }
 

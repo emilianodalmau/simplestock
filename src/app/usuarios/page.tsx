@@ -66,6 +66,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 const editFormSchema = z.object({
   firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -96,6 +97,7 @@ type UserProfile = {
   address?: string;
   workspaceId?: string | null;
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
+  disabled?: boolean;
 };
 
 type NewUserCredentials = {
@@ -216,6 +218,26 @@ export default function UsuariosPage() {
     }
   };
 
+  const handleStatusChange = async (userId: string, disabled: boolean) => {
+    if (!firestore) return;
+    const userDocRef = doc(firestore, 'users', userId);
+    try {
+      await updateDoc(userDocRef, { disabled });
+      toast({
+        title: `Usuario ${disabled ? 'desactivado' : 'activado'}`,
+        description: `El estado del usuario ha sido actualizado.`,
+      });
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de Permisos',
+        description: 'No tienes permisos para cambiar el estado de este usuario.',
+      });
+    }
+  };
+
+
   const onEditSubmit: SubmitHandler<EditFormValues> = async (data) => {
     if (!firestore || !editingUser) return;
     setIsEditSubmitting(true);
@@ -273,6 +295,7 @@ export default function UsuariosPage() {
         role: 'solicitante',
         workspaceId: currentUserProfile.workspaceId,
         createdAt: serverTimestamp(),
+        disabled: false, // Default to active
       });
       
       // Step 3: Show credentials to the admin
@@ -398,9 +421,8 @@ export default function UsuariosPage() {
             <TableRow>
               <TableHead>Usuario</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Teléfono</TableHead>
-              <TableHead>Dirección</TableHead>
               <TableHead>Rol</TableHead>
+              <TableHead>Estado</TableHead>
               {currentUserIsAdmin && (
                 <TableHead className="text-right">Acciones</TableHead>
               )}
@@ -422,13 +444,10 @@ export default function UsuariosPage() {
                     <Skeleton className="h-4 w-40" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-48" />
-                  </TableCell>
-                  <TableCell>
                     <Skeleton className="h-6 w-24 rounded-full" />
+                  </TableCell>
+                   <TableCell>
+                    <Skeleton className="h-6 w-20 rounded-full" />
                   </TableCell>
                   {currentUserIsAdmin && (
                     <TableCell className="text-right">
@@ -439,7 +458,7 @@ export default function UsuariosPage() {
               ))}
             {!isLoading &&
               users?.map((user) => (
-                <TableRow key={user.id}>
+                <TableRow key={user.id} className={user.disabled ? 'opacity-50' : ''}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar>
@@ -456,12 +475,6 @@ export default function UsuariosPage() {
                   <TableCell className="text-muted-foreground">
                     {user.email}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {user.phone || '-'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {user.address || '-'}
-                  </TableCell>
                   <TableCell>
                     {user.role ? (
                       <Badge variant={roleColors[user.role] || 'default'}>
@@ -471,9 +484,13 @@ export default function UsuariosPage() {
                       <span className="text-muted-foreground">Sin rol</span>
                     )}
                   </TableCell>
+                  <TableCell>
+                     <Badge variant={user.disabled ? 'destructive' : 'default'} className={user.disabled ? '' : 'bg-green-500 hover:bg-green-500/80'}>
+                        {user.disabled ? 'Inactivo' : 'Activo'}
+                      </Badge>
+                  </TableCell>
                   {currentUserIsAdmin && (
-                    <TableCell className="text-right">
-                      <>
+                    <TableCell className="text-right space-x-2">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -517,7 +534,12 @@ export default function UsuariosPage() {
                             </SelectItem>
                           </SelectContent>
                         </Select>
-                      </>
+                        <Switch
+                            checked={!user.disabled}
+                            onCheckedChange={(checked) => handleStatusChange(user.id, !checked)}
+                            aria-label="Activar o desactivar usuario"
+                            disabled={user.id === currentUser?.uid || (user.role === 'super-admin' && !currentUserIsSuperAdmin)}
+                        />
                     </TableCell>
                   )}
                 </TableRow>
@@ -535,7 +557,7 @@ export default function UsuariosPage() {
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>
             <DialogDescription>
-              Modifica los detalles del usuario.
+              Modifica los detalles del usuario. El rol y estado se gestionan desde la tabla.
             </DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
