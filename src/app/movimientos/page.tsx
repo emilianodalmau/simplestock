@@ -212,38 +212,42 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !user || !canManageMovements) {
-        return null;
-    }
-  
-    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    const role = currentUserProfile?.role;
-  
-    if (role === 'administrador' || role === 'editor') {
-      return movementsCollectionRef;
-    }
+    // Security and readiness validation before building the query
+    if (!firestore || !collectionPrefix || !currentUserProfile || !user) return null;
     
+    const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+    
+    // CRITICAL LOGIC: Conditionally build the query based on user role
+    const role = currentUserProfile.role;
+
+    if (role === 'solicitante') {
+      // Solicitante MUST filter by their own userId to comply with security rules
+      return query(baseRef, where('userId', '==', user.uid));
+    }
+
     if (role === 'jefe_deposito') {
-      return query(movementsCollectionRef, where('userId', '==', user.uid));
+      // Jefe de depósito is restricted to their assigned deposit for optimization and security
+      // If they have no assigned deposit, this query will correctly yield no results.
+      return query(baseRef, where('depositId', '==', assignedDepositId || ''));
     }
-  
-    return null;
-  }, [firestore, collectionPrefix, user, currentUserProfile?.role, canManageMovements]);
+
+    if (role === 'administrador' || role === 'editor') {
+      // Admin and Editor can see all movements
+      return baseRef;
+    }
     
+    // Default to null if the role has no access, preventing any query.
+    return null;
+
+  }, [firestore, collectionPrefix, currentUserProfile, user, assignedDepositId]);
+
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
     
   const filteredMovements = useMemo(() => {
     let filtered = movements || [];
 
-    if (isJefeDeposito) {
-        if (!assignedDepositId) return []; // Must have an assigned deposit to see anything.
-        if (selectedDeposit === 'all') {
-            filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
-        }
-    }
-
-
+    // Additional client-side filtering on top of the secure backend query
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(mov => 
@@ -254,7 +258,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
-    if (!isJefeDeposito && selectedDeposit !== 'all') {
+    if (selectedDeposit !== 'all' && !isJefeDeposito) { // Jefes are already filtered by backend query
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }
     if (selectedActor !== 'all') {
@@ -271,7 +275,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     return filtered;
 
-  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito, assignedDepositId]);
+  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
 
 
   const inventoryCollection = useMemoFirebase(
@@ -1005,13 +1009,18 @@ export default function MovimientosPage() {
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
+    // Changed this to also include 'solicitante' so they can query their own movements.
+    return ['administrador', 'editor', 'jefe_deposito', 'solicitante'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
   if (isUserLoading || isLoadingProfile) {
     return <MovementPageSkeleton />;
   }
 
+  // This prevents rendering the content for roles that shouldn't see this page AT ALL,
+  // but allows 'solicitante' to render the component which will then use a filtered query.
+  // The UI for 'solicitante' should be different, handled inside MovimientosContent or a different component.
+  // For now, we allow access to the component but will show a message if they can't manage.
   if (!canAccessPage) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -1027,8 +1036,6 @@ export default function MovimientosPage() {
     );
   }
 
+  // We are now confident that currentUserProfile is not null here.
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
-
-
-    
