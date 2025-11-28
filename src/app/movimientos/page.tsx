@@ -181,9 +181,8 @@ export default function MovimientosPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   
-  const canAccessPage = useMemo(() => {
+  const canManageMovements = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    // Solicitante should not access this page at all.
     return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
@@ -191,8 +190,8 @@ export default function MovimientosPage() {
   const workspaceId = currentUserProfile?.workspaceId;
   
   const workspaceDocRef = useMemoFirebase(
-    () => (firestore && workspaceId && canAccessPage ? doc(firestore, 'workspaces', workspaceId) : null),
-    [firestore, workspaceId, canAccessPage]
+    () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
+    [firestore, workspaceId]
   );
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
@@ -209,8 +208,8 @@ export default function MovimientosPage() {
   }, [workspaceData, isLoadingWorkspace]);
 
   const collectionPrefix = useMemo(
-    () => (workspaceId && canAccessPage ? `workspaces/${workspaceId}` : null),
-    [workspaceId, canAccessPage]
+    () => (workspaceId ? `workspaces/${workspaceId}` : null),
+    [workspaceId]
   );
 
   const productsCollection = useMemoFirebase(
@@ -254,13 +253,14 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    // CRITICAL FIX: Do not construct the query if the user does not have the correct role.
-    if (!firestore || !collectionPrefix || !user || !currentUserProfile?.role || !canAccessPage) {
-        return null; // This prevents the hook from running for unauthorized users like 'solicitante'
+    // CRITICAL FIX: Only build the query if the user has the correct role.
+    // For other roles like 'solicitante', this will return null and useCollection won't run.
+    if (!firestore || !collectionPrefix || !user || !canManageMovements) {
+        return null;
     }
   
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    const role = currentUserProfile.role;
+    const role = currentUserProfile?.role;
   
     // Admins and Editors can see all movements
     if (role === 'administrador' || role === 'editor') {
@@ -275,7 +275,7 @@ export default function MovimientosPage() {
   
     // For any other role, explicitly return null.
     return null;
-  }, [firestore, collectionPrefix, user, currentUserProfile?.role, canAccessPage]);
+  }, [firestore, collectionPrefix, user, currentUserProfile?.role, canManageMovements]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -338,7 +338,7 @@ export default function MovimientosPage() {
 
   const isLoading =
     isLoadingProfile ||
-    (canAccessPage && (
+    (canManageMovements && (
         isLoadingProducts ||
         isLoadingDeposits ||
         isLoadingUsers ||
@@ -617,11 +617,6 @@ export default function MovimientosPage() {
     XLSX.writeFile(workbook, 'Movimientos.xlsx');
   };
 
-  const canManageMovements =
-    currentUserProfile?.role === 'administrador' ||
-    currentUserProfile?.role === 'editor' ||
-    currentUserProfile?.role === 'jefe_deposito';
-  
   const canSelectActor = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
   
   const isAdmin = currentUserProfile?.role === 'administrador';
@@ -634,7 +629,7 @@ export default function MovimientosPage() {
     return <MovementPageSkeleton />;
   }
 
-  if (!canAccessPage) {
+  if (!canManageMovements) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <Card>
