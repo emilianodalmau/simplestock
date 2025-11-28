@@ -1079,3 +1079,5 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+    
