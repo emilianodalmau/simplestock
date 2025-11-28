@@ -87,8 +87,10 @@ export default function MisMovimientosPage() {
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !user) return null;
     
+    // Filtra los movimientos para mostrar solo los del usuario actual
     return query(
         collection(firestore, `${collectionPrefix}/stockMovements`),
+        where('userId', '==', user.uid),
         orderBy('createdAt', 'desc')
     );
 
@@ -132,14 +134,14 @@ export default function MisMovimientosPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Historial de Movimientos</h1>
-        <p className="text-muted-foreground">Historial de todos los remitos generados en el workspace.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Mis Movimientos</h1>
+        <p className="text-muted-foreground">Historial de los remitos y solicitudes que has generado.</p>
       </div>
 
        <Card>
         <CardHeader>
-          <CardTitle>Valor Total de Movimientos</CardTitle>
-          <CardDescription>Suma total del valor de todos los remitos registrados.</CardDescription>
+          <CardTitle>Valor Total de Tus Movimientos</CardTitle>
+          <CardDescription>Suma total del valor de todos los remitos que has registrado.</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-3xl font-bold">{formatPrice(totalMovementsValue)}</p>
@@ -200,6 +202,7 @@ export default function MisMovimientosPage() {
                         <TableCell>
                           <span
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              mov.remitoNumber?.startsWith('S-') ? 'bg-yellow-100 text-yellow-800' :
                               mov.type === 'entrada'
                                 ? 'bg-green-100 text-green-800'
                                 : mov.type === 'salida'
@@ -207,7 +210,7 @@ export default function MisMovimientosPage() {
                                 : 'bg-blue-100 text-blue-800'
                             }`}
                           >
-                            {mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}
+                           {mov.remitoNumber?.startsWith('S-') ? 'Solicitud' : mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}
                           </span>
                         </TableCell>
                         <TableCell>{mov.depositName}</TableCell>
