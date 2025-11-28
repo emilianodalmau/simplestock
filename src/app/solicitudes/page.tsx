@@ -20,6 +20,7 @@ import {
   increment,
   query,
   where,
+  orderBy,
 } from 'firebase/firestore';
 import {
   Card,
@@ -51,8 +52,25 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, PlusCircle } from 'lucide-react';
 import { ProductComboBox } from '@/components/ui/product-combobox';
-import type { Product, Deposit, UserProfile, StockMovementItem, InventoryStock } from '@/types/inventory';
-
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import type {
+  Product,
+  Deposit,
+  UserProfile,
+  StockMovementItem,
+  InventoryStock,
+  StockMovement,
+} from '@/types/inventory';
 
 // --- Zod Schemas ---
 const requestItemSchema = z.object({
@@ -67,6 +85,25 @@ const requestFormSchema = z.object({
 });
 
 type RequestFormValues = z.infer<typeof requestFormSchema>;
+
+// --- Helper Functions ---
+const formatPrice = (price: number) => {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+  }).format(price);
+};
+
+const getStatus = (remitoNumber?: string) => {
+  if (!remitoNumber) return { text: 'Procesando', color: 'bg-yellow-500' };
+  if (remitoNumber.startsWith('S-'))
+    return { text: 'Pendiente', color: 'bg-orange-500' };
+  if (remitoNumber.startsWith('R-'))
+    return { text: 'Completado', color: 'bg-green-500' };
+  if (remitoNumber.startsWith('AJ-'))
+    return { text: 'Ajuste', color: 'bg-blue-500' };
+  return { text: 'Desconocido', color: 'bg-gray-500' };
+};
 
 // --- Skeleton Component ---
 function SolicitudesPageSkeleton() {
@@ -103,30 +140,137 @@ function SolicitudesPageSkeleton() {
   );
 }
 
+// --- History Component ---
+function RequestHistory({
+  collectionPrefix,
+  userId,
+}: {
+  collectionPrefix: string | null;
+  userId: string | null;
+}) {
+  const firestore = useFirestore();
+
+  const movementsQuery = useMemoFirebase(() => {
+    if (!firestore || !collectionPrefix || !userId) {
+      return null;
+    }
+    return query(
+      collection(firestore, `${collectionPrefix}/stockMovements`),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, collectionPrefix, userId]);
+
+  const { data: movements, isLoading: isLoadingMovements } =
+    useCollection<StockMovement>(movementsQuery);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Historial de Mis Solicitudes</CardTitle>
+        <CardDescription>
+          Aquí puedes ver el historial de todas tus solicitudes de productos.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Remito/Solicitud Nº</TableHead>
+                <TableHead>Depósito</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Valor Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoadingMovements &&
+                [...Array(3)].map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className="h-4 w-36" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-10" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-6 w-24 rounded-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-20 ml-auto" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {!isLoadingMovements && movements?.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center h-24">
+                    No has realizado ningún movimiento todavía.
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoadingMovements &&
+                movements?.map((mov) => {
+                  const status = getStatus(mov.remitoNumber);
+                  return (
+                    <TableRow key={mov.id}>
+                      <TableCell className="font-medium">
+                        {format(mov.createdAt.toDate(), 'PPpp', {
+                          locale: es,
+                        })}
+                      </TableCell>
+                      <TableCell className="font-mono">
+                        {mov.remitoNumber || '-'}
+                      </TableCell>
+                      <TableCell>{mov.depositName}</TableCell>
+                      <TableCell>{mov.items.length}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={`${status.color} text-white hover:${status.color}`}
+                        >
+                          {status.text}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatPrice(Math.abs(mov.totalValue || 0))}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Main Page Component ---
 export default function SolicitudesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
-  const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
 
-
-  // --- Data Loading ---
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
     [firestore, user]
   );
-  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
-  
+  const { data: currentUserProfile, isLoading: isLoadingProfile } =
+    useDoc<UserProfile>(currentUserDocRef);
+
   const canCreateRequest = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    // Now only 'solicitante' can create requests from this page.
-    // Admins and editors will use the main movements page.
     return currentUserProfile.role === 'solicitante';
   }, [currentUserProfile?.role]);
 
-  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   const workspaceId = currentUserProfile?.workspaceId;
 
   const collectionPrefix = useMemo(() => {
@@ -134,11 +278,13 @@ export default function SolicitudesPage() {
     return `workspaces/${workspaceId}`;
   }, [workspaceId]);
 
-
   const productsCollection = useMemoFirebase(
     () =>
       firestore && collectionPrefix
-        ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true))
+        ? query(
+            collection(firestore, `${collectionPrefix}/products`),
+            where('isArchived', '!=', true)
+          )
         : null,
     [firestore, collectionPrefix]
   );
@@ -146,34 +292,31 @@ export default function SolicitudesPage() {
     useCollection<Product>(productsCollection);
 
   const depositsCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
+    () =>
+      firestore && collectionPrefix
+        ? collection(firestore, `${collectionPrefix}/deposits`)
+        : null,
     [firestore, collectionPrefix]
   );
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
-    
-  useEffect(() => {
-    if (isJefeDeposito && deposits) {
-      const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
-      setAssignedDepositId(assignedDeposit?.id || null);
-    }
-  }, [isJefeDeposito, deposits, user]);
-
 
   const inventoryCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null),
+    () =>
+      firestore && collectionPrefix
+        ? collection(firestore, `${collectionPrefix}/inventory`)
+        : null,
     [firestore, collectionPrefix]
   );
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
-  
+
   const isLoading =
     isLoadingProfile ||
     isLoadingProducts ||
     isLoadingDeposits ||
     isLoadingInventory;
 
-  // --- Form Setup ---
   const form = useForm<RequestFormValues>({
     resolver: zodResolver(requestFormSchema),
     defaultValues: {
@@ -187,36 +330,37 @@ export default function SolicitudesPage() {
     control: form.control,
     name: 'items',
   });
-  
+
   const selectedDepositId = form.watch('depositId');
-  
-  // Set the actorId
+
   useEffect(() => {
     if (user?.uid) {
-        form.setValue('actorId', user.uid);
+      form.setValue('actorId', user.uid);
     }
   }, [user, form]);
 
-  // --- Effects ---
   useEffect(() => {
     replace([{ productId: '', quantity: 1 }]);
   }, [selectedDepositId, replace]);
 
-  // --- Data Memoization for UI ---
-  const productsMap = useMemo(() => new Map(products?.map((p) => [p.id, p])), [
-    products,
-  ]);
-  
+  const productsMap = useMemo(
+    () => new Map(products?.map((p) => [p.id, p])),
+    [products]
+  );
+
   const inventoryByProduct = useMemo(() => {
-      const map = new Map<string, number>();
-      if (!inventory || !selectedDepositId) return map;
-      
-      inventory.forEach(stock => {
-          if (stock.depositId === selectedDepositId) {
-              map.set(stock.productId, (map.get(stock.productId) || 0) + stock.quantity);
-          }
-      });
-      return map;
+    const map = new Map<string, number>();
+    if (!inventory || !selectedDepositId) return map;
+
+    inventory.forEach((stock) => {
+      if (stock.depositId === selectedDepositId) {
+        map.set(
+          stock.productId,
+          (map.get(stock.productId) || 0) + stock.quantity
+        );
+      }
+    });
+    return map;
   }, [inventory, selectedDepositId]);
 
   const availableProductsForRequest = useMemo(() => {
@@ -235,39 +379,58 @@ export default function SolicitudesPage() {
     );
   }, [selectedDepositId, products, inventory]);
 
-  // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
-    if (!firestore || !user || !productsMap.size || !canCreateRequest || !collectionPrefix || !currentUserProfile) return;
-    
-    // --- 1. Client-side Validation ---
+    if (
+      !firestore ||
+      !user ||
+      !productsMap.size ||
+      !canCreateRequest ||
+      !collectionPrefix ||
+      !currentUserProfile
+    )
+      return;
+
     for (const item of data.items) {
       const availableStock = inventoryByProduct.get(item.productId) || 0;
       if (item.quantity > availableStock) {
         toast({
           variant: 'destructive',
           title: 'Stock Insuficiente',
-          description: `No hay stock suficiente para ${productsMap.get(item.productId)?.name}. Solicitados: ${item.quantity}, Disponible: ${availableStock}.`,
+          description: `No hay stock suficiente para ${
+            productsMap.get(item.productId)?.name
+          }. Solicitados: ${item.quantity}, Disponible: ${availableStock}.`,
         });
-        return; // Stop the submission
+        return;
       }
     }
 
     setIsSubmitting(true);
-    
-    // NOTE: This logic creates a "Solicitud" (S-XXXXX), NOT a "Remito" (R-XXXXX).
-    // The stock is NOT modified here. That happens when the Jefe de Deposito processes the request.
+
     try {
       await runTransaction(firestore, async (transaction) => {
-        const counterRef = doc(firestore, `${collectionPrefix}/counters`, 'remitoCounter');
+        const counterRef = doc(
+          firestore,
+          `${collectionPrefix}/counters`,
+          'remitoCounter'
+        );
         const counterSnap = await transaction.get(counterRef);
-        
-        const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-        const newRemitoNumber = lastNumber + 1;
-        // The prefix "S-" marks this as a "Solicitud" (Request)
-        const formattedRemitoNumber = `S-${String(newRemitoNumber).padStart(5, '0')}`;
-        transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
-        const movementItemsForDoc: StockMovementItem[] = data.items.map((item) => {
+        const lastNumber = counterSnap.exists()
+          ? counterSnap.data().lastNumber
+          : 0;
+        const newRemitoNumber = lastNumber + 1;
+        const formattedRemitoNumber = `S-${String(newRemitoNumber).padStart(
+          5,
+          '0'
+        )}`;
+        transaction.set(
+          counterRef,
+          { lastNumber: newRemitoNumber },
+          { merge: true }
+        );
+
+        const movementItemsForDoc: StockMovementItem[] = data.items.map(
+          (item) => {
             const product = productsMap.get(item.productId);
             return {
               productId: item.productId,
@@ -275,19 +438,26 @@ export default function SolicitudesPage() {
               quantity: item.quantity,
               unit: product?.unit || 'N/A',
               price: product?.price || 0,
-              total: (product?.price || 0) * item.quantity
+              total: (product?.price || 0) * item.quantity,
             };
-        });
-        
-        const totalValue = movementItemsForDoc.reduce((sum, item) => sum + item.total, 0);
+          }
+        );
+
+        const totalValue = movementItemsForDoc.reduce(
+          (sum, item) => sum + item.total,
+          0
+        );
 
         const deposit = deposits?.find((d) => d.id === data.depositId);
-        const actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
+        const actorName =
+          `${currentUserProfile?.firstName || ''} ${
+            currentUserProfile?.lastName || ''
+          }`.trim();
 
-        const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
-        
-        // This is a "salida" type, but it's a REQUEST, not a confirmed movement.
-        // The `remitoNumber` "S-" prefix is the key differentiator.
+        const movementRef = doc(
+          collection(firestore, `${collectionPrefix}/stockMovements`)
+        );
+
         transaction.set(movementRef, {
           id: movementRef.id,
           remitoNumber: formattedRemitoNumber,
@@ -306,7 +476,7 @@ export default function SolicitudesPage() {
 
       toast({
         title: 'Solicitud Enviada',
-        description: `Tu pedido ${form.getValues('remitoNumber')} ha sido enviado para su aprobación.`,
+        description: `Tu pedido ha sido enviado para su aprobación.`,
       });
       form.reset({
         depositId: '',
@@ -318,7 +488,8 @@ export default function SolicitudesPage() {
       toast({
         variant: 'destructive',
         title: 'Error en la transacción',
-        description: error.message || 'Ocurrió un error al procesar el pedido.',
+        description:
+          error.message || 'Ocurrió un error al procesar el pedido.',
       });
     } finally {
       setIsSubmitting(false);
@@ -328,25 +499,25 @@ export default function SolicitudesPage() {
   if (isLoading) {
     return <SolicitudesPageSkeleton />;
   }
-  
-   if (!canCreateRequest) {
+
+  if (!canCreateRequest) {
     return (
-        <div className="container mx-auto p-4 sm:p-6 md:p-8">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Acceso Denegado</CardTitle>
-                    <CardDescription>
-                        No tienes los permisos necesarios para crear solicitudes.
-                    </CardDescription>
-                </CardHeader>
-            </Card>
-        </div>
+      <div className="container mx-auto p-4 sm:p-6 md:p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Acceso Denegado</CardTitle>
+            <CardDescription>
+              No tienes los permisos necesarios para crear solicitudes.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
-       <div className="mb-6">
+      <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">
           Solicitud de Productos
         </h1>
@@ -354,14 +525,15 @@ export default function SolicitudesPage() {
           Crea un pedido de productos desde un depósito para que sea aprobado.
         </p>
       </div>
-      
+
       <Card>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardHeader>
               <CardTitle>Crear Pedido de Productos</CardTitle>
               <CardDescription>
-                 Completa el formulario para generar una solicitud. El stock disponible se mostrará al seleccionar un producto.
+                Completa el formulario para generar una solicitud. El stock
+                disponible se mostrará al seleccionar un producto.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -372,7 +544,10 @@ export default function SolicitudesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Depósito de Origen</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona un depósito" />
@@ -397,12 +572,14 @@ export default function SolicitudesPage() {
                     <FormItem>
                       <FormLabel>Solicitante</FormLabel>
                       <FormControl>
-                        <Input 
-                          value={`${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim()}
-                          disabled 
+                        <Input
+                          value={`${
+                            currentUserProfile?.firstName || ''
+                          } ${currentUserProfile?.lastName || ''}`.trim()}
+                          disabled
                         />
                       </FormControl>
-                       <FormMessage />
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -410,7 +587,9 @@ export default function SolicitudesPage() {
               <Separator />
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium">Productos a Solicitar</h3>
+                  <h3 className="text-lg font-medium">
+                    Productos a Solicitar
+                  </h3>
                   <Button
                     type="button"
                     variant="outline"
@@ -424,67 +603,82 @@ export default function SolicitudesPage() {
                 </div>
                 <div className="space-y-4">
                   {fields.map((field, index) => {
-                      const selectedProductId = form.watch(`items.${index}.productId`);
-                      const availableStock = inventoryByProduct.get(selectedProductId) || 0;
-                      const productUnit = productsMap.get(selectedProductId)?.unit || '';
+                    const selectedProductId = form.watch(
+                      `items.${index}.productId`
+                    );
+                    const availableStock =
+                      inventoryByProduct.get(selectedProductId) || 0;
+                    const productUnit =
+                      productsMap.get(selectedProductId)?.unit || '';
 
-                      return (
-                          <div
-                              key={field.id}
-                              className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_auto] gap-2 items-start p-4 border rounded-md relative"
-                          >
-                              <FormField
-                              control={form.control}
-                              name={`items.${index}.productId`}
-                              render={({ field }) => (
-                                  <FormItem>
-                                  <FormLabel className="sr-only">Producto</FormLabel>
-                                  <ProductComboBox
-                                      products={availableProductsForRequest}
-                                      value={field.value}
-                                      onChange={field.onChange}
-                                      disabled={!selectedDepositId}
-                                      noStockMessage={
-                                      !!selectedDepositId
-                                          ? 'No hay productos con stock.'
-                                          : 'Selecciona un depósito primero'
-                                      }
-                                  />
-                                  <FormMessage />
-                                  </FormItem>
-                              )}
+                    return (
+                      <div
+                        key={field.id}
+                        className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_auto] gap-2 items-start p-4 border rounded-md relative"
+                      >
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.productId`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="sr-only">
+                                Producto
+                              </FormLabel>
+                              <ProductComboBox
+                                products={availableProductsForRequest}
+                                value={field.value}
+                                onChange={field.onChange}
+                                disabled={!selectedDepositId}
+                                noStockMessage={
+                                  !!selectedDepositId
+                                    ? 'No hay productos con stock.'
+                                    : 'Selecciona un depósito primero'
+                                }
                               />
-                              <FormField
-                              control={form.control}
-                              name={`items.${index}.quantity`}
-                              render={({ field }) => (
-                                  <FormItem>
-                                  <FormLabel className="sr-only">Cantidad</FormLabel>
-                                  <FormControl>
-                                      <Input type="number" placeholder="Cantidad" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                  </FormItem>
-                              )}
-                              />
-                              <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => remove(index)}
-                              className="text-destructive hover:bg-destructive/10"
-                              >
-                              <Trash2 className="h-4 w-4" />
-                              </Button>
-                              {selectedProductId && (
-                                   <div className="col-span-full text-sm text-muted-foreground pt-2">
-                                      Stock disponible: <span className="font-medium text-foreground">{availableStock} {productUnit}</span>
-                                   </div>
-                              )}
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.quantity`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="sr-only">
+                                Cantidad
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="Cantidad"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          className="text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        {selectedProductId && (
+                          <div className="col-span-full text-sm text-muted-foreground pt-2">
+                            Stock disponible:{' '}
+                            <span className="font-medium text-foreground">
+                              {availableStock} {productUnit}
+                            </span>
                           </div>
-                      )
+                        )}
+                      </div>
+                    );
                   })}
-                   {form.formState.errors.items && (
+                  {form.formState.errors.items && (
                     <p className="text-sm font-medium text-destructive mt-2">
                       {typeof form.formState.errors.items === 'string'
                         ? form.formState.errors.items
@@ -495,14 +689,27 @@ export default function SolicitudesPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={isSubmitting || !selectedDepositId || !form.formState.isValid}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  !selectedDepositId ||
+                  !form.formState.isValid
+                }
+              >
+                {isSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Enviar Solicitud
               </Button>
             </CardFooter>
           </form>
         </Form>
       </Card>
+      
+      {user && collectionPrefix && (
+        <RequestHistory collectionPrefix={collectionPrefix} userId={user.uid} />
+      )}
     </div>
   );
 }
