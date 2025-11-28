@@ -52,24 +52,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, PlusCircle } from 'lucide-react';
 import { ProductComboBox } from '@/components/ui/product-combobox';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import type {
   Product,
   Deposit,
   UserProfile,
   StockMovementItem,
   InventoryStock,
-  StockMovement,
 } from '@/types/inventory';
 
 // --- Zod Schemas ---
@@ -86,24 +74,6 @@ const requestFormSchema = z.object({
 
 type RequestFormValues = z.infer<typeof requestFormSchema>;
 
-// --- Helper Functions ---
-const formatPrice = (price: number) => {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-  }).format(price);
-};
-
-const getStatus = (remitoNumber?: string) => {
-  if (!remitoNumber) return { text: 'Procesando', color: 'bg-yellow-500' };
-  if (remitoNumber.startsWith('S-'))
-    return { text: 'Pendiente', color: 'bg-orange-500' };
-  if (remitoNumber.startsWith('R-'))
-    return { text: 'Completado', color: 'bg-green-500' };
-  if (remitoNumber.startsWith('AJ-'))
-    return { text: 'Ajuste', color: 'bg-blue-500' };
-  return { text: 'Desconocido', color: 'bg-gray-500' };
-};
 
 // --- Skeleton Component ---
 function SolicitudesPageSkeleton() {
@@ -140,117 +110,6 @@ function SolicitudesPageSkeleton() {
   );
 }
 
-// --- History Component ---
-function RequestHistory({
-  collectionPrefix,
-  userId,
-}: {
-  collectionPrefix: string | null;
-  userId: string | null;
-}) {
-  const firestore = useFirestore();
-
-  const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !userId) {
-      return null;
-    }
-    return query(
-      collection(firestore, `${collectionPrefix}/stockMovements`),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-  }, [firestore, collectionPrefix, userId]);
-
-  const { data: movements, isLoading: isLoadingMovements } =
-    useCollection<StockMovement>(movementsQuery);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Historial de Mis Solicitudes</CardTitle>
-        <CardDescription>
-          Aquí puedes ver el historial de todas tus solicitudes de productos.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Remito/Solicitud Nº</TableHead>
-                <TableHead>Depósito</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Valor Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoadingMovements &&
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-36" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-10" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-6 w-24 rounded-full" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20 ml-auto" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              {!isLoadingMovements && movements?.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24">
-                    No has realizado ningún movimiento todavía.
-                  </TableCell>
-                </TableRow>
-              )}
-              {!isLoadingMovements &&
-                movements?.map((mov) => {
-                  const status = getStatus(mov.remitoNumber);
-                  return (
-                    <TableRow key={mov.id}>
-                      <TableCell className="font-medium">
-                        {format(mov.createdAt.toDate(), 'PPpp', {
-                          locale: es,
-                        })}
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {mov.remitoNumber || '-'}
-                      </TableCell>
-                      <TableCell>{mov.depositName}</TableCell>
-                      <TableCell>{mov.items.length}</TableCell>
-                      <TableCell>
-                        <Badge
-                          className={`${status.color} text-white hover:${status.color}`}
-                        >
-                          {status.text}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatPrice(Math.abs(mov.totalValue || 0))}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 // --- Main Page Component ---
 export default function SolicitudesPage() {
@@ -706,10 +565,6 @@ export default function SolicitudesPage() {
           </form>
         </Form>
       </Card>
-      
-      {user && collectionPrefix && (
-        <RequestHistory collectionPrefix={collectionPrefix} userId={user.uid} />
-      )}
     </div>
   );
 }
