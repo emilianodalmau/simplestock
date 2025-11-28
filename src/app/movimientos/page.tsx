@@ -67,7 +67,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, Edit, CalendarIcon, FileDown } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, Edit, CalendarIcon, FileDown, FileText } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -90,6 +90,8 @@ import { cn } from '@/lib/utils';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 
 // --- Zod Schemas ---
@@ -127,6 +129,7 @@ function MovementPageSkeleton() {
 // --- Child Component with Data Logic ---
 function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserProfile }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfSettings, setPdfSettings] = useState<AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -212,34 +215,24 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    // Security and readiness validation before building the query
     if (!firestore || !collectionPrefix || !currentUserProfile || !user) return null;
     
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    
-    // CRITICAL LOGIC: Conditionally build the query based on user role
     const role = currentUserProfile.role;
 
-    if (role === 'solicitante') {
-      // Solicitante MUST filter by their own userId to comply with security rules
-      return query(baseRef, where('userId', '==', user.uid));
-    }
-
-    if (role === 'jefe_deposito') {
-      // Jefe de depósito is restricted to their assigned deposit for optimization and security
-      // If they have no assigned deposit, this query will correctly yield no results.
-      return query(baseRef, where('depositId', '==', assignedDepositId || ''));
-    }
-
     if (role === 'administrador' || role === 'editor') {
-      // Admin and Editor can see all movements
-      return baseRef;
+        return baseRef;
+    }
+    if (role === 'jefe_deposito') {
+        return query(baseRef, where('depositId', '==', assignedDepositId || ''));
+    }
+    if (role === 'solicitante') {
+       return query(baseRef, where('userId', '==', user.uid));
     }
     
-    // Default to null if the role has no access, preventing any query.
     return null;
-
   }, [firestore, collectionPrefix, currentUserProfile, user, assignedDepositId]);
+  
 
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -273,7 +266,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         filtered = filtered.filter(mov => mov.createdAt.toDate() < toDate);
     }
 
-    return filtered;
+    return filtered.sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
 
   }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
 
@@ -550,6 +543,53 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimientos');
     XLSX.writeFile(workbook, 'Movimientos.xlsx');
+  };
+
+  const handleExportToPdf = () => {
+    if (!filteredMovements || filteredMovements.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'No hay datos',
+        description: 'No hay movimientos filtrados para exportar.',
+      });
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    
+    const doc = new jsPDF();
+    const userMap = new Map(users?.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    
+    const tableData = filteredMovements.flatMap(mov => 
+      mov.items.map(item => [
+        format(mov.createdAt.toDate(), 'dd/MM/yy', { locale: es }),
+        mov.remitoNumber || '-',
+        mov.type,
+        item.productName,
+        `${item.quantity} ${item.unit}`,
+        userMap.get(mov.userId) || '-',
+      ])
+    );
+    
+    const appName = workspaceData?.name || workspaceData?.appName || 'Reporte de Movimientos';
+    const date = format(new Date(), 'dd/MM/yyyy');
+
+    doc.setFontSize(18);
+    doc.text(appName, 14, 22);
+    doc.setFontSize(11);
+    doc.text('Reporte de Movimientos de Stock', 14, 30);
+    doc.text(`Fecha: ${date}`, 150, 30);
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Fecha', 'Remito Nº', 'Tipo', 'Producto', 'Cantidad', 'Registrado por']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [22, 160, 133] },
+    });
+    
+    doc.save('Reporte_Movimientos.pdf');
+    setIsGeneratingPdf(false);
   };
 
   const canSelectActor = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
@@ -879,7 +919,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 </Popover>
                  <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto">
                   <FileDown className="mr-2 h-4 w-4" />
-                  Exportar
+                  Excel
+                </Button>
+                <Button onClick={handleExportToPdf} variant="outline" className="w-full sm:w-auto" disabled={isGeneratingPdf}>
+                  {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                  PDF
                 </Button>
               </div>
               <div className="rounded-lg border">
@@ -939,11 +983,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     )}
                     {!isLoadingMovements &&
                       (filteredMovements || [])
-                        ?.sort(
-                          (a, b) =>
-                            b.createdAt.toDate().getTime() -
-                            a.createdAt.toDate().getTime()
-                        )
                         .map((mov) => (
                           <TableRow key={mov.id}>
                             <TableCell className="font-medium">
@@ -1012,7 +1051,6 @@ export default function MovimientosPage() {
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    // Changed this to also include 'solicitante' so they can query their own movements.
     return ['administrador', 'editor', 'jefe_deposito', 'solicitante'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
@@ -1020,10 +1058,6 @@ export default function MovimientosPage() {
     return <MovementPageSkeleton />;
   }
 
-  // This prevents rendering the content for roles that shouldn't see this page AT ALL,
-  // but allows 'solicitante' to render the component which will then use a filtered query.
-  // The UI for 'solicitante' should be different, handled inside MovimientosContent or a different component.
-  // For now, we allow access to the component but will show a message if they can't manage.
   if (!canAccessPage) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -1039,6 +1073,5 @@ export default function MovimientosPage() {
     );
   }
 
-  // We are now confident that currentUserProfile is not null here.
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
