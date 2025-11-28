@@ -117,48 +117,15 @@ type Workspace = {
 function MovementPageSkeleton() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-7 w-1/2" />
-          <Skeleton className="h-4 w-3/4" />
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-          <Separator />
-          <div className="flex justify-between items-center">
-            <Skeleton className="h-6 w-1/4" />
-            <Skeleton className="h-9 w-32" />
-          </div>
-          <div className="border rounded-md p-4 space-y-4">
-            <div className="grid grid-cols-[1fr_150px_auto] gap-2 items-start">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-10" />
-            </div>
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Skeleton className="h-10 w-40" />
-        </CardFooter>
-      </Card>
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-7 w-1/3" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-40 w-full" />
-        </CardContent>
-      </Card>
+       <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-12 w-12 animate-spin" />
+       </div>
     </div>
   );
 }
 
-// --- Main Page Component ---
-export default function MovimientosPage() {
+// --- Child Component with Data Logic ---
+function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserProfile }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pdfSettings, setPdfSettings] = useState<AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null>(null);
   const { toast } = useToast();
@@ -173,14 +140,6 @@ export default function MovimientosPage() {
   const [selectedActor, setSelectedActor] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
-
-  // --- Data Loading ---
-  const currentUserDocRef = useMemoFirebase(
-    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
-    [firestore, user]
-  );
-  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
-  
   const canManageMovements = useMemo(() => {
     if (!currentUserProfile?.role) return false;
     return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
@@ -253,8 +212,6 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    // CRITICAL FIX: Only build the query if the user has the correct role.
-    // For other roles like 'solicitante', this will return null and useCollection won't run.
     if (!firestore || !collectionPrefix || !user || !canManageMovements) {
         return null;
     }
@@ -262,18 +219,14 @@ export default function MovimientosPage() {
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile?.role;
   
-    // Admins and Editors can see all movements
     if (role === 'administrador' || role === 'editor') {
-      return movementsCollectionRef as Query<DocumentData>;
+      return movementsCollectionRef;
     }
     
-    // For jefe_deposito, security rules allow them to see movements created by them.
-    // We filter by their UID to comply with the rules.
     if (role === 'jefe_deposito') {
       return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
   
-    // For any other role, explicitly return null.
     return null;
   }, [firestore, collectionPrefix, user, currentUserProfile?.role, canManageMovements]);
     
@@ -283,20 +236,14 @@ export default function MovimientosPage() {
   const filteredMovements = useMemo(() => {
     let filtered = movements || [];
 
-    // For 'jefe_deposito', we perform a secondary filter on the client-side
-    // This allows them to see movements across deposits if they somehow have them,
-    // while still allowing the UI filter to work as expected.
-    // This is safe because the initial query is already secured by `userId`.
     if (isJefeDeposito) {
         if (!assignedDepositId) return []; // Must have an assigned deposit to see anything.
-        // If "All deposits" is selected, we still only show the ones for their assigned deposit.
         if (selectedDeposit === 'all') {
             filtered = filtered.filter(mov => mov.depositId === assignedDepositId);
         }
     }
 
 
-    // Apply UI filters for all roles
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(mov => 
@@ -307,7 +254,6 @@ export default function MovimientosPage() {
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
-    // Only apply the deposit filter if the user is NOT a jefe_deposito, as their data is already pre-filtered by their access rights.
     if (!isJefeDeposito && selectedDeposit !== 'all') {
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }
@@ -318,7 +264,6 @@ export default function MovimientosPage() {
         filtered = filtered.filter(mov => mov.createdAt.toDate() >= dateRange.from!);
     }
     if (dateRange?.to) {
-        // Add one day to 'to' to include the whole day
         const toDate = new Date(dateRange.to);
         toDate.setDate(toDate.getDate() + 1);
         filtered = filtered.filter(mov => mov.createdAt.toDate() < toDate);
@@ -337,16 +282,13 @@ export default function MovimientosPage() {
     useCollection<InventoryStock>(inventoryCollection);
 
   const isLoading =
-    isLoadingProfile ||
-    (canManageMovements && (
-        isLoadingProducts ||
-        isLoadingDeposits ||
-        isLoadingUsers ||
-        isLoadingSuppliers ||
-        isLoadingMovements ||
-        isLoadingInventory ||
-        isLoadingWorkspace
-    ));
+    isLoadingProducts ||
+    isLoadingDeposits ||
+    isLoadingUsers ||
+    isLoadingSuppliers ||
+    isLoadingMovements ||
+    isLoadingInventory ||
+    isLoadingWorkspace;
 
   // --- Form Setup ---
   const form = useForm<MovementFormValues>({
@@ -367,27 +309,21 @@ export default function MovimientosPage() {
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
   
-  // Set the depositId if user is Jefe
   useEffect(() => {
     if (isJefeDeposito && assignedDepositId) {
         form.setValue('depositId', assignedDepositId);
     }
   }, [isJefeDeposito, assignedDepositId, form]);
 
-  // --- Effects ---
   useEffect(() => {
-    // When the selected deposit changes, reset the items array
-    // to force re-evaluation of available products.
     replace([{ productId: '', quantity: 1 }]);
   }, [selectedDepositId, replace]);
 
   useEffect(() => {
-    // Also reset when movement type changes
     replace([{ productId: '', quantity: 1 }]);
-    form.setValue('actorId', ''); // Reset actor when type changes
+    form.setValue('actorId', '');
   }, [movementType, replace, form]);
 
-  // --- Data Memoization for UI ---
   const productsMap = useMemo(() => new Map(products?.map((p) => [p.id, p])), [
     products,
   ]);
@@ -411,7 +347,6 @@ export default function MovimientosPage() {
       return products.filter((p) => !p.isArchived);
     }
 
-    // For "salida", filter products that have stock > 0 in the selected deposit
     const productsWithStock = new Set(
       inventory
         ?.filter(
@@ -425,7 +360,6 @@ export default function MovimientosPage() {
     );
   }, [movementType, selectedDepositId, products, inventory, collectionPrefix]);
 
-  // --- Form Submission Logic ---
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
     setIsSubmitting(true);
@@ -434,7 +368,6 @@ export default function MovimientosPage() {
     try {
         await runTransaction(firestore, async (transaction) => {
         movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
-        // --- 1. READ PHASE ---
         const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
         const counterSnap = await transaction.get(counterRef);
 
@@ -446,7 +379,6 @@ export default function MovimientosPage() {
           })
         );
         
-        // --- 2. VALIDATION & LOGIC PHASE ---
         const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
         const newRemitoNumber = lastNumber + 1;
         const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
@@ -473,7 +405,6 @@ export default function MovimientosPage() {
           }
         }
         
-        // --- 3. WRITE PHASE ---
         transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
         for (const [productId, change] of productChanges.entries()) {
@@ -519,7 +450,7 @@ export default function MovimientosPage() {
             const actor = users?.find((u) => u.id === data.actorId);
             actorName = actor ? `${actor.firstName || ''} ${actor.lastName || ''}`.trim() : null;
           }
-        } else { // 'entrada'
+        } else {
           actorType = 'supplier';
           const actor = suppliers?.find((s) => s.id === data.actorId);
           actorName = actor ? actor.name : null;
@@ -569,9 +500,6 @@ export default function MovimientosPage() {
     let movementDocRef: any = doc(firestore, `${collectionPrefix}/stockMovements/${movement.id}`);
     
     runTransaction(firestore, async (transaction) => {
-        // No reads needed, we have the info.
-        
-        // Write phase
         for (const item of movement.items) {
           const inventoryDocId = `${item.productId}_${movement.depositId}`;
           const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
@@ -629,21 +557,6 @@ export default function MovimientosPage() {
     return <MovementPageSkeleton />;
   }
 
-  if (!canManageMovements) {
-    return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Acceso Denegado</CardTitle>
-            <CardDescription>
-              No tienes los permisos necesarios para ver esta página.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-  
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
@@ -1077,3 +990,45 @@ export default function MovimientosPage() {
     </div>
   );
 }
+
+
+// --- Main Page Component (Wrapper) ---
+export default function MovimientosPage() {
+  const { user, isUserLoading } = useUser();
+  const firestore = useFirestore();
+
+  const userDocRef = useMemoFirebase(
+    () => (user ? doc(firestore, 'users', user.uid) : null),
+    [user, firestore]
+  );
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
+
+  const canAccessPage = useMemo(() => {
+    if (!currentUserProfile?.role) return false;
+    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
+  }, [currentUserProfile?.role]);
+
+  if (isUserLoading || isLoadingProfile) {
+    return <MovementPageSkeleton />;
+  }
+
+  if (!canAccessPage) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 md:p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Acceso Denegado</CardTitle>
+            <CardDescription>
+              No tienes los permisos necesarios para ver esta página.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  return <MovimientosContent currentUserProfile={currentUserProfile!} />;
+}
+
+
+    
