@@ -1,5 +1,3 @@
-
-
 export type Product = {
   id: string;
   name: string;
@@ -37,6 +35,7 @@ export type StockMovementItem = {
   total: number;
 };
 
+// This type is adjusted to handle both server (string) and client (Date object) representations
 export type StockMovement = {
   id: string;
   remitoNumber?: string;
@@ -46,12 +45,11 @@ export type StockMovement = {
   actorName?: string;
   actorId?: string;
   userId: string;
-  createdAt: {
-    toDate: () => Date;
-  };
+  createdAt: any; // Allow both Timestamp and string for flexibility
   items: StockMovementItem[];
   totalValue: number;
 };
+
 
 export type InventoryStock = {
   id: string;
