@@ -254,7 +254,10 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !user || !currentUserProfile?.role || !canAccessPage) return null;
+    // CRITICAL FIX: Do not construct the query if the user does not have the correct role.
+    if (!firestore || !collectionPrefix || !user || !currentUserProfile?.role || !canAccessPage) {
+        return null; // This prevents the hook from running for unauthorized users like 'solicitante'
+    }
   
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile.role;
@@ -270,7 +273,7 @@ export default function MovimientosPage() {
       return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
   
-    // For any other role (like 'solicitante'), return null to prevent the query.
+    // For any other role, explicitly return null.
     return null;
   }, [firestore, collectionPrefix, user, currentUserProfile?.role, canAccessPage]);
     
@@ -1079,5 +1082,3 @@ export default function MovimientosPage() {
     </div>
   );
 }
-
-    
