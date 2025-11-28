@@ -526,6 +526,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   };
 
   const handleExportToExcel = () => {
+    const userMap = new Map(users?.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+
     const dataToExport = filteredMovements.flatMap(mov => 
         mov.items.map(item => ({
             'Fecha': format(mov.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es }),
@@ -533,6 +535,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             'Tipo': mov.type,
             'Depósito': mov.depositName,
             'Origen/Destino': mov.actorName || '-',
+            'Usuario Registrador': userMap.get(mov.userId) || mov.userId,
             'Producto (Nombre)': item.productName,
             'Producto (ID)': item.productId,
             'Cantidad': item.quantity,
