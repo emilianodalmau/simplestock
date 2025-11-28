@@ -90,7 +90,8 @@ export default function MisMovimientosPage() {
     // Filtra los movimientos para mostrar solo los del usuario actual
     return query(
         collection(firestore, `${collectionPrefix}/stockMovements`),
-        where('userId', '==', user.uid)
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc') 
     );
 
   }, [firestore, collectionPrefix, user]);
@@ -192,7 +193,6 @@ export default function MisMovimientosPage() {
                 )}
                 {!isLoadingMovements &&
                   (movements || [])
-                    .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())
                     .map((mov) => (
                       <TableRow key={mov.id}>
                         <TableCell className="font-medium">
