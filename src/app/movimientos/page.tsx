@@ -182,9 +182,10 @@ export default function MovimientosPage() {
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   
   const canAccessPage = useMemo(() => {
-    if (!currentUserProfile) return false;
-    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role!);
-  }, [currentUserProfile]);
+    if (!currentUserProfile?.role) return false;
+    // Solicitante should not access this page at all.
+    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
+  }, [currentUserProfile?.role]);
 
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   const workspaceId = currentUserProfile?.workspaceId;
@@ -253,7 +254,7 @@ export default function MovimientosPage() {
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !user || !currentUserProfile?.role) return null;
+    if (!firestore || !collectionPrefix || !user || !currentUserProfile?.role || !canAccessPage) return null;
   
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile.role;
@@ -263,14 +264,15 @@ export default function MovimientosPage() {
       return movementsCollectionRef as Query<DocumentData>;
     }
     
-    // For jefe_deposito, they MUST query by their own userId to comply with security rules
+    // For jefe_deposito, security rules allow them to see movements created by them.
+    // We filter by their UID to comply with the rules.
     if (role === 'jefe_deposito') {
       return query(movementsCollectionRef, where('userId', '==', user.uid));
     }
   
-    // Solicitante role is handled in 'mis-movimientos', so this page won't load data for them
+    // For any other role (like 'solicitante'), return null to prevent the query.
     return null;
-  }, [firestore, collectionPrefix, user, currentUserProfile?.role]);
+  }, [firestore, collectionPrefix, user, currentUserProfile?.role, canAccessPage]);
     
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
