@@ -87,7 +87,7 @@ export default function MisMovimientosPage() {
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !user) return null;
     
-    // Filtra los movimientos para mostrar solo los del usuario actual
+    // OBLIGATORIO: Siempre filtramos por el ID del usuario actual para esta página
     return query(
         collection(firestore, `${collectionPrefix}/stockMovements`),
         where('userId', '==', user.uid),
