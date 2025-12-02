@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -27,7 +28,7 @@ export default function Home() {
   const handleLogout = async () => {
     if (auth) {
       await signOut(auth);
-      router.push('/'); // Redirect to home page after logout
+      router.push('/login'); // Redirect to login page after logout
     }
   };
   

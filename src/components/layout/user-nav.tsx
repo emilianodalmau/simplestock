@@ -38,7 +38,7 @@ export function UserNav() {
 
   const handleSignOut = async () => {
     await signOut(auth);
-    router.push("/");
+    router.push("/login");
   };
 
   const getInitials = (firstName?: string, lastName?: string) => {
