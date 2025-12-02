@@ -11,8 +11,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { createSubscription } from '@/lib/actions';
-import { useFormState } from 'react-dom';
-import { useEffect } from 'react';
+import { useActionState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 const initialState = {
@@ -20,7 +19,7 @@ const initialState = {
 };
 
 export default function CorrederaDePagoPage() {
-  const [state, formAction] = useFormState(createSubscription, initialState);
+  const [state, formAction] = useActionState(createSubscription, initialState);
   const { toast } = useToast();
 
   useEffect(() => {
