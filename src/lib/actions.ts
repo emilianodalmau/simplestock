@@ -6,7 +6,7 @@ import path from 'path';
 import { revalidatePath } from 'next/cache';
 import { getSettings } from './settings';
 import type { AppSettings } from '@/types/settings';
-import { MercadoPagoConfig, PreApproval } from 'mercadopago';
+import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { redirect } from 'next/navigation';
 
 const settingsFilePath = path.join(
@@ -30,34 +30,43 @@ export async function updateSettings(formData: FormData) {
 }
 
 export async function createSubscription(prevState: any, formData: FormData) {
-  // Para la prueba inicial, usamos un email de comprador de prueba de Mercado Pago.
-  // Esto evita la necesidad de configurar Firebase Admin solo para obtener el email del usuario.
-  // Puedes encontrar o crear usuarios de prueba en tu panel de Mercado Pago.
-  const testUserEmail = 'test_user_12345678@testuser.com';
-
+  // Configura el cliente de Mercado Pago con tu Access Token.
   const client = new MercadoPagoConfig({
     accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
   });
-  const preapproval = new PreApproval(client);
 
-  const body = {
-    preapproval_plan_id: process.env.MERCADO_PAGO_PLAN_ID!,
-    reason: 'Suscripción a SIMPLESTOCK (Prueba)',
-    back_url: 'https://www.google.com', // Placeholder URL
-    payer_email: testUserEmail,
-  };
+  // Crea una nueva instancia de Preferencia
+  const preference = new Preference(client);
 
   try {
-    const result = await preapproval.create({ body });
+    // Crea la preferencia de pago con los datos del producto.
+    const result = await preference.create({
+      body: {
+        items: [
+          {
+            title: 'Suscripción de prueba SIMPLESTOCK',
+            quantity: 1,
+            unit_price: 2000,
+            currency_id: 'ARS',
+          },
+        ],
+        back_urls: {
+            success: 'https://www.google.com', // URL a la que volver si el pago es exitoso
+        },
+        auto_return: 'approved',
+      },
+    });
+
+    // Si se crea el punto de inicio (la URL de pago), redirige al usuario.
     if (result.init_point) {
       redirect(result.init_point);
     } else {
-        throw new Error('No se pudo obtener el init_point de Mercado Pago');
+      throw new Error('No se pudo obtener el init_point de Mercado Pago');
     }
   } catch (error) {
-    console.error('Error al crear la suscripción:', error);
+    console.error('Error al crear la preferencia de pago:', error);
     return {
-      error: 'Ocurrió un error al intentar crear la suscripción.',
+      error: 'Ocurrió un error al intentar crear la preferencia de pago.',
     };
   }
 }
