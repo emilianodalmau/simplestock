@@ -23,9 +23,11 @@ export default function CorrederaDePagoPage() {
   const [state, formAction, isPending] = useActionState(createSubscription, initialState);
   const { toast } = useToast();
   const [isSdkReady, setIsSdkReady] = useState(false);
+  // Lee la clave pública directamente de las variables de entorno de Next.js para el cliente.
+  // Asegúrate de que en .env.local tengas NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY
   const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
 
-  // Efecto para cargar el SDK de Mercado Pago
+  // Efecto para cargar el SDK de Mercado Pago de forma segura
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://sdk.mercadopago.com/js/v2';
@@ -34,6 +36,7 @@ export default function CorrederaDePagoPage() {
     document.body.appendChild(script);
 
     return () => {
+      // Limpia el script cuando el componente se desmonta
       document.body.removeChild(script);
     };
   }, []);
@@ -52,31 +55,32 @@ export default function CorrederaDePagoPage() {
 
   // Efecto para renderizar el botón de pago cuando se obtiene el preferenceId
   useEffect(() => {
+    // Solo proceder si tenemos todo lo necesario: SDK listo, preferenceId y la Public Key.
     if (state?.preferenceId && isSdkReady && publicKey) {
       const mp = new window.MercadoPago(publicKey, {
           locale: 'es-AR'
       });
       
       const renderWalletBrick = async () => {
-        // Limpiar el contenedor antes de renderizar
         const container = document.getElementById('walletBrick_container');
         if (container) {
-            // Asegurarse de que el contenedor de bricks esté vacío antes de renderizar
+            // Limpia el contenedor antes de renderizar para evitar duplicados
             while (container.firstChild) {
                 container.removeChild(container.firstChild);
             }
+            
+            // Crea e inicializa el Brick de Mercado Pago
+            await mp.bricks().create('wallet', 'walletBrick_container', {
+              initialization: {
+                preferenceId: state.preferenceId,
+              },
+              customization: {
+                 texts: {
+                    valueProp: 'smart_option',
+                 },
+              },
+            });
         }
-        
-        await mp.bricks().create('wallet', 'walletBrick_container', {
-          initialization: {
-            preferenceId: state.preferenceId,
-          },
-          customization: {
-             texts: {
-                valueProp: 'smart_option',
-             },
-          },
-        });
       };
       
       renderWalletBrick();
@@ -100,23 +104,24 @@ export default function CorrederaDePagoPage() {
         <CardContent className="space-y-4">
           {!publicKey && (
              <p className="text-destructive font-semibold">
-              Error: La clave pública de Mercado Pago no está configurada. Asegúrate de haberla añadido a tu archivo .env.local y de haber reiniciado el servidor.
+              Error: La clave pública de Mercado Pago no está configurada. Asegúrate de haberla añadido a tu archivo .env.local (con el prefijo NEXT_PUBLIC_) y de haber reiniciado el servidor.
             </p>
           )}
 
-          {!state?.preferenceId && publicKey && (
+          {publicKey && !state?.preferenceId && (
             <p>
               Haz clic en el botón para generar una preferencia de pago y mostrar el botón de Mercado Pago.
             </p>
           )}
-
-          {isPending && <Loader2 className="mx-auto h-8 w-8 animate-spin" />}
+          
+          {isPending && <div className="flex justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>}
 
           {/* Contenedor para el botón de Mercado Pago */}
           <div id="walletBrick_container"></div>
 
         </CardContent>
         <CardFooter>
+          {/* Solo mostramos el botón de generar si aún no tenemos una preferenceId */}
           {!state?.preferenceId && (
             <form action={formAction}>
               <Button type="submit" disabled={isPending || !isSdkReady || !publicKey}>

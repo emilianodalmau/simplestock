@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 
 export async function createSubscription(prevState: any, formData: FormData) {
   // Configura el cliente de Mercado Pago con tu Access Token.
+  // Es crucial que MERCADO_PAGO_ACCESS_TOKEN esté en tu archivo .env.local
   const client = new MercadoPagoConfig({
     accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
   });
