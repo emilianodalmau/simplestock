@@ -6,6 +6,8 @@ import path from 'path';
 import { revalidatePath } from 'next/cache';
 import { getSettings } from './settings';
 import type { AppSettings } from '@/types/settings';
+import { MercadoPagoConfig, PreApproval } from 'mercadopago';
+import { redirect } from 'next/navigation';
 
 const settingsFilePath = path.join(
   process.cwd(),
@@ -25,4 +27,32 @@ export async function updateSettings(formData: FormData) {
 
   // Revalidate all paths to reflect the changes immediately
   revalidatePath('/', 'layout');
+}
+
+export async function createSubscription() {
+  const client = new MercadoPagoConfig({
+    accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
+  });
+  const preapproval = new PreApproval(client);
+
+  const body = {
+    preapproval_plan_id: process.env.MERCADO_PAGO_PLAN_ID!,
+    reason: 'Suscripción a SIMPLESTOCK',
+    back_url: 'https://www.google.com', // Placeholder URL
+    payer_email: 'test_user_24558553@testuser.com', // Placeholder email
+  };
+
+  try {
+    const result = await preapproval.create({ body });
+    if (result.init_point) {
+      redirect(result.init_point);
+    } else {
+        throw new Error('No se pudo obtener el init_point de Mercado Pago');
+    }
+  } catch (error) {
+    console.error('Error al crear la suscripción:', error);
+    return {
+      error: 'Ocurrió un error al intentar crear la suscripción.',
+    };
+  }
 }
