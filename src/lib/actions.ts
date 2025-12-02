@@ -8,12 +8,6 @@ import { getSettings } from './settings';
 import type { AppSettings } from '@/types/settings';
 import { MercadoPagoConfig, PreApproval } from 'mercadopago';
 import { redirect } from 'next/navigation';
-import { initializeFirebase } from '@/firebase/index.ts';
-import { getAuth } from 'firebase/auth';
-import { cookies } from 'next/headers';
-import { getApp, getApps } from 'firebase-admin/app';
-import { getAuth as getAdminAuth } from 'firebase-admin/auth';
-import { initAdmin } from './firebase-admin';
 
 const settingsFilePath = path.join(
   process.cwd(),
@@ -36,28 +30,10 @@ export async function updateSettings(formData: FormData) {
 }
 
 export async function createSubscription(prevState: any, formData: FormData) {
-  await initAdmin();
-  const adminAuth = getAdminAuth();
-  
-  // Get the session cookie
-  const sessionCookie = cookies().get('session')?.value;
-  if (!sessionCookie) {
-    return { error: 'No se encontró la sesión de usuario. Inicia sesión de nuevo.' };
-  }
-
-  let decodedIdToken;
-  try {
-    // Verify the session cookie to get the user's UID and email
-    decodedIdToken = await adminAuth.verifySessionCookie(sessionCookie, true);
-  } catch (error) {
-     return { error: 'La sesión ha expirado. Por favor, inicia sesión de nuevo.' };
-  }
-  
-  const userEmail = decodedIdToken.email;
-
-  if (!userEmail) {
-    return { error: 'El usuario no tiene un email válido para la suscripción.' };
-  }
+  // Para la prueba inicial, usamos un email de comprador de prueba de Mercado Pago.
+  // Esto evita la necesidad de configurar Firebase Admin solo para obtener el email del usuario.
+  // Puedes encontrar o crear usuarios de prueba en tu panel de Mercado Pago.
+  const testUserEmail = 'test_user_12345678@testuser.com';
 
   const client = new MercadoPagoConfig({
     accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
@@ -66,9 +42,9 @@ export async function createSubscription(prevState: any, formData: FormData) {
 
   const body = {
     preapproval_plan_id: process.env.MERCADO_PAGO_PLAN_ID!,
-    reason: 'Suscripción a SIMPLESTOCK',
+    reason: 'Suscripción a SIMPLESTOCK (Prueba)',
     back_url: 'https://www.google.com', // Placeholder URL
-    payer_email: userEmail,
+    payer_email: testUserEmail,
   };
 
   try {
