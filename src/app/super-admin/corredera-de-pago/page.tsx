@@ -23,6 +23,7 @@ export default function CorrederaDePagoPage() {
   const [state, formAction, isPending] = useActionState(createSubscription, initialState);
   const { toast } = useToast();
   const [isSdkReady, setIsSdkReady] = useState(false);
+  const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
 
   // Efecto para cargar el SDK de Mercado Pago
   useEffect(() => {
@@ -51,8 +52,8 @@ export default function CorrederaDePagoPage() {
 
   // Efecto para renderizar el botón de pago cuando se obtiene el preferenceId
   useEffect(() => {
-    if (state?.preferenceId && isSdkReady) {
-      const mp = new window.MercadoPago(process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY, {
+    if (state?.preferenceId && isSdkReady && publicKey) {
+      const mp = new window.MercadoPago(publicKey, {
           locale: 'es-AR'
       });
       const bricksBuilder = mp.bricks();
@@ -76,7 +77,7 @@ export default function CorrederaDePagoPage() {
       
       renderWalletBrick();
     }
-  }, [state?.preferenceId, isSdkReady]);
+  }, [state?.preferenceId, isSdkReady, publicKey]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -93,7 +94,13 @@ export default function CorrederaDePagoPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!state?.preferenceId && (
+          {!publicKey && (
+             <p className="text-destructive font-semibold">
+              Error: La clave pública de Mercado Pago no está configurada. Asegúrate de haberla añadido a tu archivo .env.local y de haber reiniciado el servidor.
+            </p>
+          )}
+
+          {!state?.preferenceId && publicKey && (
             <p>
               Haz clic en el botón para generar una preferencia de pago y mostrar el botón de Mercado Pago.
             </p>
@@ -108,7 +115,7 @@ export default function CorrederaDePagoPage() {
         <CardFooter>
           {!state?.preferenceId && (
             <form action={formAction}>
-              <Button type="submit" disabled={isPending || !isSdkReady}>
+              <Button type="submit" disabled={isPending || !isSdkReady || !publicKey}>
                  {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                  Generar Botón de Pago
               </Button>
