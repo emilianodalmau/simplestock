@@ -1,4 +1,3 @@
-
 'use server';
 
 import { MercadoPagoConfig, Preference } from 'mercadopago';

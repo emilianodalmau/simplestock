@@ -24,7 +24,6 @@ export default function CorrederaDePagoPage() {
   const { toast } = useToast();
   const [isSdkReady, setIsSdkReady] = useState(false);
   // Lee la clave pública directamente de las variables de entorno de Next.js para el cliente.
-  // Asegúrate de que en .env.local tengas NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY
   const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
 
   // Efecto para cargar el SDK de Mercado Pago de forma segura
@@ -37,6 +36,12 @@ export default function CorrederaDePagoPage() {
 
     return () => {
       // Limpia el script cuando el componente se desmonta
+      const container = document.getElementById('walletBrick_container');
+      if (container) {
+          while (container.firstChild) {
+              container.removeChild(container.firstChild);
+          }
+      }
       document.body.removeChild(script);
     };
   }, []);
@@ -57,35 +62,44 @@ export default function CorrederaDePagoPage() {
   useEffect(() => {
     // Solo proceder si tenemos todo lo necesario: SDK listo, preferenceId y la Public Key.
     if (state?.preferenceId && isSdkReady && publicKey) {
-      const mp = new window.MercadoPago(publicKey, {
-          locale: 'es-AR'
-      });
-      
-      const renderWalletBrick = async () => {
-        const container = document.getElementById('walletBrick_container');
-        if (container) {
-            // Limpia el contenedor antes de renderizar para evitar duplicados
-            while (container.firstChild) {
-                container.removeChild(container.firstChild);
-            }
-            
-            // Crea e inicializa el Brick de Mercado Pago
-            await mp.bricks().create('wallet', 'walletBrick_container', {
-              initialization: {
-                preferenceId: state.preferenceId,
-              },
-              customization: {
-                 texts: {
-                    valueProp: 'smart_option',
-                 },
-              },
-            });
-        }
-      };
-      
-      renderWalletBrick();
+      try {
+        const mp = new window.MercadoPago(publicKey, {
+            locale: 'es-AR'
+        });
+        
+        const renderWalletBrick = async () => {
+          const container = document.getElementById('walletBrick_container');
+          if (container) {
+              // Limpia el contenedor antes de renderizar para evitar duplicados
+              while (container.firstChild) {
+                  container.removeChild(container.firstChild);
+              }
+              
+              // Crea e inicializa el Brick de Mercado Pago
+              await mp.bricks().create('wallet', 'walletBrick_container', {
+                initialization: {
+                  preferenceId: state.preferenceId,
+                },
+                customization: {
+                   texts: {
+                      valueProp: 'smart_option',
+                   },
+                },
+              });
+          }
+        };
+        
+        renderWalletBrick();
+      } catch(e) {
+        console.error("Error rendering Mercado Pago Brick: ", e)
+        toast({
+          variant: 'destructive',
+          title: 'Error de Mercado Pago',
+          description: 'No se pudo renderizar el botón de pago. Revisa la consola para más detalles.',
+        });
+      }
     }
-  }, [state?.preferenceId, isSdkReady, publicKey]);
+  }, [state?.preferenceId, isSdkReady, publicKey, toast]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
