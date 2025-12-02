@@ -1,27 +1,44 @@
 
 'use client';
 
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { createSubscription } from '@/lib/actions';
-import { useActionState, useEffect } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 const initialState = {
   error: null,
+  preferenceId: null,
 };
 
-export default function CorrederaDePagoPage() {
-  const [state, formAction] = useActionState(createSubscription, initialState);
-  const { toast } = useToast();
+declare global {
+    interface Window {
+        MercadoPago: any;
+    }
+}
 
+export default function CorrederaDePagoPage() {
+  const [state, formAction, isPending] = useActionState(createSubscription, initialState);
+  const { toast } = useToast();
+  const [isSdkReady, setIsSdkReady] = useState(false);
+
+  // Efecto para cargar el SDK de Mercado Pago
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://sdk.mercadopago.com/js/v2';
+    script.async = true;
+    script.onload = () => setIsSdkReady(true);
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+  
+
+  // Efecto para manejar errores de la acción del servidor
   useEffect(() => {
     if (state?.error) {
       toast({
@@ -30,37 +47,73 @@ export default function CorrederaDePagoPage() {
         description: state.error,
       });
     }
-  }, [state, toast]);
+  }, [state?.error, toast]);
+
+  // Efecto para renderizar el botón de pago cuando se obtiene el preferenceId
+  useEffect(() => {
+    if (state?.preferenceId && isSdkReady) {
+      const mp = new window.MercadoPago(process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY, {
+          locale: 'es-AR'
+      });
+      const bricksBuilder = mp.bricks();
+      
+      const renderWalletBrick = async () => {
+        // Limpiar el contenedor antes de renderizar
+        const container = document.getElementById('walletBrick_container');
+        if (container) container.innerHTML = '';
+        
+        await bricksBuilder.create('wallet', 'walletBrick_container', {
+          initialization: {
+            preferenceId: state.preferenceId,
+          },
+          customization: {
+             texts: {
+                valueProp: 'smart_option',
+             },
+          },
+        });
+      };
+      
+      renderWalletBrick();
+    }
+  }, [state?.preferenceId, isSdkReady]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Corredera de Pago
-        </h1>
-        <p className="text-muted-foreground">
-          Página de prueba para la integración con la pasarela de pagos.
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight">Corredera de Pago</h1>
+        <p className="text-muted-foreground">Página de prueba para la integración con la pasarela de pagos.</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Planes y Suscripciones</CardTitle>
           <CardDescription>
-            Aquí se mostrarán los planes de suscripción y la integración con
-            Mercado Pago.
+            Aquí se mostrarán los planes de suscripción y la integración con Mercado Pago.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <p>
-            Al hacer clic en el botón, serás redirigido al checkout de Mercado
-            Pago para completar una suscripción de prueba.
-          </p>
+        <CardContent className="space-y-4">
+          {!state?.preferenceId && (
+            <p>
+              Haz clic en el botón para generar una preferencia de pago y mostrar el botón de Mercado Pago.
+            </p>
+          )}
+
+          {isPending && <Loader2 className="mx-auto h-8 w-8 animate-spin" />}
+
+          {/* Contenedor para el botón de Mercado Pago */}
+          <div id="walletBrick_container"></div>
+
         </CardContent>
         <CardFooter>
-          <form action={formAction}>
-            <Button type="submit">Suscribirse al Plan de Prueba</Button>
-          </form>
+          {!state?.preferenceId && (
+            <form action={formAction}>
+              <Button type="submit" disabled={isPending || !isSdkReady}>
+                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                 Generar Botón de Pago
+              </Button>
+            </form>
+          )}
         </CardFooter>
       </Card>
     </div>

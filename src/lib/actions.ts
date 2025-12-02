@@ -34,16 +34,17 @@ export async function createSubscription(prevState: any, formData: FormData) {
       },
     });
 
-    // Si se crea el punto de inicio (la URL de pago), redirige al usuario.
-    if (result.id) {
-      redirect(result.init_point!);
-    } else {
-      throw new Error('No se pudo obtener el init_point de Mercado Pago');
-    }
+    // Devuelve el resultado completo que contiene el ID de la preferencia
+    return {
+      error: null,
+      preferenceId: result.id,
+    };
+
   } catch (error) {
     console.error('Error al crear la preferencia de pago:', error);
     return {
       error: 'Ocurrió un error al intentar crear la preferencia de pago.',
+      preferenceId: null,
     };
   }
 }
