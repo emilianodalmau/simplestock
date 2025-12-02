@@ -56,14 +56,18 @@ export default function CorrederaDePagoPage() {
       const mp = new window.MercadoPago(publicKey, {
           locale: 'es-AR'
       });
-      const bricksBuilder = mp.bricks();
       
       const renderWalletBrick = async () => {
         // Limpiar el contenedor antes de renderizar
         const container = document.getElementById('walletBrick_container');
-        if (container) container.innerHTML = '';
+        if (container) {
+            // Asegurarse de que el contenedor de bricks esté vacío antes de renderizar
+            while (container.firstChild) {
+                container.removeChild(container.firstChild);
+            }
+        }
         
-        await bricksBuilder.create('wallet', 'walletBrick_container', {
+        await mp.bricks().create('wallet', 'walletBrick_container', {
           initialization: {
             preferenceId: state.preferenceId,
           },
