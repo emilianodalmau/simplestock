@@ -19,12 +19,11 @@ declare global {
     }
 }
 
-export default function CorrederaDePagoPage() {
+// Este es ahora el componente de cliente que recibe la clave pública como prop
+function CorrederaDePagoClient({ publicKey }: { publicKey?: string }) {
   const [state, formAction, isPending] = useActionState(createSubscription, initialState);
   const { toast } = useToast();
   const [isSdkReady, setIsSdkReady] = useState(false);
-  // Lee la clave pública directamente de las variables de entorno de Next.js para el cliente.
-  const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
 
   // Efecto para cargar el SDK de Mercado Pago de forma segura
   useEffect(() => {
@@ -102,12 +101,6 @@ export default function CorrederaDePagoPage() {
   }, [state?.preferenceId, isSdkReady, publicKey, toast]);
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Corredera de Pago</h1>
-        <p className="text-muted-foreground">Página de prueba para la integración con la pasarela de pagos.</p>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Planes y Suscripciones</CardTitle>
@@ -117,9 +110,12 @@ export default function CorrederaDePagoPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {!publicKey && (
-             <p className="text-destructive font-semibold">
-              Error: La clave pública de Mercado Pago no está configurada. Asegúrate de haberla añadido a tu archivo .env.local (con el prefijo NEXT_PUBLIC_) y de haber reiniciado el servidor.
-            </p>
+             <div className="text-destructive font-semibold bg-destructive/10 p-3 rounded-md">
+                <p className='font-bold'>Error de Configuración</p>
+                <p className='text-sm'>
+                  La clave pública de Mercado Pago no está configurada. Asegúrate de haberla añadido a tu archivo .env.local (con el prefijo `NEXT_PUBLIC_`) y de haber reiniciado el servidor.
+                </p>
+             </div>
           )}
 
           {publicKey && !state?.preferenceId && (
@@ -146,6 +142,23 @@ export default function CorrederaDePagoPage() {
           )}
         </CardFooter>
       </Card>
+  );
+}
+
+
+// Este es el componente de servidor que renderiza la página
+export default function CorrederaDePagoPage() {
+  // Leemos la variable de entorno aquí, en el servidor, de forma segura.
+  const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
+
+  return (
+    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight">Corredera de Pago</h1>
+        <p className="text-muted-foreground">Página de prueba para la integración con la pasarela de pagos.</p>
+      </div>
+      {/* Pasamos la clave pública como una prop al componente de cliente */}
+      <CorrederaDePagoClient publicKey={publicKey} />
     </div>
   );
 }
