@@ -8,6 +8,12 @@ import { getSettings } from './settings';
 import type { AppSettings } from '@/types/settings';
 import { MercadoPagoConfig, PreApproval } from 'mercadopago';
 import { redirect } from 'next/navigation';
+import { initializeFirebase } from '@/firebase/index.ts';
+import { getAuth } from 'firebase/auth';
+import { cookies } from 'next/headers';
+import { getApp, getApps } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { initAdmin } from './firebase-admin';
 
 const settingsFilePath = path.join(
   process.cwd(),
@@ -29,7 +35,30 @@ export async function updateSettings(formData: FormData) {
   revalidatePath('/', 'layout');
 }
 
-export async function createSubscription() {
+export async function createSubscription(prevState: any, formData: FormData) {
+  await initAdmin();
+  const adminAuth = getAdminAuth();
+  
+  // Get the session cookie
+  const sessionCookie = cookies().get('session')?.value;
+  if (!sessionCookie) {
+    return { error: 'No se encontró la sesión de usuario. Inicia sesión de nuevo.' };
+  }
+
+  let decodedIdToken;
+  try {
+    // Verify the session cookie to get the user's UID and email
+    decodedIdToken = await adminAuth.verifySessionCookie(sessionCookie, true);
+  } catch (error) {
+     return { error: 'La sesión ha expirado. Por favor, inicia sesión de nuevo.' };
+  }
+  
+  const userEmail = decodedIdToken.email;
+
+  if (!userEmail) {
+    return { error: 'El usuario no tiene un email válido para la suscripción.' };
+  }
+
   const client = new MercadoPagoConfig({
     accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
   });
@@ -39,7 +68,7 @@ export async function createSubscription() {
     preapproval_plan_id: process.env.MERCADO_PAGO_PLAN_ID!,
     reason: 'Suscripción a SIMPLESTOCK',
     back_url: 'https://www.google.com', // Placeholder URL
-    payer_email: 'test_user_24558553@testuser.com', // Placeholder email
+    payer_email: userEmail,
   };
 
   try {
