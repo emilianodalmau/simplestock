@@ -107,9 +107,10 @@ service cloud.firestore {
         match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /deposits/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         
-        // Reglas específicas para movimientos de stock
+        // --- STOCK MOVEMENTS ---
         match /stockMovements/{movementId} {
-             // CREATE: Solicitantes y roles superiores pueden crear movimientos.
+             
+             // CREATE: Admin, Editor, Jefe y Solicitante pueden crear
              allow create: if isSuperAdmin() 
                             || hasWorkspaceRole(workspaceId, 'administrador') 
                             || hasWorkspaceRole(workspaceId, 'editor') 
@@ -128,6 +129,7 @@ service cloud.firestore {
                 (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
                 ||
                 // Jefe de Depósito y Solicitante DEBEN filtrar por su propio userId.
+                // Esta regla fuerza a la consulta del frontend a incluir `where('userId', '==', request.auth.uid)`.
                 ( (hasWorkspaceRole(workspaceId, 'jefe_deposito') || hasWorkspaceRole(workspaceId, 'solicitante')) 
                   && request.query.where.userId == request.auth.uid );
 
