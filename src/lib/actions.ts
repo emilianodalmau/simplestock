@@ -1,11 +1,8 @@
 'use server';
 
 import { MercadoPagoConfig, Preference } from 'mercadopago';
-import { redirect } from 'next/navigation';
 
 export async function createSubscription(prevState: any, formData: FormData) {
-  // Configura el cliente de Mercado Pago con tu Access Token.
-  // Es crucial que MERCADO_PAGO_ACCESS_TOKEN esté en tu archivo .env.local
   const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!accessToken) {
     return {
@@ -18,14 +15,10 @@ export async function createSubscription(prevState: any, formData: FormData) {
     accessToken: accessToken,
   });
 
-  // Crea una nueva instancia de Preferencia
   const preference = new Preference(client);
-
-  // Obtiene la URL base para las URLs de retorno
   const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:9003';
 
   try {
-    // Crea la preferencia de pago con los datos del producto.
     const result = await preference.create({
       body: {
         items: [
@@ -36,6 +29,10 @@ export async function createSubscription(prevState: any, formData: FormData) {
             currency_id: 'ARS',
           },
         ],
+        // Añadimos un comprador de prueba, que suele ser necesario.
+        payer: {
+          email: 'test_user_123456@testuser.com',
+        },
         back_urls: {
           success: `${baseUrl}/super-admin/payment/success`,
           failure: `${baseUrl}/super-admin/payment/failure`,
@@ -45,7 +42,6 @@ export async function createSubscription(prevState: any, formData: FormData) {
       },
     });
 
-    // Devuelve el resultado completo que contiene el ID de la preferencia
     return {
       error: null,
       preferenceId: result.id,
