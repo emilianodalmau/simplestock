@@ -191,6 +191,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
     
+  const assignedDepositIds = useMemo(() => {
+    if (!isJefeDeposito || !deposits) return null;
+    return deposits.filter(d => d.jefeId === user?.uid).map(d => d.id);
+  }, [isJefeDeposito, deposits, user?.uid]);
+  
   useEffect(() => {
     if (isJefeDeposito && deposits) {
       const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
@@ -220,19 +225,21 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile.role;
 
-    // Admin and Editor can see all movements.
     if (role === 'administrador' || role === 'editor') {
         return baseRef;
     }
     
-    // Jefe de Deposito and Solicitante must filter by their own user ID to comply with security rules.
-    if (role === 'jefe_deposito' || role === 'solicitante') {
+    if (role === 'jefe_deposito') {
+        if (!assignedDepositIds || assignedDepositIds.length === 0) return null; // Don't query if no deposits assigned
+        return query(baseRef, where('depositId', 'in', assignedDepositIds));
+    }
+    
+    if (role === 'solicitante') {
        return query(baseRef, where('userId', '==', user.uid));
     }
     
-    // Default to null if no role matches, preventing unauthorized queries.
-    return null;
-  }, [firestore, collectionPrefix, currentUserProfile, user]);
+    return null; // Default to null if no role matches
+  }, [firestore, collectionPrefix, currentUserProfile, user, assignedDepositIds]);
   
 
   const { data: movements, isLoading: isLoadingMovements } =
@@ -308,10 +315,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const selectedDepositId = form.watch('depositId');
   
   useEffect(() => {
-    if (isJefeDeposito && assignedDepositId) {
-        form.setValue('depositId', assignedDepositId);
+    if (isJefeDeposito && assignedDepositIds?.length === 1) {
+        form.setValue('depositId', assignedDepositIds[0]);
     }
-  }, [isJefeDeposito, assignedDepositId, form]);
+  }, [isJefeDeposito, assignedDepositIds, form]);
 
   useEffect(() => {
     replace([{ productId: '', quantity: 1 }]);
@@ -475,7 +482,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       });
       form.reset({
         type: 'salida',
-        depositId: isJefeDeposito ? assignedDepositId || '' : '',
+        depositId: isJefeDeposito && assignedDepositIds?.length === 1 ? assignedDepositIds[0] : '',
         remitoNumber: '',
         actorId: '',
         items: [{ productId: '', quantity: 1 }],
@@ -664,7 +671,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                             <Select
                               onValueChange={field.onChange}
                               value={field.value}
-                              disabled={isJefeDeposito}
+                              disabled={isJefeDeposito && assignedDepositIds?.length === 1}
                             >
                               <FormControl>
                                 <SelectTrigger>
@@ -672,11 +679,14 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {deposits?.map((d) => (
-                                  <SelectItem key={d.id} value={d.id}>
-                                    {d.name}
-                                  </SelectItem>
-                                ))}
+                                {isJefeDeposito 
+                                    ? deposits?.filter(d => assignedDepositIds?.includes(d.id)).map(d => (
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                      ))
+                                    : deposits?.map((d) => (
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                      ))
+                                }
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -840,7 +850,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           <Card>
             <CardHeader>
               <CardTitle>Historial de Movimientos</CardTitle>
-              {isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tu depósito asignado.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
+              {isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tus depósitos asignados.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
             </CardHeader>
             <CardContent>
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
@@ -868,7 +878,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los depósitos</SelectItem>
-                    {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                    {isJefeDeposito
+                      ? deposits?.filter(d => assignedDepositIds?.includes(d.id)).map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)
+                      : deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)
+                    }
                   </SelectContent>
                 </Select>
 
@@ -978,7 +991,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     {!isLoadingMovements && filteredMovements?.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                          {isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado." : "No se encontraron movimientos con los filtros aplicados."}
+                          {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0)
+                            ? "No tienes depósitos asignados para ver movimientos."
+                            : "No se encontraron movimientos con los filtros aplicados."
+                          }
                         </TableCell>
                       </TableRow>
                     )}

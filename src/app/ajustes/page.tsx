@@ -411,13 +411,6 @@ function AdjustmentHistory({
   const firestore = useFirestore();
   const { user } = useUser();
 
-  const canAccessPage = useMemo(() => {
-    if (!currentUserProfile) return false;
-    return ['administrador', 'jefe_deposito'].includes(
-      currentUserProfile.role!
-    );
-  }, [currentUserProfile]);
-
   const collectionPrefix = useMemo(
     () =>
       currentUserProfile?.workspaceId
@@ -428,19 +421,33 @@ function AdjustmentHistory({
   
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
 
+  // Find the deposits assigned to the 'jefe_deposito'
+  const depositsCollection = useMemoFirebase(
+    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
+    [firestore, collectionPrefix]
+  );
+  const { data: allDeposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
+  
+  const assignedDepositIds = useMemo(() => {
+    if (!isJefeDeposito || !allDeposits) return null;
+    return allDeposits.filter(d => d.jefeId === user?.uid).map(d => d.id);
+  }, [isJefeDeposito, allDeposits, user?.uid]);
+
+
   const adjustmentsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !canAccessPage) return null;
+    if (!firestore || !collectionPrefix) return null;
 
     const movementsCollectionRef = collection(
       firestore,
       `${collectionPrefix}/stockMovements`
     );
     
-    const baseQuery = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
+    let baseQuery = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
     
-    // If 'jefe_deposito', they should only see adjustments made by them.
+    // If 'jefe_deposito', filter by their assigned deposit IDs.
     if (isJefeDeposito) {
-        return query(movementsCollectionRef, where('userId', '==', user?.uid), ...baseQuery);
+        if (!assignedDepositIds || assignedDepositIds.length === 0) return null; // Don't query if no deposits assigned
+        return query(movementsCollectionRef, where('depositId', 'in', assignedDepositIds), ...baseQuery);
     }
     
     // Admins see all adjustments.
@@ -448,10 +455,12 @@ function AdjustmentHistory({
       movementsCollectionRef,
       ...baseQuery
     );
-  }, [firestore, collectionPrefix, canAccessPage, isJefeDeposito, user?.uid]);
+  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositIds]);
 
   const { data: adjustments, isLoading: isLoadingAdjustments } =
     useCollection<StockMovement>(adjustmentsQuery);
+    
+  const isLoading = isLoadingAdjustments || (isJefeDeposito && isLoadingDeposits);
 
   const handleExportToExcel = () => {
     const dataToExport = (adjustments || []).map((adj) => {
@@ -507,7 +516,7 @@ function AdjustmentHistory({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoadingAdjustments &&
+              {isLoading &&
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
                     <TableCell>
@@ -530,14 +539,17 @@ function AdjustmentHistory({
                     </TableCell>
                   </TableRow>
                 ))}
-              {!isLoadingAdjustments && adjustments?.length === 0 && (
+              {!isLoading && adjustments?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center h-24">
-                    No se han registrado ajustes de inventario.
+                    {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0)
+                      ? "No tienes depósitos asignados para ver el historial."
+                      : "No se han registrado ajustes de inventario."
+                    }
                   </TableCell>
                 </TableRow>
               )}
-              {!isLoadingAdjustments &&
+              {!isLoading &&
                 adjustments?.map((adj) => {
                   const item = adj.items[0]; // Adjustments only have one item
                   const isPositive = item.quantity > 0;
