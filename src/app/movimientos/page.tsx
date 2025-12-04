@@ -216,22 +216,23 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !currentUserProfile || !user) return null;
-    
+
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile.role;
 
+    // Admin and Editor can see all movements.
     if (role === 'administrador' || role === 'editor') {
         return baseRef;
     }
-    if (role === 'jefe_deposito') {
-        return query(baseRef, where('depositId', '==', assignedDepositId || ''));
-    }
-    if (role === 'solicitante') {
+    
+    // Jefe de Deposito and Solicitante must filter by their own user ID to comply with security rules.
+    if (role === 'jefe_deposito' || role === 'solicitante') {
        return query(baseRef, where('userId', '==', user.uid));
     }
     
+    // Default to null if no role matches, preventing unauthorized queries.
     return null;
-  }, [firestore, collectionPrefix, currentUserProfile, user, assignedDepositId]);
+  }, [firestore, collectionPrefix, currentUserProfile, user]);
   
 
   const { data: movements, isLoading: isLoadingMovements } =
