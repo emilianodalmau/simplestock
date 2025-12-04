@@ -143,12 +143,16 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const [selectedActor, setSelectedActor] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
+  const role = currentUserProfile?.role;
+  const isJefeDeposito = role === 'jefe_deposito';
+  const isAdminOrEditor = role === 'administrador' || role === 'editor';
+  const isSolicitante = role === 'solicitante';
+  
   const canManageMovements = useMemo(() => {
-    if (!currentUserProfile?.role) return false;
-    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
-  }, [currentUserProfile?.role]);
+    if (!role) return false;
+    return ['administrador', 'editor', 'jefe_deposito'].includes(role);
+  }, [role]);
 
-  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   const workspaceId = currentUserProfile?.workspaceId;
   
   const workspaceDocRef = useMemoFirebase(
@@ -157,7 +161,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   );
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
-  // --- Settings Loading for PDF ---
   useEffect(() => {
     if (!isLoadingWorkspace) {
         setPdfSettings({
@@ -184,31 +187,49 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
+  // --- 1. CONSULTA SEGURA DE DEPÓSITOS ---
+  // Si es Jefe, SOLO traemos sus depósitos desde el servidor para evitar error de permisos en colección 'deposits'.
   const depositsCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
-    [firestore, collectionPrefix]
+    () => {
+        if (!firestore || !collectionPrefix) return null;
+        const baseQuery = collection(firestore, `${collectionPrefix}/deposits`);
+        
+        if (isJefeDeposito && user) {
+            return query(baseQuery, where('jefeId', '==', user.uid));
+        }
+        // Admin/Editor ve todos
+        if (isAdminOrEditor) {
+            return baseQuery;
+        }
+        return null; // Otros roles no ven depósitos o lo manejamos distinto
+    },
+    [firestore, collectionPrefix, isJefeDeposito, isAdminOrEditor, user]
   );
+
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
     
+  // IDs calculados de forma segura una vez que cargan los depósitos
   const assignedDepositIds = useMemo(() => {
-    if (!isJefeDeposito || !deposits) return null;
-    return deposits.filter(d => d.jefeId === user?.uid).map(d => d.id);
-  }, [isJefeDeposito, deposits, user?.uid]);
+    if (!deposits) return [];
+    if (isJefeDeposito) {
+        return deposits.map(d => d.id);
+    }
+    return [];
+  }, [deposits, isJefeDeposito]);
   
   useEffect(() => {
-    if (isJefeDeposito && deposits) {
-      const assignedDeposit = deposits.find(d => d.jefeId === user?.uid);
-      setAssignedDepositId(assignedDeposit?.id || null);
+    if (isJefeDeposito && deposits && deposits.length > 0) {
+      setAssignedDepositId(deposits[0].id);
     }
-  }, [isJefeDeposito, deposits, user]);
+  }, [isJefeDeposito, deposits]);
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    if (firestore && workspaceId && (currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor')) {
+    if (firestore && workspaceId && isAdminOrEditor) {
         return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
     }
     return null;
-  }, [firestore, workspaceId, currentUserProfile?.role]);
+  }, [firestore, workspaceId, isAdminOrEditor]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
@@ -219,42 +240,41 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
+  // --- 2. CONSULTA SEGURA DE MOVIMIENTOS ---
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !currentUserProfile || !user) return null;
+    if (!firestore || !collectionPrefix || !role || !user) return null;
 
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    const role = currentUserProfile.role;
 
-    // Admins and Editors can see everything in the workspace.
-    if (role === 'administrador' || role === 'editor') {
+    // Admin / Editor
+    if (isAdminOrEditor) {
         return baseRef;
     }
     
-    // 'jefe_deposito' can only see movements related to their assigned deposits.
-    if (role === 'jefe_deposito') {
-        // If they have no deposits assigned, don't run a query.
+    // Jefe Depósito: ESPERAR a que tengamos los IDs. Si no hay depósitos, no consultamos.
+    if (isJefeDeposito) {
+        // Importante: Si todavía está cargando depósitos (length 0), retornamos null para no disparar consulta vacía o prohibida.
+        // Si ya cargó y realmente no tiene depósitos, assignedDepositIds será [], y no ejecutamos query.
         if (!assignedDepositIds || assignedDepositIds.length === 0) return null; 
-        // Important: Firestore 'in' queries are limited to 30 items. 
-        // If a user can manage more, pagination or a different approach is needed.
-        return query(baseRef, where('depositId', 'in', assignedDepositIds));
+        
+        // Firestore 'in' limita a 30.
+        return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
     }
     
-    // 'solicitante' can only see movements they created.
-    if (role === 'solicitante') {
+    // Solicitante
+    if (isSolicitante) {
        return query(baseRef, where('userId', '==', user.uid));
     }
     
-    return null; // Default to no query if no role matches.
-  }, [firestore, collectionPrefix, currentUserProfile, user, assignedDepositIds]);
+    return null;
+  }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor, isJefeDeposito, isSolicitante]);
   
-
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
     
   const filteredMovements = useMemo(() => {
     let filtered = movements || [];
 
-    // Additional client-side filtering on top of the secure backend query
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(mov => 
@@ -265,7 +285,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
-    if (selectedDeposit !== 'all' && !isJefeDeposito) { // Jefes are already filtered by backend query
+    if (selectedDeposit !== 'all' && !isJefeDeposito) { 
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }
     if (selectedActor !== 'all') {
@@ -284,11 +304,28 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
 
-
+  // --- 3. CONSULTA SEGURA DE INVENTARIO (CRÍTICO) ---
+  // Antes pedíamos TODO el inventario, lo que causaba error si el usuario no tenía permiso de 'list' global.
   const inventoryCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null),
-    [firestore, collectionPrefix]
+    () => {
+        if (!firestore || !collectionPrefix) return null;
+        const baseInvRef = collection(firestore, `${collectionPrefix}/inventory`);
+        
+        if (isAdminOrEditor) {
+            return baseInvRef;
+        }
+
+        if (isJefeDeposito) {
+             if (!assignedDepositIds || assignedDepositIds.length === 0) return null;
+             return query(baseInvRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
+        }
+
+        // Otros roles no necesitan ver stock en esta vista o se maneja diferente
+        return null; 
+    },
+    [firestore, collectionPrefix, isAdminOrEditor, isJefeDeposito, assignedDepositIds]
   );
+
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
 
@@ -297,8 +334,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     isLoadingDeposits ||
     isLoadingUsers ||
     isLoadingSuppliers ||
-    isLoadingMovements ||
-    isLoadingInventory ||
     isLoadingWorkspace;
 
   // --- Form Setup ---
@@ -607,7 +642,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   };
 
   const canSelectActor = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
-  
   const isAdmin = currentUserProfile?.role === 'administrador';
   
   const formatPrice = (price: number) => {
@@ -686,7 +720,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                               </FormControl>
                               <SelectContent>
                                 {isJefeDeposito 
-                                    ? deposits?.filter(d => assignedDepositIds?.includes(d.id)).map(d => (
+                                    ? deposits?.map(d => (
                                         <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                                       ))
                                     : deposits?.map((d) => (
@@ -884,10 +918,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los depósitos</SelectItem>
-                    {isJefeDeposito
-                      ? deposits?.filter(d => assignedDepositIds?.includes(d.id)).map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)
-                      : deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)
-                    }
+                    {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
 
@@ -1098,3 +1129,5 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
+
+    
