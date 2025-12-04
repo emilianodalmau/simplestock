@@ -6,12 +6,23 @@ import { redirect } from 'next/navigation';
 export async function createSubscription(prevState: any, formData: FormData) {
   // Configura el cliente de Mercado Pago con tu Access Token.
   // Es crucial que MERCADO_PAGO_ACCESS_TOKEN esté en tu archivo .env.local
+  const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!accessToken) {
+    return {
+        error: 'El Access Token de Mercado Pago no está configurado en el servidor.',
+        preferenceId: null,
+    }
+  }
+
   const client = new MercadoPagoConfig({
-    accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
+    accessToken: accessToken,
   });
 
   // Crea una nueva instancia de Preferencia
   const preference = new Preference(client);
+
+  // Obtiene la URL base para las URLs de retorno
+  const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:9003';
 
   try {
     // Crea la preferencia de pago con los datos del producto.
@@ -26,9 +37,9 @@ export async function createSubscription(prevState: any, formData: FormData) {
           },
         ],
         back_urls: {
-          success: 'https://www.google.com', // URL a la que volver si el pago es exitoso
-          failure: 'https://simplestock-two.vercel.app/', // URL de fallo
-          pending: 'https://simplestock-two.vercel.app/', // URL de pago pendiente
+          success: `${baseUrl}/super-admin/payment/success`,
+          failure: `${baseUrl}/super-admin/payment/failure`,
+          pending: `${baseUrl}/super-admin/payment/pending`,
         },
         auto_return: 'approved',
       },
