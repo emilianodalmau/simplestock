@@ -29,9 +29,9 @@ export async function createSubscription(prevState: any, formData: FormData) {
             currency_id: 'ARS',
           },
         ],
-        // Añadimos un comprador de prueba, que suele ser necesario.
+        // Usamos el usuario de prueba específico del cliente
         payer: {
-          email: 'test_user_123456@testuser.com',
+          email: 'TESTUSER407212@testuser.com',
         },
         back_urls: {
           success: `${baseUrl}/super-admin/payment/success`,
