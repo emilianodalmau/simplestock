@@ -116,14 +116,13 @@ export default function DepositosPage() {
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
     [firestore, currentUser]
   );
-  const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
+  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   
   const canAssignJefe =
-    currentUserProfile?.role === 'administrador' ||
-    currentUserProfile?.role === 'jefe_deposito';
+    currentUserProfile?.role === 'administrador';
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // Only admins and jefes can list users from their workspace
+    // Only admins can list users from their workspace
     if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
         // This query MUST be filtered by workspaceId to comply with security rules
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
@@ -288,7 +287,31 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'editor';
     
   
-  const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers);
+  const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers) || isLoadingProfile;
+  
+  if (isLoading) {
+    return (
+        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center">
+            <Loader2 className="h-12 w-12 animate-spin" />
+        </div>
+    )
+  }
+
+  // Check access after loading all user profile data
+  if (currentUserProfile?.role === 'jefe_deposito') {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 md:p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Acceso Denegado</CardTitle>
+            <CardDescription>
+              No tienes los permisos necesarios para administrar los depósitos.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
