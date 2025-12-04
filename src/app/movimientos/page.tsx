@@ -225,20 +225,26 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     const role = currentUserProfile.role;
 
+    // Admins and Editors can see everything in the workspace.
     if (role === 'administrador' || role === 'editor') {
         return baseRef;
     }
     
+    // 'jefe_deposito' can only see movements related to their assigned deposits.
     if (role === 'jefe_deposito') {
-        if (!assignedDepositIds || assignedDepositIds.length === 0) return null; // Don't query if no deposits assigned
+        // If they have no deposits assigned, don't run a query.
+        if (!assignedDepositIds || assignedDepositIds.length === 0) return null; 
+        // Important: Firestore 'in' queries are limited to 30 items. 
+        // If a user can manage more, pagination or a different approach is needed.
         return query(baseRef, where('depositId', 'in', assignedDepositIds));
     }
     
+    // 'solicitante' can only see movements they created.
     if (role === 'solicitante') {
        return query(baseRef, where('userId', '==', user.uid));
     }
     
-    return null; // Default to null if no role matches
+    return null; // Default to no query if no role matches.
   }, [firestore, collectionPrefix, currentUserProfile, user, assignedDepositIds]);
   
 
