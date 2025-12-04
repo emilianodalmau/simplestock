@@ -116,15 +116,22 @@ function NewAdjustmentForm({
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
-  const depositsCollection = useMemoFirebase(
-    () =>
-      firestore && collectionPrefix
-        ? collection(firestore, `${collectionPrefix}/deposits`)
-        : null,
-    [firestore, collectionPrefix]
-  );
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+
+  const depositsQuery = useMemoFirebase(() => {
+    if (!firestore || !collectionPrefix) return null;
+    const depositsRef = collection(firestore, `${collectionPrefix}/deposits`);
+    if (isJefeDeposito && user?.uid) {
+      // For 'jefe_deposito', filter deposits where they are the 'jefeId'.
+      return query(depositsRef, where('jefeId', '==', user.uid));
+    }
+    // For admins, return all deposits.
+    return depositsRef;
+  }, [firestore, collectionPrefix, isJefeDeposito, user?.uid]);
+  
   const { data: deposits, isLoading: isLoadingDeposits } =
-    useCollection<Deposit>(depositsCollection);
+    useCollection<Deposit>(depositsQuery);
+
 
   const form = useForm<AdjustmentFormValues>({
     resolver: zodResolver(adjustmentSchema),
@@ -137,6 +144,15 @@ function NewAdjustmentForm({
 
   const selectedProductId = form.watch('productId');
   const selectedDepositId = form.watch('depositId');
+
+  useEffect(() => {
+    // If the user is a 'jefe' and their single assigned deposit has loaded,
+    // automatically select it in the form.
+    if (isJefeDeposito && deposits?.length === 1) {
+      form.setValue('depositId', deposits[0].id, { shouldValidate: true });
+    }
+  }, [isJefeDeposito, deposits, form]);
+
 
   useEffect(() => {
     const fetchCurrentStock = async () => {
@@ -258,7 +274,7 @@ function NewAdjustmentForm({
 
       form.reset({
         productId: '',
-        depositId: '',
+        depositId: isJefeDeposito ? deposits?.[0]?.id || '' : '',
         actualQuantity: 0,
       });
       setCurrentStock(null);
@@ -297,11 +313,11 @@ function NewAdjustmentForm({
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={isLoadingDeposits}
+                      disabled={isLoadingDeposits || isJefeDeposito}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecciona un depósito" />
+                          <SelectValue placeholder={isJefeDeposito && deposits?.length === 0 ? "No tienes depósitos asignados" : "Selecciona un depósito"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -393,6 +409,7 @@ function AdjustmentHistory({
   currentUserProfile?: UserProfile | null;
 }) {
   const firestore = useFirestore();
+  const { user } = useUser();
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile) return false;
@@ -408,6 +425,8 @@ function AdjustmentHistory({
         : null,
     [currentUserProfile]
   );
+  
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
 
   const adjustmentsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !canAccessPage) return null;
@@ -416,13 +435,20 @@ function AdjustmentHistory({
       firestore,
       `${collectionPrefix}/stockMovements`
     );
-
+    
+    const baseQuery = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
+    
+    // If 'jefe_deposito', they should only see adjustments made by them.
+    if (isJefeDeposito) {
+        return query(movementsCollectionRef, where('userId', '==', user?.uid), ...baseQuery);
+    }
+    
+    // Admins see all adjustments.
     return query(
       movementsCollectionRef,
-      where('type', '==', 'ajuste'),
-      orderBy('createdAt', 'desc')
+      ...baseQuery
     );
-  }, [firestore, collectionPrefix, canAccessPage]);
+  }, [firestore, collectionPrefix, canAccessPage, isJefeDeposito, user?.uid]);
 
   const { data: adjustments, isLoading: isLoadingAdjustments } =
     useCollection<StockMovement>(adjustmentsQuery);
