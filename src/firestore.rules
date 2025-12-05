@@ -11,12 +11,10 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // Datos del usuario que está haciendo la petición (Requester)
     function getMyData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Datos de un usuario objetivo específico (Target)
     function getUserData(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data;
     }
@@ -29,7 +27,6 @@ service cloud.firestore {
       return isSignedIn() && getMyData().role == 'super-admin';
     }
     
-    // Verifica si el usuario logueado pertenece al workspace
     function isInWorkspace(workspaceId) {
       return isSignedIn() && getMyData().workspaceId == workspaceId;
     }
@@ -42,7 +39,6 @@ service cloud.firestore {
       return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
-    // Admin huérfano (recién registrado, sin workspace aún)
     function isOrphanAdmin() {
       let userData = getMyData();
       return isSignedIn() && userData.role == 'administrador' && (userData.workspaceId == null || userData.workspaceId == "");
@@ -53,11 +49,6 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      // READ (Combina GET y LIST)
-      // Permite leer si:
-      // 1. Es SuperAdmin
-      // 2. Es el dueño de la cuenta
-      // 3. El usuario que se intenta leer pertenece al MISMO workspace que el administrador/jefe que consulta.
       allow read: if isSuperAdmin() 
                   || isOwner(userId) 
                   || (
@@ -66,16 +57,13 @@ service cloud.firestore {
                       && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
                      );
 
-      // CREATE: Un administrador puede crear un usuario para su propio workspace.
       allow create: if isSuperAdmin() || (isWorkspaceAdmin(request.resource.data.workspaceId));
       
-      // UPDATE: El rol 'solicitante' ahora puede ser cambiado por un administrador.
       allow update: if isOwner(userId)
                       || isSuperAdmin()
                       || isWorkspaceAdmin(resource.data.workspaceId)
                       || (isOrphanAdmin() && isOwner(userId));
       
-      // DELETE
       allow delete: if isSuperAdmin() 
                       || isWorkspaceAdmin(resource.data.workspaceId);
     }
@@ -85,17 +73,13 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId} {
-        // READ: Super-admins o miembros del workspace
         allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         
-        // CREATE: Super-admin o Admin Huérfano (setup inicial)
         allow create: if isSuperAdmin() 
                         || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
 
-        // UPDATE: Super-admin o Admin del workspace
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         
-        // DELETE: Solo Super-admin
         allow delete: if isSuperAdmin();
         
         // --- Subcollection Rules ---
@@ -110,34 +94,37 @@ service cloud.firestore {
         // --- STOCK MOVEMENTS ---
         match /stockMovements/{movementId} {
              
-             // CREATE: Admin, Editor, Jefe y Solicitante pueden crear
+             // CREATE: Todos los roles operativos pueden crear movimientos
              allow create: if isSuperAdmin() 
                             || hasWorkspaceRole(workspaceId, 'administrador') 
                             || hasWorkspaceRole(workspaceId, 'editor') 
                             || hasWorkspaceRole(workspaceId, 'jefe_deposito')
                             || hasWorkspaceRole(workspaceId, 'solicitante');
              
-             // READ (GET + LIST):
-             // Reglas combinadas para lectura individual y de listas.
-             allow read: if 
-                // 1. SuperAdmin, Administrador, y Editor pueden leer cualquier movimiento en el workspace.
-                isSuperAdmin() 
-                || hasWorkspaceRole(workspaceId, 'administrador')
-                || hasWorkspaceRole(workspaceId, 'editor')
-                || (
-                    // 2. Jefe de depósito puede leer movimientos de su depósito asignado.
-                    // (Esta regla asume que el frontend filtra por `depositId`)
-                    hasWorkspaceRole(workspaceId, 'jefe_deposito')
-                 )
-                || (
-                    // 3. Solicitante SÓLO puede leer sus PROPIOS movimientos.
-                    // Para `list`, esto requiere que la consulta frontend use `where('userId', '==', request.auth.uid)`.
-                    // Para `get`, esto requiere que el documento solicitado tenga el `userId` correcto.
-                    hasWorkspaceRole(workspaceId, 'solicitante') 
-                    && resource.data.userId == request.auth.uid
+             // GET: Lectura de un solo documento
+             allow get: if isSuperAdmin() 
+                          || hasWorkspaceRole(workspaceId, 'administrador')
+                          || hasWorkspaceRole(workspaceId, 'editor')
+                          || hasWorkspaceRole(workspaceId, 'jefe_deposito')
+                          || (resource.data.userId == request.auth.uid); // Un usuario puede leer su propio movimiento
+            
+             // LIST: Lectura de múltiples documentos (Querys)
+             allow list: if 
+                // GRUPO 1: Acceso TOTAL (Sin filtros) para roles de alta jerarquía
+                (
+                  isSuperAdmin() || 
+                  isWorkspaceAdmin(workspaceId) || 
+                  hasWorkspaceRole(workspaceId, 'editor') || 
+                  hasWorkspaceRole(workspaceId, 'jefe_deposito')
+                )
+                ||
+                // GRUPO 2: Acceso RESTRINGIDO para solicitante (Solo sus propios registros)
+                ( 
+                  hasWorkspaceRole(workspaceId, 'solicitante') 
+                  && request.query.where.userId == request.auth.uid 
                 );
 
-             // UPDATE/DELETE: Solo admin
+             // UPDATE/DELETE: Solo administradores
              allow update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
     }
