@@ -7,7 +7,6 @@ import {
   useUser,
   useDoc,
   useMemoFirebase,
-  useCollection,
 } from '@/firebase';
 import { collection, doc, query, where, getDocs } from 'firebase/firestore';
 import {
@@ -20,19 +19,27 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import type { UserProfile, Deposit, StockMovement } from '@/types/inventory';
+import type { UserProfile, Deposit, StockMovement, InventoryStock, Product } from '@/types/inventory';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
+type AggregatedInventoryItem = {
+  productId: string;
+  productName: string;
+  totalQuantity: number;
+  unit: string;
+};
 
 export default function TestPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const [assignedDeposits, setAssignedDeposits] = useState<Deposit[] | null>(null);
   const [movements, setMovements] = useState<StockMovement[] | null>(null);
+  const [inventory, setInventory] = useState<AggregatedInventoryItem[] | null>(null);
   const [isFetchingDeposits, setIsFetchingDeposits] = useState(false);
   const [isFetchingMovements, setIsFetchingMovements] = useState(false);
+  const [isFetchingInventory, setIsFetchingInventory] = useState(false);
   const { toast } = useToast();
 
   const currentUserDocRef = useMemoFirebase(
@@ -46,16 +53,19 @@ export default function TestPage() {
     if (!currentUserProfile) return false;
     return currentUserProfile.role === 'jefe_deposito';
   }, [currentUserProfile]);
-
-  const handleFetchDeposits = async () => {
+  
+  const getAssignedDeposits = async (): Promise<Deposit[] | null> => {
+    if (assignedDeposits) return assignedDeposits;
+    
     if (!firestore || !user || !currentUserProfile?.workspaceId) {
       toast({
         variant: 'destructive',
         title: 'Error',
         description: 'No se pudo obtener la información necesaria.',
       });
-      return;
+      return null;
     }
+    
     setIsFetchingDeposits(true);
     setAssignedDeposits(null);
 
@@ -73,6 +83,7 @@ export default function TestPage() {
         (doc) => ({ id: doc.id, ...doc.data() } as Deposit)
       );
       setAssignedDeposits(depositsData);
+      return depositsData;
     } catch (error) {
       console.error('Error fetching assigned deposits:', error);
       toast({
@@ -80,6 +91,7 @@ export default function TestPage() {
         title: 'Error de Consulta',
         description: 'No se pudieron obtener los depósitos asignados.',
       });
+      return null;
     } finally {
       setIsFetchingDeposits(false);
     }
@@ -91,21 +103,9 @@ export default function TestPage() {
       return;
     }
     
-    // Primero, nos aseguramos de tener los depósitos. Si no los hemos buscado, los buscamos.
-    let currentAssignedDeposits = assignedDeposits;
-    if (!currentAssignedDeposits) {
-        await handleFetchDeposits(); // Esperamos a que termine
-        // Re-leemos el estado después de la espera
-        currentAssignedDeposits = (await new Promise<Deposit[] | null>(resolve => {
-            setTimeout(() => {
-                // Pequeña trampa para leer el estado actualizado después del re-render
-                setAssignedDeposits(prev => {
-                    resolve(prev);
-                    return prev;
-                })
-            }, 0)
-        }));
-    }
+    setIsFetchingMovements(true);
+    setMovements(null);
+    const currentAssignedDeposits = await getAssignedDeposits();
 
     if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
       toast({
@@ -113,11 +113,9 @@ export default function TestPage() {
         title: 'Sin Depósitos',
         description: 'No tienes depósitos asignados para consultar movimientos.',
       });
+      setIsFetchingMovements(false);
       return;
     }
-
-    setIsFetchingMovements(true);
-    setMovements(null);
 
     const depositIds = currentAssignedDeposits.map(d => d.id);
 
@@ -144,6 +142,68 @@ export default function TestPage() {
       });
     } finally {
       setIsFetchingMovements(false);
+    }
+  };
+  
+  const handleFetchInventory = async () => {
+    if (!firestore || !currentUserProfile?.workspaceId) {
+        toast({ variant: 'destructive', title: 'Error de Configuración' });
+        return;
+    }
+
+    setIsFetchingInventory(true);
+    setInventory(null);
+    const currentAssignedDeposits = await getAssignedDeposits();
+
+    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
+        toast({ variant: 'destructive', title: 'Sin Depósitos', description: 'No tienes depósitos asignados.' });
+        setIsFetchingInventory(false);
+        return;
+    }
+
+    const depositIds = currentAssignedDeposits.map(d => d.id);
+
+    try {
+        // Fetch inventory for the assigned deposits
+        const inventoryQuery = query(collection(firestore, `workspaces/${currentUserProfile.workspaceId}/inventory`), where('depositId', 'in', depositIds));
+        const inventorySnapshot = await getDocs(inventoryQuery);
+        const inventoryData = inventorySnapshot.docs.map(doc => doc.data() as InventoryStock);
+
+        if (inventoryData.length === 0) {
+            setInventory([]);
+            return;
+        }
+
+        // Fetch all products to map names
+        const productsQuery = collection(firestore, `workspaces/${currentUserProfile.workspaceId}/products`);
+        const productsSnapshot = await getDocs(productsQuery);
+        const productsMap = new Map(productsSnapshot.docs.map(doc => [doc.id, doc.data() as Product]));
+
+        // Aggregate stock quantities by product
+        const aggregatedStock: Map<string, { totalQuantity: number, name: string, unit: string }> = new Map();
+        inventoryData.forEach(stockItem => {
+            const product = productsMap.get(stockItem.productId);
+            if (product) {
+                const existing = aggregatedStock.get(stockItem.productId) || { totalQuantity: 0, name: product.name, unit: product.unit };
+                existing.totalQuantity += stockItem.quantity;
+                aggregatedStock.set(stockItem.productId, existing);
+            }
+        });
+        
+        const finalInventory: AggregatedInventoryItem[] = Array.from(aggregatedStock.entries()).map(([productId, data]) => ({
+            productId,
+            productName: data.name,
+            totalQuantity: data.totalQuantity,
+            unit: data.unit,
+        }));
+
+        setInventory(finalInventory);
+
+    } catch (error) {
+        console.error('Error fetching inventory:', error);
+        toast({ variant: 'destructive', title: 'Error de Consulta', description: 'No se pudo obtener el inventario.' });
+    } finally {
+        setIsFetchingInventory(false);
     }
   };
 
@@ -190,86 +250,122 @@ export default function TestPage() {
             usuario con el rol `jefe_deposito`.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-                <h3 className="text-lg font-medium">Prueba 1: Depósitos Asignados</h3>
-                <p className="text-sm text-muted-foreground">
-                Presiona el siguiente botón para consultar y listar los depósitos
-                que tienes asignados.
-                </p>
-            </div>
-
-            {isFetchingDeposits && (
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-5 w-40" />
-              </div>
-            )}
-            
-            {assignedDeposits !== null && !isFetchingDeposits && (
-              <div>
-                <h4 className="font-semibold mb-2">Resultados:</h4>
-                {assignedDeposits.length > 0 ? (
-                  <ul className="list-disc pl-5 space-y-1">
-                    {assignedDeposits.map((deposit) => (
-                      <li key={deposit.id}>{deposit.name}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground">
-                    No se encontraron depósitos asignados a tu usuario.
-                  </p>
-                )}
-              </div>
-            )}
-             <CardFooter>
-                <Button onClick={handleFetchDeposits} disabled={isFetchingDeposits}>
-                    {isFetchingDeposits && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Consultar Mis Depósitos
-                </Button>
-            </CardFooter>
-
-            <Separator />
-
-             <div>
-                <h3 className="text-lg font-medium">Prueba 2: Movimientos por Depósito</h3>
-                <p className="text-sm text-muted-foreground">
-                 Presiona para buscar todos los movimientos de los depósitos que tengas asignados.
-                </p>
-            </div>
-            
-            {isFetchingMovements && (
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-24" />
-                <Skeleton className="h-5 w-28" />
-              </div>
-            )}
-
-            {movements !== null && !isFetchingMovements && (
-               <div>
-                <h4 className="font-semibold mb-2">Números de Remito Encontrados:</h4>
-                {movements.length > 0 ? (
-                  <ul className="list-disc pl-5 space-y-1 font-mono text-sm">
-                    {movements.map((mov) => (
-                      <li key={mov.id}>{mov.remitoNumber || `ID: ${mov.id}`}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground">
-                    No se encontraron movimientos para tus depósitos.
-                  </p>
-                )}
-              </div>
-            )}
-             <CardFooter>
-                 <Button onClick={handleFetchMovements} disabled={isFetchingMovements}>
-                    {isFetchingMovements && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Consultar Movimientos
-                </Button>
-            </CardFooter>
-
+        <CardContent className="space-y-6">
+          {/* PRUEBA 1 */}
+          <div>
+              <h3 className="text-lg font-medium">Prueba 1: Depósitos Asignados</h3>
+              <p className="text-sm text-muted-foreground">
+              Presiona el siguiente botón para consultar y listar los depósitos
+              que tienes asignados.
+              </p>
           </div>
+          {isFetchingDeposits && (
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-5 w-40" />
+            </div>
+          )}
+          {assignedDeposits !== null && !isFetchingDeposits && (
+            <div>
+              <h4 className="font-semibold mb-2">Resultados:</h4>
+              {assignedDeposits.length > 0 ? (
+                <ul className="list-disc pl-5 space-y-1">
+                  {assignedDeposits.map((deposit) => (
+                    <li key={deposit.id}>{deposit.name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">
+                  No se encontraron depósitos asignados a tu usuario.
+                </p>
+              )}
+            </div>
+          )}
+           <CardFooter>
+              <Button onClick={getAssignedDeposits} disabled={isFetchingDeposits}>
+                  {isFetchingDeposits && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Consultar Mis Depósitos
+              </Button>
+          </CardFooter>
+
+          <Separator />
+          
+          {/* PRUEBA 2 */}
+           <div>
+              <h3 className="text-lg font-medium">Prueba 2: Movimientos por Depósito</h3>
+              <p className="text-sm text-muted-foreground">
+               Presiona para buscar todos los movimientos de los depósitos que tengas asignados.
+              </p>
+          </div>
+          {isFetchingMovements && (
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-5 w-28" />
+            </div>
+          )}
+          {movements !== null && !isFetchingMovements && (
+             <div>
+              <h4 className="font-semibold mb-2">Números de Remito Encontrados:</h4>
+              {movements.length > 0 ? (
+                <ul className="list-disc pl-5 space-y-1 font-mono text-sm">
+                  {movements.map((mov) => (
+                    <li key={mov.id}>{mov.remitoNumber || `ID: ${mov.id}`}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">
+                  No se encontraron movimientos para tus depósitos.
+                </p>
+              )}
+            </div>
+          )}
+           <CardFooter>
+               <Button onClick={handleFetchMovements} disabled={isFetchingMovements}>
+                  {isFetchingMovements && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Consultar Movimientos
+              </Button>
+          </CardFooter>
+
+          <Separator />
+          
+          {/* PRUEBA 3 */}
+          <div>
+            <h3 className="text-lg font-medium">Prueba 3: Inventario por Depósito</h3>
+            <p className="text-sm text-muted-foreground">
+                Presiona para ver el inventario total de tus depósitos.
+            </p>
+          </div>
+          {isFetchingInventory && (
+              <div className="space-y-2">
+                  <Skeleton className="h-5 w-48" />
+                  <Skeleton className="h-5 w-40" />
+              </div>
+          )}
+          {inventory !== null && !isFetchingInventory && (
+              <div>
+                  <h4 className="font-semibold mb-2">Inventario Agregado:</h4>
+                  {inventory.length > 0 ? (
+                      <ul className="list-disc pl-5 space-y-1 text-sm">
+                          {inventory.map((item) => (
+                              <li key={item.productId}>
+                                  {item.productName}: <span className="font-medium">{item.totalQuantity} {item.unit}</span>
+                              </li>
+                          ))}
+                      </ul>
+                  ) : (
+                      <p className="text-muted-foreground">
+                          No se encontró inventario en tus depósitos.
+                      </p>
+                  )}
+              </div>
+          )}
+           <CardFooter>
+                 <Button onClick={handleFetchInventory} disabled={isFetchingInventory}>
+                    {isFetchingInventory && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Consultar Inventario
+                </Button>
+            </CardFooter>
+
         </CardContent>
       </Card>
     </div>
