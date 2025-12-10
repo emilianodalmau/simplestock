@@ -8,7 +8,7 @@ import {
   useDoc,
   useMemoFirebase,
 } from '@/firebase';
-import { collection, doc, query, where, getDocs, orderBy, endAt, startAt } from 'firebase/firestore';
+import { collection, doc, query, where, getDocs, orderBy, endAt, startAt, runTransaction, serverTimestamp, increment } from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import type { UserProfile, Deposit, StockMovement, InventoryStock, Product } from '@/types/inventory';
+import type { UserProfile, Deposit, StockMovement, InventoryStock, Product, StockMovementItem } from '@/types/inventory';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
@@ -39,6 +39,8 @@ export default function TestPage() {
   const [inventory, setInventory] = useState<AggregatedInventoryItem[] | null>(null);
   const [pedidos, setPedidos] = useState<StockMovement[] | null>(null);
   const [ajustes, setAjustes] = useState<StockMovement[] | null>(null);
+  
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
 
   const [isFetchingDeposits, setIsFetchingDeposits] = useState(false);
@@ -318,6 +320,97 @@ export default function TestPage() {
       setIsFetchingAjustes(false);
     }
   };
+  
+  const handleProcessTestPedido = async (pedido: StockMovement) => {
+    if (!firestore || !currentUserProfile?.workspaceId || !user) {
+        toast({ variant: 'destructive', title: 'Error de Configuración' });
+        return;
+    }
+    
+    setProcessingId(pedido.id);
+
+    const collectionPrefix = `workspaces/${currentUserProfile.workspaceId}`;
+    
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            const itemsToDeliver = pedido.items.map(item => ({...item, toDeliver: 1}));
+
+            const productsQuery = query(collection(firestore, collectionPrefix, 'products'));
+            const productsSnapshot = await getDocs(productsQuery);
+            const productMap = new Map(productsSnapshot.docs.map(doc => [doc.id, doc.data() as Product]));
+            
+            const counterRef = doc(firestore, collectionPrefix, 'counters', 'remitoCounter');
+            const originalRequestRef = doc(firestore, collectionPrefix, 'stockMovements', pedido.id);
+            const stockRefs = itemsToDeliver.map(item => doc(firestore, collectionPrefix, 'inventory', `${item.productId}_${pedido.depositId}`));
+            
+            const allReads = await Promise.all([
+                transaction.get(counterRef),
+                transaction.get(originalRequestRef),
+                ...stockRefs.map(ref => transaction.get(ref))
+            ]);
+            
+            const [counterSnap, originalRequestSnap, ...stockSnaps] = allReads;
+
+            if (!originalRequestSnap.exists()) throw new Error("La solicitud ya no existe.");
+
+            for (let i = 0; i < itemsToDeliver.length; i++) {
+                if ((stockSnaps[i].data()?.quantity || 0) < 1) {
+                    throw new Error(`Stock insuficiente para ${itemsToDeliver[i].productName}. Se necesita 1, hay 0.`);
+                }
+            }
+
+            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+            const newRemitoNumber = `R-${String(lastNumber + 1).padStart(5, '0')}`;
+            
+            transaction.set(counterRef, { lastNumber: lastNumber + 1 }, { merge: true });
+
+            let newTotalValue = 0;
+            const newMovementItems: StockMovementItem[] = [];
+
+            for (const item of itemsToDeliver) {
+                const product = productMap.get(item.productId);
+                if (product) {
+                    const itemValue = (product.price || 0) * 1;
+                    newTotalValue += itemValue;
+                    newMovementItems.push({
+                         productId: item.productId,
+                         productName: item.productName,
+                         quantity: 1, // Deliver 1 unit
+                         unit: item.unit,
+                         price: product.price || 0,
+                         total: itemValue,
+                    });
+                }
+                const stockRef = doc(firestore, collectionPrefix, 'inventory', `${item.productId}_${pedido.depositId}`);
+                transaction.set(stockRef, { quantity: increment(-1) }, { merge: true });
+            }
+
+            const newMovementRef = doc(collection(firestore, collectionPrefix, 'stockMovements'));
+            transaction.set(newMovementRef, {
+                ...pedido,
+                id: newMovementRef.id,
+                remitoNumber: newRemitoNumber,
+                createdAt: serverTimestamp(),
+                userId: user.uid,
+                items: newMovementItems,
+                totalValue: newTotalValue,
+                processedFromRequestId: pedido.id,
+            });
+
+            transaction.delete(originalRequestRef);
+        });
+        
+        toast({ title: 'Pedido de Prueba Procesado', description: `Se ha generado un remito entregando 1 unidad de cada item.` });
+        // Refetch pedidos to update the list
+        await handleFetchPedidos();
+
+    } catch (error: any) {
+        console.error('Error procesando pedido de prueba:', error);
+        toast({ variant: 'destructive', title: 'Error al Procesar', description: error.message });
+    } finally {
+        setProcessingId(null);
+    }
+  };
 
 
   const isLoading = isUserLoading || isLoadingProfile;
@@ -495,11 +588,22 @@ export default function TestPage() {
            )}
            {pedidos !== null && !isFetchingPedidos && (
               <div>
-               <h4 className="font-semibold mb-2">Nº de Pedidos Pendientes Encontrados:</h4>
+               <h4 className="font-semibold mb-2">Pedidos Pendientes Encontrados:</h4>
                {pedidos.length > 0 ? (
-                 <ul className="list-disc pl-5 space-y-1 font-mono text-sm">
+                 <ul className="list-disc pl-5 space-y-2 font-mono text-sm">
                    {pedidos.map((pedido) => (
-                     <li key={pedido.id}>{pedido.remitoNumber}</li>
+                     <li key={pedido.id} className="flex items-center justify-between">
+                       <span>{pedido.remitoNumber}</span>
+                       <Button 
+                         size="sm" 
+                         variant="outline"
+                         onClick={() => handleProcessTestPedido(pedido)}
+                         disabled={processingId === pedido.id}
+                       >
+                         {processingId === pedido.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                         Procesar (1 unidad)
+                       </Button>
+                     </li>
                    ))}
                  </ul>
                ) : (
