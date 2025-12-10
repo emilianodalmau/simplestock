@@ -131,13 +131,16 @@ service cloud.firestore {
                   && request.query.where.userId == request.auth.uid 
                 );
 
-             // CORRECCIÓN: Permitir que jefe_deposito borre una solicitud de su depósito
-             allow update, delete: if 
+             // CORRECCIÓN: Separar 'update' de 'delete' y permitir que jefe_deposito borre la solicitud.
+             allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+
+             allow delete: if 
                 isSuperAdmin() 
                 || isWorkspaceAdmin(workspaceId)
                 || (
+                    // El Jefe de Depósito puede borrar un movimiento (la solicitud original)
+                    // si el documento a borrar pertenece a un depósito que él gestiona.
                     hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
-                    // Verifica que el documento a borrar (la solicitud) pertenece a un depósito que él gestiona.
                     get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
                    );
         }
