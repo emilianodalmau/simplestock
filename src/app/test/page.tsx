@@ -20,15 +20,19 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import type { UserProfile, Deposit } from '@/types/inventory';
+import type { UserProfile, Deposit, StockMovement } from '@/types/inventory';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
+
 
 export default function TestPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const [assignedDeposits, setAssignedDeposits] = useState<Deposit[] | null>(null);
-  const [isFetching, setIsFetching] = useState(false);
+  const [movements, setMovements] = useState<StockMovement[] | null>(null);
+  const [isFetchingDeposits, setIsFetchingDeposits] = useState(false);
+  const [isFetchingMovements, setIsFetchingMovements] = useState(false);
   const { toast } = useToast();
 
   const currentUserDocRef = useMemoFirebase(
@@ -52,7 +56,7 @@ export default function TestPage() {
       });
       return;
     }
-    setIsFetching(true);
+    setIsFetchingDeposits(true);
     setAssignedDeposits(null);
 
     const depositsQuery = query(
@@ -77,9 +81,72 @@ export default function TestPage() {
         description: 'No se pudieron obtener los depósitos asignados.',
       });
     } finally {
-      setIsFetching(false);
+      setIsFetchingDeposits(false);
     }
   };
+
+  const handleFetchMovements = async () => {
+    if (!firestore || !currentUserProfile?.workspaceId) {
+      toast({ variant: 'destructive', title: 'Error de Configuración' });
+      return;
+    }
+    
+    // Primero, nos aseguramos de tener los depósitos. Si no los hemos buscado, los buscamos.
+    let currentAssignedDeposits = assignedDeposits;
+    if (!currentAssignedDeposits) {
+        await handleFetchDeposits(); // Esperamos a que termine
+        // Re-leemos el estado después de la espera
+        currentAssignedDeposits = (await new Promise<Deposit[] | null>(resolve => {
+            setTimeout(() => {
+                // Pequeña trampa para leer el estado actualizado después del re-render
+                setAssignedDeposits(prev => {
+                    resolve(prev);
+                    return prev;
+                })
+            }, 0)
+        }));
+    }
+
+    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Sin Depósitos',
+        description: 'No tienes depósitos asignados para consultar movimientos.',
+      });
+      return;
+    }
+
+    setIsFetchingMovements(true);
+    setMovements(null);
+
+    const depositIds = currentAssignedDeposits.map(d => d.id);
+
+    const movementsQuery = query(
+      collection(
+        firestore,
+        `workspaces/${currentUserProfile.workspaceId}/stockMovements`
+      ),
+      where('depositId', 'in', depositIds)
+    );
+
+    try {
+      const querySnapshot = await getDocs(movementsQuery);
+      const movementsData = querySnapshot.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as StockMovement)
+      );
+      setMovements(movementsData);
+    } catch (error) {
+      console.error('Error fetching movements:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de Consulta',
+        description: 'No se pudieron obtener los movimientos.',
+      });
+    } finally {
+      setIsFetchingMovements(false);
+    }
+  };
+
 
   const isLoading = isUserLoading || isLoadingProfile;
 
@@ -125,21 +192,24 @@ export default function TestPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <p>
-              Presiona el siguiente botón para consultar y listar los depósitos
-              que tienes asignados.
-            </p>
+            <div>
+                <h3 className="text-lg font-medium">Prueba 1: Depósitos Asignados</h3>
+                <p className="text-sm text-muted-foreground">
+                Presiona el siguiente botón para consultar y listar los depósitos
+                que tienes asignados.
+                </p>
+            </div>
 
-            {isFetching && (
+            {isFetchingDeposits && (
               <div className="space-y-2">
                 <Skeleton className="h-5 w-32" />
                 <Skeleton className="h-5 w-40" />
               </div>
             )}
             
-            {assignedDeposits !== null && !isFetching && (
+            {assignedDeposits !== null && !isFetchingDeposits && (
               <div>
-                <h3 className="font-semibold mb-2">Depósitos Asignados:</h3>
+                <h4 className="font-semibold mb-2">Resultados:</h4>
                 {assignedDeposits.length > 0 ? (
                   <ul className="list-disc pl-5 space-y-1">
                     {assignedDeposits.map((deposit) => (
@@ -153,14 +223,54 @@ export default function TestPage() {
                 )}
               </div>
             )}
+             <CardFooter>
+                <Button onClick={handleFetchDeposits} disabled={isFetchingDeposits}>
+                    {isFetchingDeposits && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Consultar Mis Depósitos
+                </Button>
+            </CardFooter>
+
+            <Separator />
+
+             <div>
+                <h3 className="text-lg font-medium">Prueba 2: Movimientos por Depósito</h3>
+                <p className="text-sm text-muted-foreground">
+                 Presiona para buscar todos los movimientos de los depósitos que tengas asignados.
+                </p>
+            </div>
+            
+            {isFetchingMovements && (
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-5 w-28" />
+              </div>
+            )}
+
+            {movements !== null && !isFetchingMovements && (
+               <div>
+                <h4 className="font-semibold mb-2">Números de Remito Encontrados:</h4>
+                {movements.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-1 font-mono text-sm">
+                    {movements.map((mov) => (
+                      <li key={mov.id}>{mov.remitoNumber || `ID: ${mov.id}`}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground">
+                    No se encontraron movimientos para tus depósitos.
+                  </p>
+                )}
+              </div>
+            )}
+             <CardFooter>
+                 <Button onClick={handleFetchMovements} disabled={isFetchingMovements}>
+                    {isFetchingMovements && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Consultar Movimientos
+                </Button>
+            </CardFooter>
+
           </div>
         </CardContent>
-        <CardFooter>
-          <Button onClick={handleFetchDeposits} disabled={isFetching}>
-            {isFetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Consultar Mis Depósitos
-          </Button>
-        </CardFooter>
       </Card>
     </div>
   );
