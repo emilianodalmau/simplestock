@@ -99,7 +99,7 @@ export default function PedidosPage() {
       `${collectionPrefix}/stockMovements`
     );
     
-    // Base query for "Solicitudes"
+    // Base query for "Solicitudes" - MUST include orderBy on the field with range filter
     const baseQuery = [
       orderBy('remitoNumber'),
       startAt('S-'),
@@ -111,10 +111,12 @@ export default function PedidosPage() {
         if (assignedDepositIds === null) return null; // Aún no se han cargado los depósitos
         if (assignedDepositIds.length === 0) return null; // No tiene depósitos, no puede ver pedidos.
 
-        // Construimos la consulta SEGURA
+        // Construimos la consulta SEGURA. Firestore requiere que el orderBy sea sobre el mismo
+        // campo que el primer `where` si no es de igualdad. Aquí reordenamos para cumplirlo.
         return query(
             movementsCollectionRef,
             where('depositId', 'in', assignedDepositIds.slice(0, 30)), // Usamos el filtro exigido por las reglas
+            orderBy('depositId'), // Requerido por Firestore para consultas `in` con otros `orderBy`
             ...baseQuery
         );
     }
