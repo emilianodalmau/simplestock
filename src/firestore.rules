@@ -87,44 +87,59 @@ service cloud.firestore {
         match /categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /products/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-        match /inventory/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-        match /deposits/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+
+        // JEFE DEPOSITO: Solo puede leer sus propios depósitos o si es admin.
+        match /deposits/{depositId} { 
+            allow read: if isSuperAdmin() 
+                         || isWorkspaceAdmin(workspaceId) 
+                         || hasWorkspaceRole(workspaceId, 'editor')
+                         || (hasWorkspaceRole(workspaceId, 'jefe_deposito') && resource.data.jefeId == request.auth.uid);
+            allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+        }
+
+        // JEFE DEPOSITO: Solo puede leer/escribir en el inventario de sus depósitos.
+        match /inventory/{inventoryStockId} {
+          allow read, write: if isSuperAdmin() 
+                              || isWorkspaceAdmin(workspaceId)
+                              || hasWorkspaceRole(workspaceId, 'editor')
+                              || (
+                                  hasWorkspaceRole(workspaceId, 'jefe_deposito') 
+                                  && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
+                                 );
+        }
         
         // --- STOCK MOVEMENTS ---
         match /stockMovements/{movementId} {
              
-             // CREATE: Todos los roles operativos pueden crear movimientos
              allow create: if isSuperAdmin() 
                             || hasWorkspaceRole(workspaceId, 'administrador') 
                             || hasWorkspaceRole(workspaceId, 'editor') 
                             || hasWorkspaceRole(workspaceId, 'jefe_deposito')
                             || hasWorkspaceRole(workspaceId, 'solicitante');
              
-             // GET: Lectura de un solo documento
              allow get: if isSuperAdmin() 
-                          || hasWorkspaceRole(workspaceId, 'administrador')
-                          || hasWorkspaceRole(workspaceId, 'editor')
-                          || hasWorkspaceRole(workspaceId, 'jefe_deposito')
-                          || (resource.data.userId == request.auth.uid); // Un usuario puede leer su propio movimiento
+                         || hasWorkspaceRole(workspaceId, 'administrador')
+                         || hasWorkspaceRole(workspaceId, 'editor')
+                         || hasWorkspaceRole(workspaceId, 'jefe_deposito')
+                         || (resource.data.userId == request.auth.uid);
             
-             // LIST: Lectura de múltiples documentos (Querys)
              allow list: if 
-                // GRUPO 1: Acceso TOTAL (Sin filtros) para roles de alta jerarquía
+                // Admin y Editor pueden listar todo.
+                (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
+                ||
+                // Jefe de Depósito DEBE filtrar por `depositId` (con 'in' hasta 30).
                 (
-                  isSuperAdmin() || 
-                  isWorkspaceAdmin(workspaceId) || 
-                  hasWorkspaceRole(workspaceId, 'editor') || 
-                  hasWorkspaceRole(workspaceId, 'jefe_deposito')
+                    hasWorkspaceRole(workspaceId, 'jefe_deposito') 
+                    && request.query.keys().hasAny(['depositId'])
                 )
                 ||
-                // GRUPO 2: Acceso RESTRINGIDO para solicitante (Solo sus propios registros)
+                // Solicitante DEBE filtrar por su propio `userId`.
                 ( 
                   hasWorkspaceRole(workspaceId, 'solicitante') 
                   && request.query.where.userId == request.auth.uid 
                 );
 
-             // UPDATE/DELETE: Solo administradores
              allow update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
     }

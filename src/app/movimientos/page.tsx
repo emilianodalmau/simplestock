@@ -209,8 +209,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const isLoadingDeposits = isJefeDeposito ? isLoadingDepositsForJefe : isLoadingAllDeposits;
 
   const assignedDepositIds = useMemo(() => {
-    if (!isJefeDeposito || !deposits) return null;
-    if (deposits.length === 0) return []; // Ya cargó y no tiene, devuelve array vacío
+    if (!isJefeDeposito || !deposits) return null; // Return null if still loading or not applicable
+    if (deposits.length === 0) return []; // Return empty array if loaded but no deposits
     return deposits.map(d => d.id);
   }, [isJefeDeposito, deposits]);
   
@@ -247,8 +247,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (isSolicitante) return query(baseRef, where('userId', '==', user.uid));
     
     if (isJefeDeposito) {
-        if (assignedDepositIds === null) return null; // Aún cargando
-        if (assignedDepositIds.length === 0) return null; // Ya cargó, no tiene depósitos
+        if (assignedDepositIds === null) return null;
+        if (assignedDepositIds.length === 0) return null; 
         return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
     }
     
@@ -1003,7 +1003,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     {!isLoadingMovements && filteredMovements?.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                          {(isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0))
+                          {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0)
                             ? "No tienes depósitos asignados para ver movimientos."
                             : "No se encontraron movimientos con los filtros aplicados."
                           }
