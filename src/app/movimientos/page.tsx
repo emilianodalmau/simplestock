@@ -134,7 +134,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
-  const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -187,49 +186,48 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
 
-  // --- 1. CONSULTA SEGURA DE DEPÓSITOS ---
-  // Si es Jefe, SOLO traemos sus depósitos desde el servidor para evitar error de permisos en colección 'deposits'.
-  const depositsCollection = useMemoFirebase(
+  const depositsForJefeQuery = useMemoFirebase(
     () => {
-        if (!firestore || !collectionPrefix) return null;
-        const baseQuery = collection(firestore, `${collectionPrefix}/deposits`);
-        
-        if (isJefeDeposito && user) {
-            return query(baseQuery, where('jefeId', '==', user.uid));
-        }
-        // Admin/Editor ve todos
-        if (isAdminOrEditor) {
-            return baseQuery;
-        }
-        return null; // Otros roles no ven depósitos o lo manejamos distinto
+        if (!firestore || !collectionPrefix || !isJefeDeposito || !user) return null;
+        return query(collection(firestore, `${collectionPrefix}/deposits`), where('jefeId', '==', user.uid));
     },
-    [firestore, collectionPrefix, isJefeDeposito, isAdminOrEditor, user]
+    [firestore, collectionPrefix, isJefeDeposito, user]
   );
 
-  const { data: deposits, isLoading: isLoadingDeposits } =
-    useCollection<Deposit>(depositsCollection);
-    
-  // IDs calculados de forma segura una vez que cargan los depósitos
+  const allDepositsQuery = useMemoFirebase(
+    () => {
+        if (!firestore || !collectionPrefix || isJefeDeposito) return null; // Jefes usan otra query
+        return collection(firestore, `${collectionPrefix}/deposits`);
+    },
+    [firestore, collectionPrefix, isJefeDeposito]
+  );
+
+  const { data: depositsForJefe, isLoading: isLoadingDepositsForJefe } = useCollection<Deposit>(depositsForJefeQuery);
+  const { data: allDeposits, isLoading: isLoadingAllDeposits } = useCollection<Deposit>(allDepositsQuery);
+  
+  const deposits = isJefeDeposito ? depositsForJefe : allDeposits;
+  const isLoadingDeposits = isJefeDeposito ? isLoadingDepositsForJefe : isLoadingAllDeposits;
+
   const assignedDepositIds = useMemo(() => {
-    if (!deposits) return [];
-    if (isJefeDeposito) {
-        return deposits.map(d => d.id);
-    }
-    return [];
-  }, [deposits, isJefeDeposito]);
+    if (!isJefeDeposito || !deposits) return null;
+    if (deposits.length === 0) return []; // Ya cargó y no tiene, devuelve array vacío
+    return deposits.map(d => d.id);
+  }, [isJefeDeposito, deposits]);
+  
   
   useEffect(() => {
-    if (isJefeDeposito && deposits && deposits.length > 0) {
-      setAssignedDepositId(deposits[0].id);
+    if (isJefeDeposito && deposits?.length === 1) {
+      setSelectedDeposit(deposits[0].id);
     }
   }, [isJefeDeposito, deposits]);
 
+
   const usersCollectionQuery = useMemoFirebase(() => {
-    if (firestore && workspaceId && isAdminOrEditor) {
+    if (firestore && workspaceId && (isAdminOrEditor || isJefeDeposito)) {
         return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
     }
     return null;
-  }, [firestore, workspaceId, isAdminOrEditor]);
+  }, [firestore, workspaceId, isAdminOrEditor, isJefeDeposito]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
@@ -240,30 +238,18 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
-  // --- 2. CONSULTA SEGURA DE MOVIMIENTOS ---
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !role || !user) return null;
 
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-
-    // Admin / Editor
-    if (isAdminOrEditor) {
-        return baseRef;
-    }
     
-    // Jefe Depósito: ESPERAR a que tengamos los IDs. Si no hay depósitos, no consultamos.
+    if (isAdminOrEditor) return baseRef;
+    if (isSolicitante) return query(baseRef, where('userId', '==', user.uid));
+    
     if (isJefeDeposito) {
-        // Importante: Si todavía está cargando depósitos (length 0), retornamos null para no disparar consulta vacía o prohibida.
-        // Si ya cargó y realmente no tiene depósitos, assignedDepositIds será [], y no ejecutamos query.
-        if (!assignedDepositIds || assignedDepositIds.length === 0) return null; 
-        
-        // Firestore 'in' limita a 30.
+        if (assignedDepositIds === null) return null; // Aún cargando
+        if (assignedDepositIds.length === 0) return null; // Ya cargó, no tiene depósitos
         return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
-    }
-    
-    // Solicitante
-    if (isSolicitante) {
-       return query(baseRef, where('userId', '==', user.uid));
     }
     
     return null;
@@ -304,23 +290,18 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
 
-  // --- 3. CONSULTA SEGURA DE INVENTARIO (CRÍTICO) ---
-  // Antes pedíamos TODO el inventario, lo que causaba error si el usuario no tenía permiso de 'list' global.
   const inventoryCollection = useMemoFirebase(
     () => {
         if (!firestore || !collectionPrefix) return null;
         const baseInvRef = collection(firestore, `${collectionPrefix}/inventory`);
         
-        if (isAdminOrEditor) {
-            return baseInvRef;
-        }
+        if (isAdminOrEditor) return baseInvRef;
 
         if (isJefeDeposito) {
-             if (!assignedDepositIds || assignedDepositIds.length === 0) return null;
+             if (assignedDepositIds === null) return null;
+             if (assignedDepositIds.length === 0) return null;
              return query(baseInvRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
         }
-
-        // Otros roles no necesitan ver stock en esta vista o se maneja diferente
         return null; 
     },
     [firestore, collectionPrefix, isAdminOrEditor, isJefeDeposito, assignedDepositIds]
@@ -336,7 +317,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     isLoadingSuppliers ||
     isLoadingWorkspace;
 
-  // --- Form Setup ---
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementFormSchema),
     defaultValues: {
@@ -356,10 +336,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const selectedDepositId = form.watch('depositId');
   
   useEffect(() => {
-    if (isJefeDeposito && assignedDepositIds?.length === 1) {
-        form.setValue('depositId', assignedDepositIds[0]);
+    if (isJefeDeposito && deposits?.length === 1) {
+        form.setValue('depositId', deposits[0].id);
     }
-  }, [isJefeDeposito, assignedDepositIds, form]);
+  }, [isJefeDeposito, deposits, form]);
 
   useEffect(() => {
     replace([{ productId: '', quantity: 1 }]);
@@ -523,7 +503,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       });
       form.reset({
         type: 'salida',
-        depositId: isJefeDeposito && assignedDepositIds?.length === 1 ? assignedDepositIds[0] : '',
+        depositId: isJefeDeposito && deposits?.length === 1 ? deposits[0].id : '',
         remitoNumber: '',
         actorId: '',
         items: [{ productId: '', quantity: 1 }],
@@ -648,7 +628,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   };
   
-  if (isLoading) {
+  if (isLoading || (isJefeDeposito && assignedDepositIds === null)) {
     return <MovementPageSkeleton />;
   }
 
@@ -711,7 +691,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                             <Select
                               onValueChange={field.onChange}
                               value={field.value}
-                              disabled={isJefeDeposito && assignedDepositIds?.length === 1}
+                              disabled={isJefeDeposito && deposits?.length === 1}
                             >
                               <FormControl>
                                 <SelectTrigger>
@@ -719,14 +699,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {isJefeDeposito 
-                                    ? deposits?.map(d => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                      ))
-                                    : deposits?.map((d) => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                      ))
-                                }
+                                {deposits?.map((d) => (
+                                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -1028,7 +1003,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     {!isLoadingMovements && filteredMovements?.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                          {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0)
+                          {(isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0))
                             ? "No tienes depósitos asignados para ver movimientos."
                             : "No se encontraron movimientos con los filtros aplicados."
                           }
@@ -1129,5 +1104,3 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
-
-    
