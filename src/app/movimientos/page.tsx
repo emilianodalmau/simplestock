@@ -243,16 +243,26 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     
-    if (isAdminOrEditor) return baseRef;
-    if (isSolicitante) return query(baseRef, where('userId', '==', user.uid));
+    // Roles que pueden ver todo (aplican filtros en cliente)
+    if (isAdminOrEditor) {
+        return baseRef;
+    }
     
+    // Solicitante: DEBE filtrar por su userId para cumplir regla de seguridad
+    if (isSolicitante) {
+        return query(baseRef, where('userId', '==', user.uid));
+    }
+    
+    // Jefe de Depósito: DEBE filtrar por sus depositId para cumplir regla de seguridad
     if (isJefeDeposito) {
-        if (assignedDepositIds === null) return null;
-        if (assignedDepositIds.length === 0) return null; 
+        if (assignedDepositIds === null) return null; // Aún cargando depósitos
+        if (assignedDepositIds.length === 0) return null; // No tiene depósitos, no hay nada que consultar
+        
+        // La regla de seguridad permite 'in' hasta 30 IDs.
         return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
     }
     
-    return null;
+    return null; // Caso por defecto: no consultar nada
   }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor, isJefeDeposito, isSolicitante]);
   
   const { data: movements, isLoading: isLoadingMovements } =
