@@ -38,7 +38,7 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ProcessRequestDialog } from '@/components/ui/process-request-dialog';
-import type { StockMovement, InventoryStock, Product } from '@/types/inventory';
+import type { StockMovement, InventoryStock, Product, Deposit } from '@/types/inventory';
 
 
 // --- Data Types ---
@@ -46,7 +46,6 @@ type UserProfile = {
   id: string;
   role?: 'administrador' | 'jefe_deposito';
   workspaceId?: string;
-  jefeId?: string;
 };
 
 // --- Main Page Component ---
@@ -77,16 +76,19 @@ export default function PedidosPage() {
     [currentUserProfile]
   );
 
-  const depositsCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
-    [firestore, collectionPrefix]
-  );
-  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<{id: string, jefeId?: string}>(depositsCollection);
+  // Consulta segura para los depósitos del jefe
+  const depositsQueryForJefe = useMemoFirebase(() => {
+    if (!firestore || !collectionPrefix || currentUserProfile?.role !== 'jefe_deposito' || !user) return null;
+    return query(collection(firestore, `${collectionPrefix}/deposits`), where('jefeId', '==', user.uid));
+  }, [firestore, collectionPrefix, currentUserProfile, user]);
 
-  const assignedDepositId = useMemo(() => {
-      if (currentUserProfile?.role !== 'jefe_deposito' || !deposits) return null;
-      return deposits.find(d => d.jefeId === user?.uid)?.id;
-  }, [currentUserProfile, deposits, user]);
+  const { data: assignedDeposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsQueryForJefe);
+
+  const assignedDepositIds = useMemo(() => {
+      if (currentUserProfile?.role !== 'jefe_deposito' || !assignedDeposits) return null;
+      if (assignedDeposits.length === 0) return []; // Si cargó y no tiene, es un array vacío
+      return assignedDeposits.map(d => d.id);
+  }, [currentUserProfile, assignedDeposits]);
 
 
   const requestsQuery = useMemoFirebase(() => {
@@ -104,21 +106,23 @@ export default function PedidosPage() {
       endAt('S-\uf8ff')
     ];
 
-    // If jefe_deposito, only show requests for their assigned deposit.
-    // This is a security and performance optimization.
+    // Si es jefe_deposito, ESPERAMOS a tener los IDs de depósito.
     if (currentUserProfile?.role === 'jefe_deposito') {
-        if (!assignedDepositId) return null; // Don't query if no deposit is assigned.
+        if (assignedDepositIds === null) return null; // Aún no se han cargado los depósitos
+        if (assignedDepositIds.length === 0) return null; // No tiene depósitos, no puede ver pedidos.
+
+        // Construimos la consulta SEGURA
         return query(
             movementsCollectionRef,
-            where('depositId', '==', assignedDepositId),
+            where('depositId', 'in', assignedDepositIds.slice(0, 30)), // Usamos el filtro exigido por las reglas
             ...baseQuery
         );
     }
     
-    // Admin can see all requests
+    // Admin puede ver todas las solicitudes
     return query(movementsCollectionRef, ...baseQuery);
 
-  }, [firestore, collectionPrefix, canAccessPage, currentUserProfile, assignedDepositId]);
+  }, [firestore, collectionPrefix, canAccessPage, currentUserProfile, assignedDepositIds]);
 
   const { data: requests, isLoading: isLoadingRequests, forceRefetch: refetchRequests } =
     useCollection<StockMovement>(requestsQuery);
@@ -237,8 +241,8 @@ export default function PedidosPage() {
                   {!isLoadingRequests && requests?.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center h-24">
-                        {currentUserProfile?.role === 'jefe_deposito' && !assignedDepositId
-                          ? 'No tienes un depósito asignado.'
+                        {currentUserProfile?.role === 'jefe_deposito' && assignedDepositIds?.length === 0
+                          ? 'No tienes un depósito asignado para ver pedidos.'
                           : 'No hay pedidos pendientes.'}
                       </TableCell>
                     </TableRow>
