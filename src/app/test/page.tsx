@@ -8,7 +8,7 @@ import {
   useDoc,
   useMemoFirebase,
 } from '@/firebase';
-import { collection, doc, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, query, where, getDocs, orderBy, endAt, startAt } from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -37,9 +37,12 @@ export default function TestPage() {
   const [assignedDeposits, setAssignedDeposits] = useState<Deposit[] | null>(null);
   const [movements, setMovements] = useState<StockMovement[] | null>(null);
   const [inventory, setInventory] = useState<AggregatedInventoryItem[] | null>(null);
+  const [pedidos, setPedidos] = useState<StockMovement[] | null>(null);
+
   const [isFetchingDeposits, setIsFetchingDeposits] = useState(false);
   const [isFetchingMovements, setIsFetchingMovements] = useState(false);
   const [isFetchingInventory, setIsFetchingInventory] = useState(false);
+  const [isFetchingPedidos, setIsFetchingPedidos] = useState(false);
   const { toast } = useToast();
 
   const currentUserDocRef = useMemoFirebase(
@@ -164,7 +167,6 @@ export default function TestPage() {
     const depositIds = currentAssignedDeposits.map(d => d.id);
 
     try {
-        // Fetch inventory for the assigned deposits
         const inventoryQuery = query(collection(firestore, `workspaces/${currentUserProfile.workspaceId}/inventory`), where('depositId', 'in', depositIds));
         const inventorySnapshot = await getDocs(inventoryQuery);
         const inventoryData = inventorySnapshot.docs.map(doc => doc.data() as InventoryStock);
@@ -174,12 +176,10 @@ export default function TestPage() {
             return;
         }
 
-        // Fetch all products to map names
         const productsQuery = collection(firestore, `workspaces/${currentUserProfile.workspaceId}/products`);
         const productsSnapshot = await getDocs(productsQuery);
         const productsMap = new Map(productsSnapshot.docs.map(doc => [doc.id, doc.data() as Product]));
 
-        // Aggregate stock quantities by product
         const aggregatedStock: Map<string, { totalQuantity: number, name: string, unit: string }> = new Map();
         inventoryData.forEach(stockItem => {
             const product = productsMap.get(stockItem.productId);
@@ -204,6 +204,57 @@ export default function TestPage() {
         toast({ variant: 'destructive', title: 'Error de Consulta', description: 'No se pudo obtener el inventario.' });
     } finally {
         setIsFetchingInventory(false);
+    }
+  };
+  
+  const handleFetchPedidos = async () => {
+    if (!firestore || !currentUserProfile?.workspaceId) {
+      toast({ variant: 'destructive', title: 'Error de Configuración' });
+      return;
+    }
+
+    setIsFetchingPedidos(true);
+    setPedidos(null);
+    const currentAssignedDeposits = await getAssignedDeposits();
+
+    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Sin Depósitos',
+        description: 'No tienes depósitos asignados para consultar pedidos.',
+      });
+      setIsFetchingPedidos(false);
+      return;
+    }
+
+    const depositIds = currentAssignedDeposits.map((d) => d.id);
+
+    const pedidosQuery = query(
+      collection(
+        firestore,
+        `workspaces/${currentUserProfile.workspaceId}/stockMovements`
+      ),
+      where('depositId', 'in', depositIds),
+      orderBy('remitoNumber'),
+      startAt('S-'),
+      endAt('S-\uf8ff')
+    );
+
+    try {
+      const querySnapshot = await getDocs(pedidosQuery);
+      const pedidosData = querySnapshot.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as StockMovement)
+      );
+      setPedidos(pedidosData);
+    } catch (error) {
+      console.error('Error fetching pedidos:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de Consulta',
+        description: 'No se pudieron obtener los pedidos pendientes.',
+      });
+    } finally {
+      setIsFetchingPedidos(false);
     }
   };
 
@@ -366,8 +417,48 @@ export default function TestPage() {
                 </Button>
             </CardFooter>
 
+           <Separator />
+
+           {/* PRUEBA 4 */}
+           <div>
+             <h3 className="text-lg font-medium">Prueba 4: Pedidos Pendientes</h3>
+             <p className="text-sm text-muted-foreground">
+               Presiona para ver las solicitudes de productos (pedidos) pendientes para tus depósitos.
+             </p>
+           </div>
+           {isFetchingPedidos && (
+             <div className="space-y-2">
+               <Skeleton className="h-5 w-24" />
+               <Skeleton className="h-5 w-28" />
+             </div>
+           )}
+           {pedidos !== null && !isFetchingPedidos && (
+              <div>
+               <h4 className="font-semibold mb-2">Nº de Pedidos Pendientes Encontrados:</h4>
+               {pedidos.length > 0 ? (
+                 <ul className="list-disc pl-5 space-y-1 font-mono text-sm">
+                   {pedidos.map((pedido) => (
+                     <li key={pedido.id}>{pedido.remitoNumber}</li>
+                   ))}
+                 </ul>
+               ) : (
+                 <p className="text-muted-foreground">
+                   No se encontraron pedidos pendientes para tus depósitos.
+                 </p>
+               )}
+             </div>
+           )}
+            <CardFooter>
+                  <Button onClick={handleFetchPedidos} disabled={isFetchingPedidos}>
+                     {isFetchingPedidos && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                     Consultar Pedidos
+                 </Button>
+             </CardFooter>
+
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    
