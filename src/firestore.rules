@@ -1,4 +1,3 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -103,27 +102,11 @@ service cloud.firestore {
         match /categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /products/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+        match /inventory/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /deposits/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         
-        // --- INVENTORY (CORRECCIÓN QUIRÚRGICA) ---
-        match /inventory/{inventoryStockId} {
-          allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-          allow write: if 
-            // Roles con acceso total
-            (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
-            || 
-            // Regla específica y segura para Jefe de Depósito
-            (
-              hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
-              // Se extrae el depositId del ID del documento de inventario ('productId_depositId')
-              // y se verifica que el usuario es el jefe de ese depósito.
-              // Esta regla es segura para transacciones porque no usa 'resource.data'
-              get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
-            );
-        }
-
-        // --- PEDIDOS (ORDERS - NO USADO ACTUALMENTE, SE PUEDE ELIMINAR) ---
+        // --- PEDIDOS (ORDERS) ---
         match /orders/{orderId} {
             allow read: if isSuperAdmin() 
                         || hasWorkspaceRole(workspaceId, 'administrador')
@@ -138,7 +121,7 @@ service cloud.firestore {
                           || hasWorkspaceRole(workspaceId, 'jefe_deposito');
         }
 
-        // --- STOCK MOVEMENTS (REGLAS FUNCIONALES ACTUALES) ---
+        // --- STOCK MOVEMENTS ---
         match /stockMovements/{movementId} {
              
              // CREATE
@@ -153,6 +136,7 @@ service cloud.firestore {
                           || (resource.data.userId == request.auth.uid);
             
              // LIST (Lista general)
+             // Aquí se permite listar a roles clave. El solicitante filtra en Frontend.
              allow list: if 
                (
                  isSuperAdmin() || 
@@ -163,7 +147,7 @@ service cloud.firestore {
                );
 
              // UPDATE/DELETE
-             allow update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || (hasWorkspaceRole(workspaceId, 'jefe_deposito') && request.resource.data.type == 'salida');
+             allow update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
     }
   }

@@ -38,11 +38,14 @@ export default function TestPage() {
   const [movements, setMovements] = useState<StockMovement[] | null>(null);
   const [inventory, setInventory] = useState<AggregatedInventoryItem[] | null>(null);
   const [pedidos, setPedidos] = useState<StockMovement[] | null>(null);
+  const [ajustes, setAjustes] = useState<StockMovement[] | null>(null);
+
 
   const [isFetchingDeposits, setIsFetchingDeposits] = useState(false);
   const [isFetchingMovements, setIsFetchingMovements] = useState(false);
   const [isFetchingInventory, setIsFetchingInventory] = useState(false);
   const [isFetchingPedidos, setIsFetchingPedidos] = useState(false);
+  const [isFetchingAjustes, setIsFetchingAjustes] = useState(false);
   const { toast } = useToast();
 
   const currentUserDocRef = useMemoFirebase(
@@ -265,6 +268,57 @@ export default function TestPage() {
     }
   };
 
+  const handleFetchAjustes = async () => {
+    // Esta consulta también podría requerir un índice compuesto.
+    if (!firestore || !currentUserProfile?.workspaceId) {
+      toast({ variant: 'destructive', title: 'Error de Configuración' });
+      return;
+    }
+
+    setIsFetchingAjustes(true);
+    setAjustes(null);
+    const currentAssignedDeposits = await getAssignedDeposits();
+
+    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Sin Depósitos',
+        description: 'No tienes depósitos asignados para consultar ajustes.',
+      });
+      setIsFetchingAjustes(false);
+      return;
+    }
+
+    const depositIds = currentAssignedDeposits.map((d) => d.id);
+
+    const ajustesQuery = query(
+      collection(
+        firestore,
+        `workspaces/${currentUserProfile.workspaceId}/stockMovements`
+      ),
+      where('depositId', 'in', depositIds),
+      where('type', '==', 'ajuste'),
+      orderBy('createdAt', 'desc')
+    );
+
+    try {
+      const querySnapshot = await getDocs(ajustesQuery);
+      const ajustesData = querySnapshot.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as StockMovement)
+      );
+      setAjustes(ajustesData);
+    } catch (error) {
+      console.error('Error fetching ajustes:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de Consulta',
+        description: 'No se pudo obtener el historial de ajustes. Revisa la consola para crear un índice si es necesario.',
+      });
+    } finally {
+      setIsFetchingAjustes(false);
+    }
+  };
+
 
   const isLoading = isUserLoading || isLoadingProfile;
 
@@ -461,6 +515,44 @@ export default function TestPage() {
                      Consultar Pedidos
                  </Button>
              </CardFooter>
+             
+            <Separator />
+
+            {/* PRUEBA 5 */}
+            <div>
+              <h3 className="text-lg font-medium">Prueba 5: Historial de Ajustes</h3>
+              <p className="text-sm text-muted-foreground">
+                Presiona para ver los movimientos de ajuste de stock de tus depósitos.
+              </p>
+            </div>
+            {isFetchingAjustes && (
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-5 w-32" />
+              </div>
+            )}
+            {ajustes !== null && !isFetchingAjustes && (
+               <div>
+                <h4 className="font-semibold mb-2">Ajustes Encontrados:</h4>
+                {ajustes.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-1 font-mono text-sm">
+                    {ajustes.map((ajuste) => (
+                      <li key={ajuste.id}>{ajuste.remitoNumber}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground">
+                    No se encontraron ajustes para tus depósitos.
+                  </p>
+                )}
+              </div>
+            )}
+             <CardFooter>
+                   <Button onClick={handleFetchAjustes} disabled={isFetchingAjustes}>
+                      {isFetchingAjustes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Consultar Historial de Ajustes
+                  </Button>
+              </CardFooter>
 
         </CardContent>
       </Card>
