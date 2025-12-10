@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import type { UserProfile, Deposit } from '@/types/inventory';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
 
 export default function TestPage() {
   const firestore = useFirestore();
