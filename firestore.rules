@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // Helper Functions (Versión 3 - Definitiva)
+    // HELPER FUNCTIONS (Versión 3 - Definitiva)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -89,40 +89,57 @@ service cloud.firestore {
             allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
         }
         
+        // --- INVENTORY (Regla Robusta para Transacciones) ---
         match /inventory/{inventoryStockId} {
-            allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+            allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+            allow write: if
+                // Roles con acceso total de escritura
+                (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
+                ||
+                // Regla específica y segura para Jefe de Depósito
+                (
+                    hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
+                    // Se extrae el depositId del ID del documento ('productId_depositId')
+                    // y se verifica que el usuario sea el jefe de ese depósito.
+                    // Esta regla es segura para transacciones porque no usa 'resource.data'.
+                    get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
+                );
         }
         
-        // --- STOCK MOVEMENTS (Reglas Estrictas y Correctas) ---
+        // --- STOCK MOVEMENTS (Reglas Finales y Correctas) ---
         match /stockMovements/{movementId} {
              
-             // CREATE: Cualquiera en el workspace puede crear.
              allow create: if isSuperAdmin() 
                             || isInWorkspace(workspaceId);
              
-             // GET (Leer un solo doc): Miembros del workspace pueden leer detalles, o si es su propio movimiento.
              allow get: if isSuperAdmin() 
                          || isInWorkspace(workspaceId);
             
-             // LIST (Regla CRÍTICA): Exigimos filtros para roles restringidos.
              allow list: if 
-                // GRUPO 1: Acceso TOTAL sin filtros.
+                // Admin y Editor pueden listar todo.
                 (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
                 ||
-                // GRUPO 2: Jefe de Depósito DEBE filtrar por `depositId`.
+                // Jefe de Depósito DEBE filtrar por `depositId` (con 'in' hasta 30).
                 (
                     hasWorkspaceRole(workspaceId, 'jefe_deposito') 
-                    && request.query.keys().hasAny(['depositId']) // Asegura que el filtro 'where' exista en la query
+                    && request.query.keys().hasAny(['depositId'])
                 )
                 ||
-                // GRUPO 3: Solicitante DEBE filtrar por su propio `userId`.
+                // Solicitante DEBE filtrar por su propio `userId`.
                 ( 
                   hasWorkspaceRole(workspaceId, 'solicitante') 
                   && request.query.where.userId == request.auth.uid 
                 );
 
-             // UPDATE/DELETE: Solo administradores.
-             allow update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+             // CORRECCIÓN: Permitir que jefe_deposito borre una solicitud de su depósito
+             allow update, delete: if 
+                isSuperAdmin() 
+                || isWorkspaceAdmin(workspaceId)
+                || (
+                    hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
+                    // Verifica que el documento a borrar (la solicitud) pertenece a un depósito que él gestiona.
+                    get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
+                   );
         }
     }
   }
