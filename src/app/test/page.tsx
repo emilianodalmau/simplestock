@@ -208,6 +208,13 @@ export default function TestPage() {
   };
   
   const handleFetchPedidos = async () => {
+    // NOTA PARA EL DESARROLLADOR:
+    // Esta consulta es compleja y requiere un ÍNDICE COMPUESTO en Firestore.
+    // Si esta consulta falla con un error "The query requires an index...",
+    // haz clic en el enlace que proporciona Firestore en la consola de error de tu navegador.
+    // Esto te llevará a la Consola de Firebase para crear el índice automáticamente.
+    // El índice necesario combinará los campos `depositId` (ascendente) y `remitoNumber` (ascendente).
+    
     if (!firestore || !currentUserProfile?.workspaceId) {
       toast({ variant: 'destructive', title: 'Error de Configuración' });
       return;
@@ -251,7 +258,7 @@ export default function TestPage() {
       toast({
         variant: 'destructive',
         title: 'Error de Consulta',
-        description: 'No se pudieron obtener los pedidos pendientes.',
+        description: 'No se pudieron obtener los pedidos pendientes. Revisa la consola para crear un índice si es necesario.',
       });
     } finally {
       setIsFetchingPedidos(false);
@@ -460,5 +467,3 @@ export default function TestPage() {
     </div>
   );
 }
-
-    
