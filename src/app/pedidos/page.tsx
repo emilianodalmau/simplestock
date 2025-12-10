@@ -106,22 +106,20 @@ export default function PedidosPage() {
       endAt('S-\uf8ff')
     ];
 
-    // Si es jefe_deposito, ESPERAMOS a tener los IDs de depósito.
     if (currentUserProfile?.role === 'jefe_deposito') {
-        if (assignedDepositIds === null) return null; // Aún no se han cargado los depósitos
-        if (assignedDepositIds.length === 0) return null; // No tiene depósitos, no puede ver pedidos.
+        if (assignedDepositIds === null) return null; 
+        if (assignedDepositIds.length === 0) return null; 
 
-        // Construimos la consulta SEGURA. Firestore requiere que el orderBy sea sobre el mismo
-        // campo que el primer `where` si no es de igualdad. Aquí reordenamos para cumplirlo.
+        // Correct Query for 'jefe_deposito': Filter by their deposits AND by remitoNumber prefix.
+        // This requires a composite index.
         return query(
             movementsCollectionRef,
-            where('depositId', 'in', assignedDepositIds.slice(0, 30)), // Usamos el filtro exigido por las reglas
-            orderBy('depositId'), // Requerido por Firestore para consultas `in` con otros `orderBy`
+            where('depositId', 'in', assignedDepositIds.slice(0, 30)),
             ...baseQuery
         );
     }
     
-    // Admin puede ver todas las solicitudes
+    // Admin can see all requests
     return query(movementsCollectionRef, ...baseQuery);
 
   }, [firestore, collectionPrefix, canAccessPage, currentUserProfile, assignedDepositIds]);
