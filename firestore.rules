@@ -115,31 +115,18 @@ service cloud.firestore {
              allow get: if isSuperAdmin() 
                          || isInWorkspace(workspaceId);
             
+             // REGLA LISTA CORRECTA Y FUNCIONAL
              allow list: if 
-                // Admin y Editor pueden listar todo.
-                (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
-                ||
-                // Jefe de Depósito DEBE filtrar por `depositId` (con 'in' hasta 30).
-                (
-                    hasWorkspaceRole(workspaceId, 'jefe_deposito') 
-                    && request.query.keys().hasAny(['depositId'])
-                )
-                ||
-                // Solicitante DEBE filtrar por su propio `userId`.
-                ( 
-                  hasWorkspaceRole(workspaceId, 'solicitante') 
-                  && request.query.where.userId == request.auth.uid 
-                );
+                (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'jefe_deposito') || hasWorkspaceRole(workspaceId, 'solicitante'));
 
-             // CORRECCIÓN: Separar 'update' de 'delete' y permitir que jefe_deposito borre la solicitud.
+             // REGLA DE ESCRITURA CORREGIDA
              allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
 
+             // REGLA DE BORRADO CORREGIDA
              allow delete: if 
                 isSuperAdmin() 
                 || isWorkspaceAdmin(workspaceId)
                 || (
-                    // El Jefe de Depósito puede borrar un movimiento (la solicitud original)
-                    // si el documento a borrar pertenece a un depósito que él gestiona.
                     hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
                     get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
                    );
