@@ -52,24 +52,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Trash2, PlusCircle } from 'lucide-react';
 import { ProductComboBox } from '@/components/ui/product-combobox';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import type {
   Product,
   Deposit,
   UserProfile,
   StockMovementItem,
   InventoryStock,
-  StockMovement,
 } from '@/types/inventory';
 
 // --- Zod Schemas ---
@@ -121,103 +109,6 @@ function SolicitudesPageSkeleton() {
     </div>
   );
 }
-
-// --- Componente para el Historial ---
-function RequestHistory({
-  currentUserProfile,
-}: {
-  currentUserProfile: UserProfile;
-}) {
-  const firestore = useFirestore();
-  const collectionPrefix = `workspaces/${currentUserProfile.workspaceId}`;
-
-  const historyQuery = useMemoFirebase(() => {
-    if (!firestore || !currentUserProfile.id) return null;
-
-    // Esta consulta cumple con la regla de seguridad de Firestore para 'solicitante'
-    return query(
-      collection(firestore, `${collectionPrefix}/stockMovements`),
-      where('userId', '==', currentUserProfile.id),
-      orderBy('createdAt', 'desc')
-    );
-  }, [firestore, collectionPrefix, currentUserProfile.id]);
-
-  const { data: requests, isLoading } = useCollection<StockMovement>(historyQuery);
-
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Historial de Mis Solicitudes</CardTitle>
-        <CardDescription>
-          Aquí puedes ver todos los pedidos que has realizado.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Nº Solicitud</TableHead>
-                <TableHead>Depósito</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Valor Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading &&
-                [...Array(3)].map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                    <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                  </TableRow>
-                ))}
-              {!isLoading && requests?.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center h-24">
-                    No has realizado ninguna solicitud.
-                  </TableCell>
-                </TableRow>
-              )}
-              {!isLoading &&
-                requests?.map((req) => (
-                  <TableRow key={req.id}>
-                    <TableCell className="font-medium">
-                      {format(req.createdAt.toDate(), 'PPpp', { locale: es })}
-                    </TableCell>
-                    <TableCell className="font-mono">{req.remitoNumber || '-'}</TableCell>
-                    <TableCell>{req.depositName}</TableCell>
-                    <TableCell>
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          req.remitoNumber?.startsWith('S-')
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {req.remitoNumber?.startsWith('S-') ? 'Pendiente' : 'Procesado'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                        {formatPrice(req.totalValue || 0)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 
 // --- Main Page Component ---
 export default function SolicitudesPage() {
@@ -489,201 +380,190 @@ export default function SolicitudesPage() {
           Portal de Solicitudes
         </h1>
         <p className="text-muted-foreground">
-          Crea un pedido de productos o consulta el historial de tus solicitudes.
+          Crea un pedido de productos para que un Jefe de Depósito lo apruebe.
         </p>
       </div>
       
-      <Tabs defaultValue="create" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="create">Crear Solicitud</TabsTrigger>
-            <TabsTrigger value="history">Mi Historial</TabsTrigger>
-        </TabsList>
-        <TabsContent value="create">
-            <Card>
-                <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)}>
-                    <CardHeader>
-                    <CardTitle>Crear Pedido de Productos</CardTitle>
-                    <CardDescription>
-                        Completa el formulario para generar una solicitud. El stock
-                        disponible se mostrará al seleccionar un producto.
-                    </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <FormField
-                        control={form.control}
-                        name="depositId"
-                        render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Depósito de Origen</FormLabel>
-                            <Select
-                                onValueChange={field.onChange}
-                                value={field.value}
-                            >
-                                <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Selecciona un depósito" />
-                                </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                {deposits?.map((d) => (
-                                    <SelectItem key={d.id} value={d.id}>
-                                    {d.name}
-                                    </SelectItem>
-                                ))}
-                                </SelectContent>
-                            </Select>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-                        <FormField
-                        control={form.control}
-                        name="actorId"
-                        render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>Solicitante</FormLabel>
-                            <FormControl>
-                                <Input
-                                value={`${
-                                    currentUserProfile?.firstName || ''
-                                } ${currentUserProfile?.lastName || ''}`.trim()}
-                                disabled
-                                />
-                            </FormControl>
-                            <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-                    </div>
-                    <Separator />
-                    <div>
-                        <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-medium">
-                            Productos a Solicitar
-                        </h3>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => append({ productId: '', quantity: 1 })}
-                            disabled={!selectedDepositId}
-                        >
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            Agregar Producto
-                        </Button>
-                        </div>
-                        <div className="space-y-4">
-                        {fields.map((field, index) => {
-                            const selectedProductId = form.watch(
-                            `items.${index}.productId`
-                            );
-                            const availableStock =
-                            inventoryByProduct.get(selectedProductId) || 0;
-                            const productUnit =
-                            productsMap.get(selectedProductId)?.unit || '';
+      <Card>
+          <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+              <CardHeader>
+              <CardTitle>Crear Pedido de Productos</CardTitle>
+              <CardDescription>
+                  Completa el formulario para generar una solicitud. El stock
+                  disponible se mostrará al seleccionar un producto.
+              </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                  control={form.control}
+                  name="depositId"
+                  render={({ field }) => (
+                      <FormItem>
+                      <FormLabel>Depósito de Origen</FormLabel>
+                      <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                      >
+                          <FormControl>
+                          <SelectTrigger>
+                              <SelectValue placeholder="Selecciona un depósito" />
+                          </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                          {deposits?.map((d) => (
+                              <SelectItem key={d.id} value={d.id}>
+                              {d.name}
+                              </SelectItem>
+                          ))}
+                          </SelectContent>
+                      </Select>
+                      <FormMessage />
+                      </FormItem>
+                  )}
+                  />
+                  <FormField
+                  control={form.control}
+                  name="actorId"
+                  render={({ field }) => (
+                      <FormItem>
+                      <FormLabel>Solicitante</FormLabel>
+                      <FormControl>
+                          <Input
+                          value={`${
+                              currentUserProfile?.firstName || ''
+                          } ${currentUserProfile?.lastName || ''}`.trim()}
+                          disabled
+                          />
+                      </FormControl>
+                      <FormMessage />
+                      </FormItem>
+                  )}
+                  />
+              </div>
+              <Separator />
+              <div>
+                  <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium">
+                      Productos a Solicitar
+                  </h3>
+                  <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => append({ productId: '', quantity: 1 })}
+                      disabled={!selectedDepositId}
+                  >
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Agregar Producto
+                  </Button>
+                  </div>
+                  <div className="space-y-4">
+                  {fields.map((field, index) => {
+                      const selectedProductId = form.watch(
+                      `items.${index}.productId`
+                      );
+                      const availableStock =
+                      inventoryByProduct.get(selectedProductId) || 0;
+                      const productUnit =
+                      productsMap.get(selectedProductId)?.unit || '';
 
-                            return (
-                            <div
-                                key={field.id}
-                                className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_auto] gap-2 items-start p-4 border rounded-md relative"
-                            >
-                                <FormField
-                                control={form.control}
-                                name={`items.${index}.productId`}
-                                render={({ field }) => (
-                                    <FormItem>
-                                    <FormLabel className="sr-only">
-                                        Producto
-                                    </FormLabel>
-                                    <ProductComboBox
-                                        products={availableProductsForRequest}
-                                        value={field.value}
-                                        onChange={field.onChange}
-                                        disabled={!selectedDepositId}
-                                        noStockMessage={
-                                        !!selectedDepositId
-                                            ? 'No hay productos con stock.'
-                                            : 'Selecciona un depósito primero'
-                                        }
-                                    />
-                                    <FormMessage />
-                                    </FormItem>
-                                )}
-                                />
-                                <FormField
-                                control={form.control}
-                                name={`items.${index}.quantity`}
-                                render={({ field }) => (
-                                    <FormItem>
-                                    <FormLabel className="sr-only">
-                                        Cantidad
-                                    </FormLabel>
-                                    <FormControl>
-                                        <Input
-                                        type="number"
-                                        placeholder="Cantidad"
-                                        {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                    </FormItem>
-                                )}
-                                />
-                                <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => remove(index)}
-                                className="text-destructive hover:bg-destructive/10"
-                                >
-                                <Trash2 className="h-4 w-4" />
-                                </Button>
-                                {selectedProductId && (
-                                <div className="col-span-full text-sm text-muted-foreground pt-2">
-                                    Stock disponible:{' '}
-                                    <span className="font-medium text-foreground">
-                                    {availableStock} {productUnit}
-                                    </span>
-                                </div>
-                                )}
-                            </div>
-                            );
-                        })}
-                        {form.formState.errors.items && (
-                            <p className="text-sm font-medium text-destructive mt-2">
-                            {typeof form.formState.errors.items === 'string'
-                                ? form.formState.errors.items
-                                : (form.formState.errors.items as any).root?.message}
-                            </p>
-                        )}
-                        </div>
-                    </div>
-                    </CardContent>
-                    <CardFooter>
-                    <Button
-                        type="submit"
-                        disabled={
-                        isSubmitting ||
-                        !selectedDepositId ||
-                        !form.formState.isValid
-                        }
-                    >
-                        {isSubmitting && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        )}
-                        Enviar Solicitud
-                    </Button>
-                    </CardFooter>
-                </form>
-                </Form>
-            </Card>
-        </TabsContent>
-        <TabsContent value="history">
-            <RequestHistory currentUserProfile={currentUserProfile!} />
-        </TabsContent>
-      </Tabs>
+                      return (
+                      <div
+                          key={field.id}
+                          className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_auto] gap-2 items-start p-4 border rounded-md relative"
+                      >
+                          <FormField
+                          control={form.control}
+                          name={`items.${index}.productId`}
+                          render={({ field }) => (
+                              <FormItem>
+                              <FormLabel className="sr-only">
+                                  Producto
+                              </FormLabel>
+                              <ProductComboBox
+                                  products={availableProductsForRequest}
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                  disabled={!selectedDepositId}
+                                  noStockMessage={
+                                  !!selectedDepositId
+                                      ? 'No hay productos con stock.'
+                                      : 'Selecciona un depósito primero'
+                                  }
+                              />
+                              <FormMessage />
+                              </FormItem>
+                          )}
+                          />
+                          <FormField
+                          control={form.control}
+                          name={`items.${index}.quantity`}
+                          render={({ field }) => (
+                              <FormItem>
+                              <FormLabel className="sr-only">
+                                  Cantidad
+                              </FormLabel>
+                              <FormControl>
+                                  <Input
+                                  type="number"
+                                  placeholder="Cantidad"
+                                  {...field}
+                                  />
+                              </FormControl>
+                              <FormMessage />
+                              </FormItem>
+                          )}
+                          />
+                          <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          className="text-destructive hover:bg-destructive/10"
+                          >
+                          <Trash2 className="h-4 w-4" />
+                          </Button>
+                          {selectedProductId && (
+                          <div className="col-span-full text-sm text-muted-foreground pt-2">
+                              Stock disponible:{' '}
+                              <span className="font-medium text-foreground">
+                              {availableStock} {productUnit}
+                              </span>
+                          </div>
+                          )}
+                      </div>
+                      );
+                  })}
+                  {form.formState.errors.items && (
+                      <p className="text-sm font-medium text-destructive mt-2">
+                      {typeof form.formState.errors.items === 'string'
+                          ? form.formState.errors.items
+                          : (form.formState.errors.items as any).root?.message}
+                      </p>
+                  )}
+                  </div>
+              </div>
+              </CardContent>
+              <CardFooter>
+              <Button
+                  type="submit"
+                  disabled={
+                  isSubmitting ||
+                  !selectedDepositId ||
+                  !form.formState.isValid
+                  }
+              >
+                  {isSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Enviar Solicitud
+              </Button>
+              </CardFooter>
+          </form>
+          </Form>
+      </Card>
     </div>
   );
 }
