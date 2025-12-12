@@ -1,3 +1,4 @@
+
 export type Product = {
   id: string;
   name: string;
@@ -5,6 +6,7 @@ export type Product = {
   code: string;
   price: number;
   isArchived?: boolean;
+  depositIds?: string[];
 };
 
 export type Deposit = {
@@ -66,5 +68,3 @@ export type RequestItem = {
     unit: string;
     toDeliver: number;
 }
-
-    

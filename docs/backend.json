@@ -166,6 +166,13 @@
         "isArchived": {
           "type": "boolean",
           "description": "If true, the product is archived and not available for new transactions."
+        },
+        "depositIds": {
+            "type": "array",
+            "description": "An array of deposit IDs where this product can be stored.",
+            "items": {
+                "type": "string"
+            }
         }
       },
       "required": [
@@ -176,7 +183,8 @@
         "supplierId",
         "price",
         "minStock",
-        "unit"
+        "unit",
+        "depositIds"
       ]
     },
     "Deposit": {
