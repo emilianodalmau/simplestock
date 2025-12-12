@@ -75,9 +75,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { Loader2, Edit, Trash2, FileUp } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
+import * as XLSX from 'xlsx';
 
 const unitTypes = [
   'unidades',
@@ -336,6 +337,43 @@ export default function ProductosPage() {
         description: 'Ocurrió un error al archivar el producto.',
       });
     }
+  };
+
+  const handleExportModel = () => {
+    const modelData = [
+      {
+        nombre: 'Ejemplo: Martillo de Goma',
+        categoria_id: 'ID de la categoría (ver hoja de ayuda)',
+        proveedor_id: 'ID del proveedor (ver hoja de ayuda)',
+        precio: 1500.50,
+        stock_minimo: 10,
+        unidad: 'unidades (debe ser una de: unidades, litros, kilos, metros, gramos, cajas)',
+        depositos_ids: 'ID1,ID2,ID3 (separados por comas)',
+      },
+    ];
+    const categoriesData = categories?.map(c => ({ ID: c.id, Nombre: c.name })) || [];
+    const suppliersData = suppliers?.map(s => ({ ID: s.id, Nombre: s.name })) || [];
+    const depositsData = deposits?.map(d => ({ ID: d.id, Nombre: d.name })) || [];
+
+    const wb = XLSX.utils.book_new();
+    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'categoria_id', 'proveedor_id', 'precio', 'stock_minimo', 'unidad', 'depositos_ids'] });
+    const wsCategories = XLSX.utils.json_to_sheet(categoriesData);
+    const wsSuppliers = XLSX.utils.json_to_sheet(suppliersData);
+    const wsDeposits = XLSX.utils.json_to_sheet(depositsData);
+    const wsHelp = XLSX.utils.json_to_sheet([
+      { 'Instrucción': 'Complete la hoja "Modelo" con los datos de sus productos.'},
+      { 'Instrucción': 'Utilice los IDs de las otras hojas (Categorias, Proveedores, Depositos) para llenar las columnas correspondientes.' },
+      { 'Instrucción': 'Para la columna "depositos_ids", si un producto va en múltiples depósitos, separe los IDs con una coma (sin espacios). Ej: id_deposito_1,id_deposito_2' },
+      { 'Instrucción': 'La columna "unidad" debe contener uno de los siguientes valores exactos: unidades, litros, kilos, metros, gramos, cajas.'}
+    ]);
+    
+    XLSX.utils.book_append_sheet(wb, wsModel, 'Modelo');
+    XLSX.utils.book_append_sheet(wb, wsHelp, 'Ayuda');
+    XLSX.utils.book_append_sheet(wb, wsCategories, 'Categorias');
+    XLSX.utils.book_append_sheet(wb, wsSuppliers, 'Proveedores');
+    XLSX.utils.book_append_sheet(wb, wsDeposits, 'Depositos');
+    
+    XLSX.writeFile(wb, 'Modelo_Importacion_Productos.xlsx');
   };
 
   const canManageProducts =
@@ -615,6 +653,12 @@ export default function ProductosPage() {
                             ))}
                         </SelectContent>
                     </Select>
+                    {canManageProducts && (
+                      <Button onClick={handleExportModel} variant="outline">
+                        <FileUp className="mr-2 h-4 w-4" />
+                        Exportar Modelo
+                      </Button>
+                    )}
                 </div>
               <div className="rounded-lg border">
                 <Table>
