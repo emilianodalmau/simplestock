@@ -378,23 +378,33 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   }, [users, suppliers]);
 
   const availableProductsForMovement = useMemo(() => {
-    if (!products || !collectionPrefix) return [];
-    if (movementType === 'entrada' || !selectedDepositId || !inventory) {
-      return products.filter((p) => !p.isArchived);
-    }
+    if (!products || !selectedDepositId) return [];
 
+    // First, filter products that are allowed in the selected deposit
+    const productsInDeposit = products.filter(
+      (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
+    );
+    
+    // For 'entrada', we can show all products assigned to the deposit
+    if (movementType === 'entrada') {
+      return productsInDeposit;
+    }
+    
+    // For 'salida', we also need to check if there is stock
+    if (!inventory) return [];
+    
     const productsWithStock = new Set(
       inventory
-        ?.filter(
+        .filter(
           (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
         )
         .map((stock) => stock.productId)
     );
 
-    return products.filter(
-      (product) => !product.isArchived && productsWithStock.has(product.id)
+    return productsInDeposit.filter(
+      (product) => productsWithStock.has(product.id)
     );
-  }, [movementType, selectedDepositId, products, inventory, collectionPrefix]);
+  }, [movementType, selectedDepositId, products, inventory]);
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
@@ -803,10 +813,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                     onChange={field.onChange}
                                     disabled={!selectedDepositId}
                                     noStockMessage={
-                                      movementType === 'salida' &&
-                                      !!selectedDepositId
-                                      ? 'No hay productos con stock en este depósito.'
-                                      : 'Selecciona un producto'
+                                      !selectedDepositId
+                                        ? 'Selecciona un depósito primero'
+                                        : 'Selecciona un producto'
                                     }
                                   />
                                   <FormMessage />
