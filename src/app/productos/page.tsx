@@ -150,6 +150,14 @@ export default function ProductosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  
+  // State for filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSupplier, setSelectedSupplier] = useState('all');
+  const [selectedDeposit, setSelectedDeposit] = useState('all');
+  const [selectedUnit, setSelectedUnit] = useState<(typeof unitTypes)[number] | 'all'>('all');
+  
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
@@ -197,6 +205,25 @@ export default function ProductosPage() {
   );
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
+
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+    
+    return products.filter((product) => {
+        const matchesSearch = searchTerm === '' ||
+            product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            product.code.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory;
+        const matchesSupplier = selectedSupplier === 'all' || product.supplierId === selectedSupplier;
+        const matchesDeposit = selectedDeposit === 'all' || product.depositIds?.includes(selectedDeposit);
+        const matchesUnit = selectedUnit === 'all' || product.unit === selectedUnit;
+
+        return matchesSearch && matchesCategory && matchesSupplier && matchesDeposit && matchesUnit;
+    });
+
+  }, [products, searchTerm, selectedCategory, selectedSupplier, selectedDeposit, selectedUnit]);
+
 
   const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -531,6 +558,64 @@ export default function ProductosPage() {
               <CardTitle>Lista de Productos</CardTitle>
             </CardHeader>
             <CardContent>
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                    <Input
+                        placeholder="Buscar por nombre o código..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="flex-grow"
+                    />
+                     <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isLoadingCategories}>
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                            <SelectValue placeholder="Filtrar por categoría" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las categorías</SelectItem>
+                            {categories?.map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                                {cat.name}
+                            </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                     <Select value={selectedSupplier} onValueChange={setSelectedSupplier} disabled={isLoadingSuppliers}>
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                            <SelectValue placeholder="Filtrar por proveedor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los proveedores</SelectItem>
+                            {suppliers?.map((sup) => (
+                            <SelectItem key={sup.id} value={sup.id}>
+                                {sup.name}
+                            </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isLoadingDeposits}>
+                        <SelectTrigger className="w-full sm:w-[200px]">
+                            <SelectValue placeholder="Filtrar por depósito" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los depósitos</SelectItem>
+                            {deposits?.map((dep) => (
+                            <SelectItem key={dep.id} value={dep.id}>
+                                {dep.name}
+                            </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                     <Select value={selectedUnit} onValueChange={(value) => setSelectedUnit(value as any)}>
+                        <SelectTrigger className="w-full sm:w-[180px]">
+                            <SelectValue placeholder="Filtrar por unidad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las unidades</SelectItem>
+                            {unitTypes.map(unit => (
+                                <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
               <div className="rounded-lg border">
                 <Table>
                   <TableHeader>
@@ -583,18 +668,18 @@ export default function ProductosPage() {
                           )}
                         </TableRow>
                       ))}
-                    {!isLoading && products?.length === 0 && (
+                    {!isLoading && filteredProducts.length === 0 && (
                       <TableRow>
                         <TableCell
                           colSpan={canManageProducts ? 9 : 8}
                           className="text-center"
                         >
-                          No hay productos creados.
+                          No hay productos que coincidan con los filtros aplicados.
                         </TableCell>
                       </TableRow>
                     )}
                     {!isLoading &&
-                      products?.map((product) => (
+                      filteredProducts.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell className="font-mono">
                             {product.code}
