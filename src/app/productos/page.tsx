@@ -574,7 +574,8 @@ export default function ProductosPage() {
                       )}
                     />
                   </div>
-                  <Button
+                  <div className="flex gap-2">
+                    <Button
                       type="submit"
                       disabled={isSubmitting}
                       className="w-full sm:w-auto"
@@ -584,6 +585,13 @@ export default function ProductosPage() {
                       )}
                       Agregar Producto
                     </Button>
+                    {canManageProducts && (
+                      <Button onClick={handleExportModel} variant="outline" type="button">
+                        <FileUp className="mr-2 h-4 w-4" />
+                        Exportar Modelo
+                      </Button>
+                    )}
+                  </div>
                 </form>
               </Form>
             </CardContent>
@@ -653,12 +661,6 @@ export default function ProductosPage() {
                             ))}
                         </SelectContent>
                     </Select>
-                    {canManageProducts && (
-                      <Button onClick={handleExportModel} variant="outline">
-                        <FileUp className="mr-2 h-4 w-4" />
-                        Exportar Modelo
-                      </Button>
-                    )}
                 </div>
               <div className="rounded-lg border">
                 <Table>
