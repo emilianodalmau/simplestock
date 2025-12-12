@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -20,6 +20,7 @@ import {
   serverTimestamp,
   query,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Card,
@@ -75,7 +76,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2, FileUp } from 'lucide-react';
+import { Loader2, Edit, Trash2, FileUp, FileDown } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
@@ -151,6 +152,8 @@ export default function ProductosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
   
   // State for filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -376,6 +379,80 @@ export default function ProductosPage() {
     XLSX.writeFile(wb, 'Modelo_Importacion_Productos.xlsx');
   };
 
+  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!firestore || !collectionPrefix) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+
+        if (json.length < 2) {
+          throw new Error("El archivo está vacío o no tiene datos.");
+        }
+
+        const headers = json[0];
+        const requiredHeaders = ['nombre', 'categoria_id', 'proveedor_id', 'precio', 'stock_minimo', 'unidad', 'depositos_ids'];
+        if (!requiredHeaders.every(h => headers.includes(h))) {
+          throw new Error(`El archivo debe contener las siguientes columnas: ${requiredHeaders.join(', ')}.`);
+        }
+        
+        const productsToCreate = json.slice(1);
+        const batch = writeBatch(firestore);
+
+        for (const row of productsToCreate) {
+          const productData: any = {};
+          headers.forEach((header, index) => {
+            productData[header] = row[index];
+          });
+          
+          const newProductRef = doc(collection(firestore, `${collectionPrefix}/products`));
+          batch.set(newProductRef, {
+            name: productData.nombre,
+            categoryId: productData.categoria_id,
+            supplierId: productData.proveedor_id,
+            price: Number(productData.precio),
+            minStock: Number(productData.stock_minimo),
+            unit: productData.unidad,
+            depositIds: productData.depositos_ids.split(','),
+            code: generateProductCode(productData.nombre),
+            isArchived: false,
+            createdAt: serverTimestamp(),
+          });
+        }
+        
+        await batch.commit();
+
+        toast({
+          title: 'Importación Completa',
+          description: `Se han creado ${productsToCreate.length} productos nuevos.`,
+        });
+
+      } catch (error: any) {
+        toast({
+          variant: 'destructive',
+          title: 'Error de Importación',
+          description: error.message || 'No se pudieron importar los productos. Revisa el formato del archivo.',
+        });
+      } finally {
+        setIsImporting(false);
+        // Reset file input
+        if (importFileRef.current) {
+          importFileRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+
   const canManageProducts =
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
@@ -586,10 +663,28 @@ export default function ProductosPage() {
                       Agregar Producto
                     </Button>
                     {canManageProducts && (
-                      <Button onClick={handleExportModel} variant="outline" type="button">
-                        <FileUp className="mr-2 h-4 w-4" />
-                        Exportar Modelo
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button onClick={handleExportModel} variant="outline" type="button">
+                          <FileUp className="mr-2 h-4 w-4" />
+                          Exportar Modelo
+                        </Button>
+                        <Button
+                          onClick={() => importFileRef.current?.click()}
+                          variant="outline"
+                          type="button"
+                          disabled={isImporting}
+                        >
+                          {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileDown className="mr-2 h-4 w-4" />}
+                          Importar Productos
+                        </Button>
+                         <input
+                          type="file"
+                          ref={importFileRef}
+                          onChange={handleImport}
+                          className="hidden"
+                          accept=".xlsx, .xls"
+                        />
+                      </div>
                     )}
                   </div>
                 </form>
