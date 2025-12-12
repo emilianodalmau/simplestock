@@ -7,6 +7,7 @@ export type Product = {
   price: number;
   isArchived?: boolean;
   depositIds?: string[];
+  createdAt: any; // Allow both Timestamp and string for flexibility
 };
 
 export type Deposit = {

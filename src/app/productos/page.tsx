@@ -135,6 +135,7 @@ type Product = {
   unit: (typeof unitTypes)[number];
   isArchived?: boolean;
   depositIds?: string[];
+  createdAt: any; // Used for client-side sorting
 };
 
 type UserProfile = {
@@ -209,8 +210,7 @@ export default function ProductosPage() {
       firestore && collectionPrefix
         ? query(
             collection(firestore, `${collectionPrefix}/products`),
-            where('isArchived', '!=', true),
-            orderBy('createdAt', 'desc') // Order by creation date descending
+            where('isArchived', '!=', true)
           )
         : null,
     [firestore, collectionPrefix]
@@ -221,7 +221,7 @@ export default function ProductosPage() {
   const filteredProducts = useMemo(() => {
     if (!products) return [];
     
-    return products.filter((product) => {
+    const filtered = products.filter((product) => {
         const matchesSearch = searchTerm === '' ||
             product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             product.code.toLowerCase().includes(searchTerm.toLowerCase());
@@ -232,6 +232,15 @@ export default function ProductosPage() {
         const matchesUnit = selectedUnit === 'all' || product.unit === selectedUnit;
 
         return matchesSearch && matchesCategory && matchesSupplier && matchesDeposit && matchesUnit;
+    });
+
+    // Sort by creation date on the client side
+    return filtered.sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : 0;
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : 0;
+        if (dateA > dateB) return -1;
+        if (dateA < dateB) return 1;
+        return 0;
     });
 
   }, [products, searchTerm, selectedCategory, selectedSupplier, selectedDeposit, selectedUnit]);
