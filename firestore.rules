@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 5 - Corregida y Funcional)
+    // HELPER FUNCTIONS (Versión 6 - Corregida y Funcional)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -15,14 +15,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     
-    // Esta función determina si el usuario pertenece a un workspace específico.
-    // Maneja el caso donde el workspaceId del usuario es una ruta (path) o un string.
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
       let userWorkspaceId = userData.get('workspaceId', '');
-      // Si el workspaceId del usuario es una referencia de path, extraemos el ID.
-      let normalizedUserWorkspaceId = userWorkspaceId is path ? userWorkspaceId.id() : userWorkspaceId;
-      return isSignedIn() && normalizedUserWorkspaceId == workspaceId;
+      // La comparación debe ser directa con el ID del workspace,
+      // o con la referencia completa al documento del workspace.
+      return isSignedIn() && (userWorkspaceId == workspaceId || userWorkspaceId == /databases/$(database)/documents/workspaces/$(workspaceId));
     }
 
     function hasWorkspaceRole(workspaceId, role) {
@@ -119,7 +117,6 @@ service cloud.firestore {
              allow create: if isSuperAdmin() 
                             || isInWorkspace(workspaceId);
              
-             // Regla de lectura corregida
              allow read: if 
                 isSuperAdmin() || 
                 (
@@ -128,7 +125,6 @@ service cloud.firestore {
                     getMyData().role == 'administrador' || 
                     getMyData().role == 'editor' || 
                     getMyData().role == 'jefe_deposito' ||
-                    // Los solicitantes pueden leer sus propios pedidos si la query lo especifica
                     (getMyData().role == 'solicitante' && resource.data.userId == request.auth.uid)
                   )
                 );
