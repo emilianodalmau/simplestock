@@ -145,7 +145,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const role = currentUserProfile?.role;
   const isJefeDeposito = role === 'jefe_deposito';
   const isAdminOrEditor = role === 'administrador' || role === 'editor';
-  const isSolicitante = role === 'solicitante';
   
   const canManageMovements = useMemo(() => {
     if (!role) return false;
@@ -238,7 +237,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
-  // CORRECTED QUERY LOGIC
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !role || !user) return null;
 
@@ -250,12 +248,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     }
     
     // Solicitante: MUST filter by their userId to comply with security rules
-    if (isSolicitante) {
+    if (role === 'solicitante') {
         return query(baseRef, where('userId', '==', user.uid));
     }
     
     // Jefe de Depósito: MUST filter by their depositId(s) to comply with security rules
-    if (isJefeDeposito) {
+    if (role === 'jefe_deposito') {
         if (assignedDepositIds === null) return null; // Still loading deposits, wait.
         if (assignedDepositIds.length === 0) return null; // No deposits assigned, so no query needed.
         
@@ -265,7 +263,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     
     // Default case: no valid role for this page, so don't query.
     return null;
-  }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor, isJefeDeposito, isSolicitante]);
+  }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor]);
   
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
