@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 3 - Definitiva)
+    // HELPER FUNCTIONS (Versión 4 - Con Normalización de WorkspaceId)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -15,29 +15,46 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // NUEVA FUNCIÓN: Normaliza el workspaceId, ya sea string o reference.
+    function normalizeWorkspaceId(userData) {
+      let wsId = userData.get('workspaceId', '');
+      if (wsId is path) {
+        return wsId.id(0);
+      }
+      return wsId;
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
     function isSuperAdmin() {
-      return isSignedIn() && getMyData().role == 'super-admin';
+      // Uso de .get() para seguridad
+      return isSignedIn() && getMyData().get('role', '') == 'super-admin';
     }
     
+    // CORREGIDO: Usa normalizeWorkspaceId para la comparación.
     function isInWorkspace(workspaceId) {
-      return isSignedIn() && getMyData().workspaceId == workspaceId;
+      let userData = getMyData();
+      return isSignedIn() 
+             && normalizeWorkspaceId(userData) == workspaceId;
     }
 
+    // CORREGIDO: Usa la función isInWorkspace normalizada.
     function hasWorkspaceRole(workspaceId, role) {
-      return isInWorkspace(workspaceId) && getMyData().role == role;
+      return isInWorkspace(workspaceId) && getMyData().get('role', '') == role;
     }
     
+    // CORREGIDO: Usa hasWorkspaceRole para consistencia.
     function isWorkspaceAdmin(workspaceId) {
       return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
     function isOrphanAdmin() {
       let userData = getMyData();
-      return isSignedIn() && userData.role == 'administrador' && (userData.workspaceId == null || userData.workspaceId == "");
+      return isSignedIn() 
+             && userData.get('role', '') == 'administrador' 
+             && userData.get('workspaceId', null) == null;
     }
 
     // ------------------------------------------------------------------------
@@ -99,48 +116,35 @@ service cloud.firestore {
                 // Regla específica y segura para Jefe de Depósito
                 (
                     hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
-                    // Se extrae el depositId del ID del documento ('productId_depositId')
-                    // y se verifica que el usuario sea el jefe de ese depósito.
-                    // Esta regla es segura para transacciones porque no usa 'resource.data'.
                     get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
                 );
         }
         
-        // --- STOCK MOVEMENTS (Reglas Finales y Correctas) ---
+        // --- STOCK MOVEMENTS (Reglas Finales y Corregidas) ---
         match /stockMovements/{movementId} {
              
              allow create: if isSuperAdmin() 
                             || isInWorkspace(workspaceId);
              
-             allow get: if isSuperAdmin() 
-                         || isInWorkspace(workspaceId);
-            
-             // REGLA LISTA CORRECTA Y FUNCIONAL
-             allow list: if 
-                // Admin y Editor pueden listar todo.
-                (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
-                ||
-                // Jefe de Depósito DEBE filtrar por `depositId` (con 'in' hasta 30).
+             // CORRECCIÓN: Separar 'get' y 'list' y asegurar que los roles correctos puedan leer.
+             allow get, list: if 
+                isSuperAdmin() || 
                 (
-                    hasWorkspaceRole(workspaceId, 'jefe_deposito') 
-                    && request.query.keys().hasAny(['depositId'])
-                )
-                ||
-                // Solicitante DEBE filtrar por su propio `userId`.
-                ( 
-                  hasWorkspaceRole(workspaceId, 'solicitante') 
-                  && request.query.where.userId == request.auth.uid 
+                  isInWorkspace(workspaceId) && 
+                  (
+                    getMyData().role == 'administrador' || 
+                    getMyData().role == 'editor' || 
+                    getMyData().role == 'jefe_deposito' ||
+                    (getMyData().role == 'solicitante' && request.query.where.userId == request.auth.uid)
+                  )
                 );
 
-             // CORRECCIÓN: Separar 'update' de 'delete' y permitir que jefe_deposito borre la solicitud.
              allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
 
              allow delete: if 
                 isSuperAdmin() 
                 || isWorkspaceAdmin(workspaceId)
                 || (
-                    // El Jefe de Depósito puede borrar un movimiento (la solicitud original)
-                    // si el documento a borrar pertenece a un depósito que él gestiona.
                     hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
                     get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
                    );
