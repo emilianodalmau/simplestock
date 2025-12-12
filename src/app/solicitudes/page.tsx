@@ -17,10 +17,8 @@ import {
   runTransaction,
   doc,
   serverTimestamp,
-  increment,
   query,
   where,
-  orderBy,
 } from 'firebase/firestore';
 import {
   Card,
