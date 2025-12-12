@@ -8,7 +8,6 @@ import {
   useDoc,
   useMemoFirebase,
   useAuth,
-  useCollection,
 } from '@/firebase';
 import {
   Sidebar,
@@ -50,7 +49,7 @@ import { signOut } from 'firebase/auth';
 import type { AppSettings } from '@/types/settings';
 import { useEffect, useMemo } from 'react';
 import Image from 'next/image';
-import { doc, collection, query, where } from 'firebase/firestore'; 
+import { doc } from 'firebase/firestore'; 
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
