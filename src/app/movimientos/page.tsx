@@ -238,31 +238,33 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
+  // CORRECTED QUERY LOGIC
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix || !role || !user) return null;
 
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     
-    // Roles que pueden ver todo (aplican filtros en cliente)
-    if (isAdminOrEditor) {
+    // Roles with broad access
+    if (isAdminOrEditor || role === 'visualizador') {
         return baseRef;
     }
     
-    // Solicitante: DEBE filtrar por su userId para cumplir regla de seguridad
+    // Solicitante: MUST filter by their userId to comply with security rules
     if (isSolicitante) {
         return query(baseRef, where('userId', '==', user.uid));
     }
     
-    // Jefe de Depósito: DEBE filtrar por sus depositId para cumplir regla de seguridad
+    // Jefe de Depósito: MUST filter by their depositId(s) to comply with security rules
     if (isJefeDeposito) {
-        if (assignedDepositIds === null) return null; // Aún cargando depósitos
-        if (assignedDepositIds.length === 0) return null; // No tiene depósitos, no hay nada que consultar
+        if (assignedDepositIds === null) return null; // Still loading deposits, wait.
+        if (assignedDepositIds.length === 0) return null; // No deposits assigned, so no query needed.
         
-        // La regla de seguridad permite 'in' hasta 30 IDs.
+        // Firestore 'in' query is limited to 30 elements.
         return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
     }
     
-    return null; // Caso por defecto: no consultar nada
+    // Default case: no valid role for this page, so don't query.
+    return null;
   }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor, isJefeDeposito, isSolicitante]);
   
   const { data: movements, isLoading: isLoadingMovements } =
@@ -1103,7 +1105,8 @@ export default function MovimientosPage() {
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
+    // Extending access to 'visualizador' as they need to see movements
+    return ['administrador', 'editor', 'jefe_deposito', 'solicitante', 'visualizador'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
   if (isUserLoading || isLoadingProfile) {
@@ -1127,3 +1130,5 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
+
+    
