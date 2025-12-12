@@ -346,12 +346,12 @@ export default function ProductosPage() {
     const modelData = [
       {
         nombre: 'Ejemplo: Martillo de Goma',
-        categoria_id: 'ID de la categoría (ver hoja de ayuda)',
-        proveedor_id: 'ID del proveedor (ver hoja de ayuda)',
+        categoria_nombre: 'Electrónica',
+        proveedor_nombre: 'Proveedor de Ejemplo',
         precio: 1500.50,
         stock_minimo: 10,
         unidad: 'unidades (debe ser una de: unidades, litros, kilos, metros, gramos, cajas)',
-        depositos_ids: 'ID1,ID2,ID3 (separados por comas)',
+        depositos_nombres: 'Depósito Central,Depósito Secundario',
       },
     ];
     const categoriesData = categories?.map(c => ({ ID: c.id, Nombre: c.name })) || [];
@@ -359,14 +359,14 @@ export default function ProductosPage() {
     const depositsData = deposits?.map(d => ({ ID: d.id, Nombre: d.name })) || [];
 
     const wb = XLSX.utils.book_new();
-    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'categoria_id', 'proveedor_id', 'precio', 'stock_minimo', 'unidad', 'depositos_ids'] });
+    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
     const wsCategories = XLSX.utils.json_to_sheet(categoriesData);
     const wsSuppliers = XLSX.utils.json_to_sheet(suppliersData);
     const wsDeposits = XLSX.utils.json_to_sheet(depositsData);
     const wsHelp = XLSX.utils.json_to_sheet([
       { 'Instrucción': 'Complete la hoja "Modelo" con los datos de sus productos.'},
-      { 'Instrucción': 'Utilice los IDs de las otras hojas (Categorias, Proveedores, Depositos) para llenar las columnas correspondientes.' },
-      { 'Instrucción': 'Para la columna "depositos_ids", si un producto va en múltiples depósitos, separe los IDs con una coma (sin espacios). Ej: id_deposito_1,id_deposito_2' },
+      { 'Instrucción': 'Utilice los NOMBRES de las otras hojas (Categorias, Proveedores, Depositos) para llenar las columnas correspondientes.' },
+      { 'Instrucción': 'Para la columna "depositos_nombres", si un producto va en múltiples depósitos, separe los NOMBRES con una coma (sin espacios). Ej: Deposito A,Deposito B' },
       { 'Instrucción': 'La columna "unidad" debe contener uno de los siguientes valores exactos: unidades, litros, kilos, metros, gramos, cajas.'}
     ]);
     
@@ -380,7 +380,14 @@ export default function ProductosPage() {
   };
 
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!firestore || !collectionPrefix) return;
+    if (!firestore || !collectionPrefix || !categories || !suppliers || !deposits) {
+        toast({
+            variant: 'destructive',
+            title: 'Datos no cargados',
+            description: 'Espera a que todos los datos de la página se carguen antes de importar.',
+        });
+        return;
+    }
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -388,51 +395,60 @@ export default function ProductosPage() {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        const categoryMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
+        const supplierMap = new Map(suppliers.map(s => [s.name.toLowerCase(), s.id]));
+        const depositMap = new Map(deposits.map(d => [d.name.toLowerCase(), d.id]));
+
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+        const json = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-        if (json.length < 2) {
+        if (json.length === 0) {
           throw new Error("El archivo está vacío o no tiene datos.");
         }
-
-        const headers = json[0];
-        const requiredHeaders = ['nombre', 'categoria_id', 'proveedor_id', 'precio', 'stock_minimo', 'unidad', 'depositos_ids'];
-        if (!requiredHeaders.every(h => headers.includes(h))) {
-          throw new Error(`El archivo debe contener las siguientes columnas: ${requiredHeaders.join(', ')}.`);
-        }
         
-        const productsToCreate = json.slice(1);
         const batch = writeBatch(firestore);
+        let productsCreated = 0;
 
-        for (const row of productsToCreate) {
-          const productData: any = {};
-          headers.forEach((header, index) => {
-            productData[header] = row[index];
-          });
+        for (const [index, row] of json.entries()) {
+          const rowNum = index + 2; // +1 for header, +1 for 0-index
+
+          const categoryId = categoryMap.get(String(row.categoria_nombre).toLowerCase());
+          if (!categoryId) throw new Error(`Fila ${rowNum}: No se encontró la categoría '${row.categoria_nombre}'.`);
+
+          const supplierId = supplierMap.get(String(row.proveedor_nombre).toLowerCase());
+          if (!supplierId) throw new Error(`Fila ${rowNum}: No se encontró el proveedor '${row.proveedor_nombre}'.`);
           
+          const depositNames = String(row.depositos_nombres).split(',');
+          const depositIds = depositNames.map(name => {
+              const id = depositMap.get(name.trim().toLowerCase());
+              if (!id) throw new Error(`Fila ${rowNum}: No se encontró el depósito '${name.trim()}'.`);
+              return id;
+          });
+
           const newProductRef = doc(collection(firestore, `${collectionPrefix}/products`));
           batch.set(newProductRef, {
-            name: productData.nombre,
-            categoryId: productData.categoria_id,
-            supplierId: productData.proveedor_id,
-            price: Number(productData.precio),
-            minStock: Number(productData.stock_minimo),
-            unit: productData.unidad,
-            depositIds: productData.depositos_ids.split(','),
-            code: generateProductCode(productData.nombre),
+            name: row.nombre,
+            categoryId: categoryId,
+            supplierId: supplierId,
+            price: Number(row.precio),
+            minStock: Number(row.stock_minimo),
+            unit: row.unidad,
+            depositIds: depositIds,
+            code: generateProductCode(row.nombre),
             isArchived: false,
             createdAt: serverTimestamp(),
           });
+          productsCreated++;
         }
         
         await batch.commit();
 
         toast({
           title: 'Importación Completa',
-          description: `Se han creado ${productsToCreate.length} productos nuevos.`,
+          description: `Se han creado ${productsCreated} productos nuevos.`,
         });
 
       } catch (error: any) {
