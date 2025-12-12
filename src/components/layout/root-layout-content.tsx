@@ -9,6 +9,7 @@ import {
   useDoc,
   useMemoFirebase,
   useAuth,
+  useCollection,
 } from '@/firebase';
 import {
   Sidebar,
@@ -49,7 +50,7 @@ import { signOut } from 'firebase/auth';
 import type { AppSettings } from '@/types/settings';
 import { useEffect, useMemo } from 'react';
 import Image from 'next/image';
-import { doc } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 
 type UserProfile = {
@@ -81,6 +82,31 @@ function AppLayout({
     [firestore, user]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
+  
+  const movementsQuery = useMemoFirebase(() => {
+    if (!user || isLoadingProfile || !currentUserProfile?.workspaceId) {
+        return null; 
+    }
+
+    const baseCollection = collection(firestore, `workspaces/${currentUserProfile.workspaceId}/stockMovements`);
+    const role = currentUserProfile.role;
+
+    if (['administrador', 'editor', 'super-admin'].includes(role!)) {
+        return baseCollection;
+    }
+
+    if (role === 'solicitante') {
+        return query(baseCollection, where('userId', '==', user.uid));
+    }
+
+    if (role === 'jefe_deposito') {
+        return null; 
+    }
+
+    return null;
+  }, [user, isLoadingProfile, currentUserProfile, firestore]);
+
+  const { data: stockMovements } = useCollection(movementsQuery);
   
   // Conditionally fetch workspace data only if workspaceId exists
   const workspaceDocRef = useMemoFirebase(
