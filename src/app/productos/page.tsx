@@ -21,6 +21,7 @@ import {
   query,
   where,
   writeBatch,
+  orderBy,
 } from 'firebase/firestore';
 import {
   Card,
@@ -204,7 +205,14 @@ export default function ProductosPage() {
   }, [deposits]);
 
   const productsCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true)) : null),
+    () =>
+      firestore && collectionPrefix
+        ? query(
+            collection(firestore, `${collectionPrefix}/products`),
+            where('isArchived', '!=', true),
+            orderBy('createdAt', 'desc') // Order by creation date descending
+          )
+        : null,
     [firestore, collectionPrefix]
   );
   const { data: products, isLoading: isLoadingProducts } =
@@ -667,7 +675,7 @@ export default function ProductosPage() {
                       )}
                     />
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="submit"
                       disabled={isSubmitting}
@@ -678,8 +686,7 @@ export default function ProductosPage() {
                       )}
                       Agregar Producto
                     </Button>
-                    {canManageProducts && (
-                      <div className="flex gap-2">
+                    <div className="flex gap-2">
                         <Button onClick={handleExportModel} variant="outline" type="button">
                           <FileUp className="mr-2 h-4 w-4" />
                           Exportar Modelo
@@ -701,7 +708,6 @@ export default function ProductosPage() {
                           accept=".xlsx, .xls"
                         />
                       </div>
-                    )}
                   </div>
                 </form>
               </Form>
