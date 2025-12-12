@@ -379,31 +379,35 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const availableProductsForMovement = useMemo(() => {
     if (!products || !selectedDepositId) return [];
-
+  
     // First, filter products that are allowed in the selected deposit
     const productsInDeposit = products.filter(
       (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
     );
-    
+  
     // For 'entrada', we can show all products assigned to the deposit
     if (movementType === 'entrada') {
       return productsInDeposit;
     }
+  
+    // For 'salida', we also need to check if there is stock.
+    // This logic now only applies to 'salida'.
+    if (movementType === 'salida') {
+        if (!inventory) return []; // If inventory isn't loaded, we can't determine stock
+        const productsWithStock = new Set(
+            inventory
+            .filter(
+                (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
+            )
+            .map((stock) => stock.productId)
+        );
     
-    // For 'salida', we also need to check if there is stock
-    if (!inventory) return [];
-    
-    const productsWithStock = new Set(
-      inventory
-        .filter(
-          (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
-        )
-        .map((stock) => stock.productId)
-    );
-
-    return productsInDeposit.filter(
-      (product) => productsWithStock.has(product.id)
-    );
+        return productsInDeposit.filter(
+            (product) => productsWithStock.has(product.id)
+        );
+    }
+  
+    return []; // Default to empty if no conditions are met
   }, [movementType, selectedDepositId, products, inventory]);
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
