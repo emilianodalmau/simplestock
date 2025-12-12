@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Toaster } from '@/components/ui/toaster';
@@ -43,6 +42,7 @@ import {
   Calculator,
   ListChecks,
   CreditCard,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -50,12 +50,11 @@ import { signOut } from 'firebase/auth';
 import type { AppSettings } from '@/types/settings';
 import { useEffect, useMemo } from 'react';
 import Image from 'next/image';
-import { collection, doc, query, where } from 'firebase/firestore';
-import { Loader2 } from 'lucide-react';
+import { doc, collection, query, where } from 'firebase/firestore'; 
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
-  workspaceId?: string | null; // Allow null
+  workspaceId?: string | null;
 };
 
 type Workspace = {
@@ -77,50 +76,23 @@ function AppLayout({
   const auth = useAuth();
   const router = useRouter();
 
+  // 1. Cargar Perfil de Usuario
   const userDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
     [firestore, user]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   
-  const movementsQuery = useMemoFirebase(() => {
-    if (!user || isLoadingProfile || !currentUserProfile?.workspaceId) {
-        return null; 
-    }
-
-    const baseCollection = collection(firestore, `workspaces/${currentUserProfile.workspaceId}/stockMovements`);
-    const role = currentUserProfile.role;
-
-    if (['administrador', 'editor', 'super-admin'].includes(role!)) {
-        return baseCollection;
-    }
-
-    if (role === 'solicitante') {
-        return query(baseCollection, where('userId', '==', user.uid));
-    }
-
-    if (role === 'jefe_deposito') {
-        return null; 
-    }
-
-    return null;
-  }, [user, isLoadingProfile, currentUserProfile, firestore]);
-
-  const { data: stockMovements } = useCollection(movementsQuery);
-  
-  // Conditionally fetch workspace data only if workspaceId exists
+  // 2. Cargar datos del Workspace si existen
   const workspaceDocRef = useMemoFirebase(
     () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
     [firestore, currentUserProfile?.workspaceId]
   );
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
-  // --- Workspace Redirection Logic ---
+  // 3. Lógica de redirección para administradores sin workspace
   useEffect(() => {
-    // Wait until we have a definitive user profile
     if (!isLoadingProfile && user && currentUserProfile) {
-      // If user is an admin without a workspace, force them to the dashboard
-      // The dashboard itself will handle rendering the creation form.
       if (
         currentUserProfile.role === 'administrador' &&
         !currentUserProfile.workspaceId &&
@@ -164,9 +136,8 @@ function AppLayout({
   }, [currentUserProfile?.role]);
 
   const isLoading = isUserLoading || isLoadingProfile;
-  const hideSidebar = ['/login', '/signup', '/'].includes(pathname);
+  const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment');
   
-  // This flag determines if we are in a state where a redirection is expected to happen.
   const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
 
   if (isLoading || isPendingRedirect) {
@@ -213,15 +184,15 @@ function AppLayout({
           <SidebarMenu>
             {menuItems.map((item) => (
               <SidebarMenuItem key={item.label}>
-                <Link href={item.href} passHref>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname.startsWith(item.href)}
-                    icon={<item.icon />}
-                  >
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname.startsWith(item.href)}
+                >
+                  <Link href={item.href}>
+                    <item.icon />
                     <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </Link>
+                  </Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -229,12 +200,14 @@ function AppLayout({
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={handleLogout} icon={<LogOut />}>
+              <SidebarMenuButton onClick={handleLogout}>
+                <LogOut />
                 <span>Cerrar Sesión</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton disabled icon={<FileCode />}>
+              <SidebarMenuButton disabled>
+                <FileCode />
                 <span>{globalAppName}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -244,7 +217,9 @@ function AppLayout({
       <SidebarInset>
         <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
           <SidebarTrigger className="md:hidden" />
-          <div className="w-full flex-1">{/* Add Header Content Here */}</div>
+          <div className="w-full flex-1">
+             {/* Notificaciones globales */}
+          </div>
         </header>
         <main className="flex-1">{children}</main>
       </SidebarInset>
