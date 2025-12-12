@@ -1103,7 +1103,7 @@ export default function MovimientosPage() {
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    return ['administrador', 'editor', 'jefe_deposito', 'solicitante'].includes(currentUserProfile.role);
+    return ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
   if (isUserLoading || isLoadingProfile) {
