@@ -37,7 +37,6 @@ import {
   ClipboardList,
   Shield,
   FileCode,
-  History,
   FileCheck,
   Calculator,
   ListChecks,
@@ -135,7 +134,7 @@ function AppLayout({
     return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
   }, [currentUserProfile?.role]);
 
-  const isLoading = isUserLoading || isLoadingProfile;
+  const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
   const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment');
   
   const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
