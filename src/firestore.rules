@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión Universal - Fix Referencias)
+    // HELPER FUNCTIONS (Optimized)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -18,14 +18,18 @@ service cloud.firestore {
       return getUserDoc().data;
     }
 
-    // --- CORRECCIÓN FINAL ---
-    // Esta función verifica si el workspaceId del usuario coincide con el ID de la URL
-    // Acepta CASO A (String): "DTtVXI..." == "DTtVXI..."
-    // Acepta CASO B (Reference): /databases/.../workspaces/DTtVXI... == /databases/.../workspaces/DTtVXI...
+    // --- CORRECCIÓN: isWorkspaceAdmin explícito ---
+    function isWorkspaceAdmin(workspaceId) {
+      return hasWorkspaceRole(workspaceId, 'administrador');
+    }
+
+    // --- CORRECCIÓN: Validación más segura con .get() ---
     function isInWorkspace(workspaceId) {
        let userData = getMyData();
        return isSignedIn() 
               && userData != null 
+              // Usamos .get() con valor por defecto para evitar errores si el campo falta
+              && userData.get('workspaceId', '') != ''
               && (
                  userData.workspaceId == workspaceId || 
                  userData.workspaceId == /databases/$(database)/documents/workspaces/$(workspaceId)
@@ -45,20 +49,19 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       let userData = getMyData();
-      return isSignedIn() && userData != null && userData.role == 'super-admin';
+      // Uso de .get() para seguridad
+      return isSignedIn() && userData != null && userData.get('role', '') == 'super-admin';
     }
     
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
-    function isWorkspaceAdmin(workspaceId) {
-      return hasWorkspaceRole(workspaceId, 'administrador');
-    }
 
     function isOrphanAdmin() {
       let userData = getMyData();
-      return isSignedIn() && userData.role == 'administrador' && (userData.workspaceId == null || userData.workspaceId == "");
+      return isSignedIn() 
+             && userData.get('role', '') == 'administrador' 
+             && (userData.get('workspaceId', '') == null || userData.workspaceId == "");
     }
 
     // ------------------------------------------------------------------------
@@ -93,15 +96,14 @@ service cloud.firestore {
             allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'jefe_deposito');
         }
 
-        // --- STOCK MOVEMENTS ---
+        // --- STOCK MOVEMENTS (CORREGIDO) ---
         match /stockMovements/{movementId} {
+             // CORRECCIÓN PRINCIPAL: 
+             // 1. Unificamos 'get' y 'list' en 'read'.
+             // 2. Añadimos explícitamente isWorkspaceAdmin para asegurar acceso al rol.
+             allow read: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || isInWorkspace(workspaceId);
+             
              allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
-             allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-            
-             // LIST: Acceso permitido si estás en el workspace.
-             // Esto desbloquea el RootLayoutContent inmediatamente.
-             allow list: if isSuperAdmin() || isInWorkspace(workspaceId);
-
              allow update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
     }
