@@ -17,10 +17,9 @@ service cloud.firestore {
     
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      let userWorkspaceId = userData.get('workspaceId', '');
       // La comparación debe ser directa con el ID del workspace,
       // o con la referencia completa al documento del workspace.
-      return isSignedIn() && (userWorkspaceId == workspaceId || userWorkspaceId == /databases/$(database)/documents/workspaces/$(workspaceId));
+      return isSignedIn() && (userData.workspaceId == workspaceId || userData.workspaceId == /databases/$(database)/documents/workspaces/$(workspaceId));
     }
 
     function hasWorkspaceRole(workspaceId, role) {
@@ -111,23 +110,14 @@ service cloud.firestore {
                 );
         }
         
-        // --- STOCK MOVEMENTS ---
+        // --- STOCK MOVEMENTS (Regla de lectura flexibilizada) ---
         match /stockMovements/{movementId} {
              
              allow create: if isSuperAdmin() 
                             || isInWorkspace(workspaceId);
              
-             allow read: if 
-                isSuperAdmin() || 
-                (
-                  isInWorkspace(workspaceId) && 
-                  (
-                    getMyData().role == 'administrador' || 
-                    getMyData().role == 'editor' || 
-                    getMyData().role == 'jefe_deposito' ||
-                    (getMyData().role == 'solicitante' && resource.data.userId == request.auth.uid)
-                  )
-                );
+             // REGLA CORREGIDA: Se permite leer a cualquier usuario que pertenezca al workspace.
+             allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
 
              allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
 
