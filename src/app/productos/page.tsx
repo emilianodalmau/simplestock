@@ -81,6 +81,7 @@ import { Loader2, Edit, Trash2, FileUp, FileDown } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const unitTypes = [
   'unidades',
@@ -156,6 +157,7 @@ export default function ProductosPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   
   // State for filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -236,11 +238,9 @@ export default function ProductosPage() {
 
     // Sort by creation date on the client side
     return filtered.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : 0;
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : 0;
-        if (dateA > dateB) return -1;
-        if (dateA < dateB) return 1;
-        return 0;
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+        return dateB - dateA;
     });
 
   }, [products, searchTerm, selectedCategory, selectedSupplier, selectedDeposit, selectedUnit]);
@@ -356,6 +356,32 @@ export default function ProductosPage() {
         title: 'Error',
         description: 'Ocurrió un error al archivar el producto.',
       });
+    }
+  };
+  
+  const handleBulkArchive = async () => {
+    if (!firestore || !collectionPrefix || selectedProducts.length === 0) return;
+    
+    const batch = writeBatch(firestore);
+    selectedProducts.forEach(productId => {
+        const productRef = doc(firestore, `${collectionPrefix}/products`, productId);
+        batch.update(productRef, { isArchived: true });
+    });
+
+    try {
+        await batch.commit();
+        toast({
+            title: 'Archivado Masivo Exitoso',
+            description: `${selectedProducts.length} productos han sido archivados.`
+        });
+        setSelectedProducts([]); // Clear selection
+    } catch(error) {
+        console.error('Error during bulk archive:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Error de Archivado Masivo',
+            description: 'No se pudieron archivar los productos seleccionados.',
+        });
     }
   };
 
@@ -507,6 +533,22 @@ export default function ProductosPage() {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   }
+  
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedProducts(filteredProducts.map(p => p.id));
+    } else {
+      setSelectedProducts([]);
+    }
+  };
+
+  const handleSelectProduct = (productId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedProducts(prev => [...prev, productId]);
+    } else {
+      setSelectedProducts(prev => prev.filter(id => id !== productId));
+    }
+  };
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -787,11 +829,42 @@ export default function ProductosPage() {
                             ))}
                         </SelectContent>
                     </Select>
+                    {selectedProducts.length > 0 && canManageProducts && (
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive">
+                                    <Trash2 className="mr-2 h-4 w-4"/>
+                                    Archivar ({selectedProducts.length})
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>¿Estás seguro de archivar los productos seleccionados?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Esta acción no se puede deshacer. Se archivarán {selectedProducts.length} productos.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleBulkArchive} className="bg-destructive hover:bg-destructive/90">
+                                        Sí, archivar
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
                 </div>
               <div className="rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[50px]">
+                         <Checkbox
+                            checked={selectedProducts.length > 0 && selectedProducts.length === filteredProducts.length}
+                            onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                            aria-label="Seleccionar todo"
+                         />
+                      </TableHead>
                       <TableHead>Código</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Categoría</TableHead>
@@ -809,59 +882,40 @@ export default function ProductosPage() {
                     {isLoading &&
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell>
-                            <Skeleton className="h-4 w-20" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-40" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-32" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-48" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-32" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-24" />
-                          </TableCell>
-                           <TableCell>
-                            <Skeleton className="h-4 w-24" />
-                          </TableCell>
-                           <TableCell>
-                            <Skeleton className="h-4 w-24" />
-                          </TableCell>
+                          <TableCell><Skeleton className="h-5 w-5"/></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                           {canManageProducts && (
-                            <TableCell>
-                              <Skeleton className="ml-auto h-8 w-20" />
-                            </TableCell>
+                            <TableCell><Skeleton className="ml-auto h-8 w-20" /></TableCell>
                           )}
                         </TableRow>
                       ))}
                     {!isLoading && filteredProducts.length === 0 && (
                       <TableRow>
-                        <TableCell
-                          colSpan={canManageProducts ? 9 : 8}
-                          className="text-center"
-                        >
+                        <TableCell colSpan={canManageProducts ? 10 : 9} className="text-center">
                           No hay productos que coincidan con los filtros aplicados.
                         </TableCell>
                       </TableRow>
                     )}
                     {!isLoading &&
                       filteredProducts.map((product) => (
-                        <TableRow key={product.id}>
-                          <TableCell className="font-mono">
-                            {product.code}
+                        <TableRow key={product.id} data-state={selectedProducts.includes(product.id) ? "selected" : ""}>
+                          <TableCell>
+                            <Checkbox
+                                checked={selectedProducts.includes(product.id)}
+                                onCheckedChange={(checked) => handleSelectProduct(product.id, checked as boolean)}
+                                aria-label={`Seleccionar producto ${product.name}`}
+                            />
                           </TableCell>
-                          <TableCell className="font-medium">
-                            {product.name}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {getCategoryName(product.categoryId)}
-                          </TableCell>
+                          <TableCell className="font-mono">{product.code}</TableCell>
+                          <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                                 {product.depositIds?.map(id => (
@@ -869,18 +923,10 @@ export default function ProductosPage() {
                                 )) || '-'}
                             </div>
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {getSupplierName(product.supplierId)}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {product.unit}
-                          </TableCell>
-                           <TableCell className="text-muted-foreground font-medium">
-                            {formatPrice(product.price)}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {product.minStock}
-                          </TableCell>
+                          <TableCell className="text-muted-foreground">{getSupplierName(product.supplierId)}</TableCell>
+                          <TableCell className="text-muted-foreground">{product.unit}</TableCell>
+                          <TableCell className="text-muted-foreground font-medium">{formatPrice(product.price)}</TableCell>
+                          <TableCell className="text-muted-foreground">{product.minStock}</TableCell>
                           {canManageProducts && (
                             <TableCell className="text-right">
                               <Button
