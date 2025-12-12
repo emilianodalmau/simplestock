@@ -420,6 +420,8 @@ function AdjustmentHistory({
   );
   
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  const isAdmin = currentUserProfile?.role === 'administrador';
+
 
   // Find the deposits assigned to the 'jefe_deposito'
   const depositsCollection = useMemoFirebase(
@@ -442,20 +444,27 @@ function AdjustmentHistory({
       `${collectionPrefix}/stockMovements`
     );
     
-    let baseQuery = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
+    // Common part of the query for adjustments
+    const baseQueryParts = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
     
     // If 'jefe_deposito', filter by their assigned deposit IDs.
     if (isJefeDeposito) {
         if (!assignedDepositIds || assignedDepositIds.length === 0) return null; // Don't query if no deposits assigned
-        return query(movementsCollectionRef, where('depositId', 'in', assignedDepositIds), ...baseQuery);
+        return query(movementsCollectionRef, where('depositId', 'in', assignedDepositIds), ...baseQueryParts);
     }
     
-    // Admins see all adjustments.
-    return query(
-      movementsCollectionRef,
-      ...baseQuery
-    );
-  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositIds]);
+    // If 'administrador', they see all adjustments in the workspace.
+    if (isAdmin) {
+      return query(
+        movementsCollectionRef,
+        ...baseQueryParts
+      );
+    }
+
+    // Default to null if no applicable role found
+    return null;
+    
+  }, [firestore, collectionPrefix, isJefeDeposito, isAdmin, assignedDepositIds]);
 
   const { data: adjustments, isLoading: isLoadingAdjustments } =
     useCollection<StockMovement>(adjustmentsQuery);
