@@ -2,36 +2,6 @@
 'use server';
 
 import { MercadoPagoConfig, Preference } from 'mercadopago';
-import fs from 'fs/promises';
-import path from 'path';
-import { revalidatePath } from 'next/cache';
-
-const settingsFilePath = path.join(
-  process.cwd(),
-  'src/lib/app-settings.json'
-);
-
-
-// This is the missing Server Action
-export async function updateSettings(formData: FormData) {
-  try {
-    const newSettings = {
-      appName: formData.get('appName') as string,
-      logoUrl: formData.get('logoUrl') as string,
-    };
-    
-    await fs.writeFile(settingsFilePath, JSON.stringify(newSettings, null, 2), 'utf-8');
-
-    // Revalidate the path to ensure the new settings are picked up on next page load
-    revalidatePath('/', 'layout');
-
-    return { success: true, message: 'Settings updated successfully.' };
-  } catch (error) {
-    console.error('Failed to update settings:', error);
-    return { success: false, message: 'Failed to update settings.' };
-  }
-}
-
 
 export async function createSubscription(prevState: any, formData: FormData) {
   const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
