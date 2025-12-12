@@ -117,7 +117,7 @@ function AppLayout({
     { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
     { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito'] },
+    { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'jefe_deposito', 'solicitante'] },
     { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
     { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['solicitante'] },
     { href: '/test', label: 'Test', icon: ListChecks, roles: ['jefe_deposito'] },
