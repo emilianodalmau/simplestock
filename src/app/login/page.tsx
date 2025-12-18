@@ -9,8 +9,8 @@ export default function LoginPage() {
         <Image
           src="/estante.png"
           alt="Ilustración de inicio de sesión"
-          width={500}
-          height={500}
+          width={400}
+          height={400}
           className="rounded-lg object-cover"
         />
       </div>
