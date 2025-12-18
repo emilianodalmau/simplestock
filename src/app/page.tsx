@@ -56,7 +56,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div className="flex justify-center">
               <Image 
-                src="/mi-logo.png" 
+                src="/imagendeinicio.png" 
                 alt="Logo de la aplicación"
                 width={400}
                 height={400}
