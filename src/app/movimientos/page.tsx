@@ -298,20 +298,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const inventoryCollection = useMemoFirebase(
     () => {
         if (!firestore || !collectionPrefix) return null;
-        const baseInvRef = collection(firestore, `${collectionPrefix}/inventory`);
-        
-        if (isAdminOrEditor) return baseInvRef;
-
-        if (isJefeDeposito) {
-             if (assignedDepositIds === null) return null;
-             if (assignedDepositIds.length === 0) return null;
-             return query(baseInvRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
-        }
-        return null; 
+        return collection(firestore, `${collectionPrefix}/inventory`);
     },
-    [firestore, collectionPrefix, isAdminOrEditor, isJefeDeposito, assignedDepositIds]
+    [firestore, collectionPrefix]
   );
-
+  
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryCollection);
 
@@ -375,27 +366,35 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const availableProductsForMovement = useMemo(() => {
     if (!products || !selectedDepositId) return [];
 
+    // All products assigned to the deposit
     const productsInDeposit = products.filter(
         (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
     );
 
+    // For entries, we can add any product assigned to the deposit
     if (movementType === 'entrada') {
         return productsInDeposit;
     }
 
+    // For exits, we need to check the stock
     if (movementType === 'salida') {
-        if (!inventory) return [];
+        if (!inventory) return []; // Wait for inventory data to load
+
+        // Create a Set of product IDs that have stock in the selected deposit
         const productsWithStock = new Set(
             inventory
                 .filter(stock => stock.depositId === selectedDepositId && stock.quantity > 0)
                 .map(stock => stock.productId)
         );
-
+        
+        // Return only the products that are in the deposit AND have stock
         return productsInDeposit.filter(product => productsWithStock.has(product.id));
     }
-
+    
+    // Default to empty if type is not recognized
     return [];
-  }, [movementType, selectedDepositId, products, inventory]);
+}, [movementType, selectedDepositId, products, inventory]);
+
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
