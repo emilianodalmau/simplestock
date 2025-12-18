@@ -7,14 +7,6 @@ export default function LoginPage() {
   return (
     <div className="container flex min-h-[calc(100vh-3.5rem)] items-center justify-center py-12">
       <div className="flex flex-col items-center gap-8 md:flex-row">
-        <div className="order-last md:order-first">
-            <AuthCard
-              title="Bienvenido de Nuevo"
-              description="Ingresa tus credenciales para acceder a tu cuenta."
-            >
-              <LoginForm />
-            </AuthCard>
-        </div>
         <div>
           <Image
             src="/estante.png"
@@ -23,6 +15,14 @@ export default function LoginPage() {
             height={400}
             className="rounded-lg object-cover"
           />
+        </div>
+        <div className="order-last">
+            <AuthCard
+              title="Bienvenido de Nuevo"
+              description="Ingresa tus credenciales para acceder a tu cuenta."
+            >
+              <LoginForm />
+            </AuthCard>
         </div>
       </div>
     </div>
