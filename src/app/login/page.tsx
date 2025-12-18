@@ -5,7 +5,7 @@ import Image from "next/image";
 export default function LoginPage() {
   return (
     <div className="container grid min-h-[calc(100vh-3.5rem)] grid-cols-1 items-center py-12 md:grid-cols-2">
-      <div className="flex justify-center md:order-last">
+      <div className="flex justify-center md:order-first">
         <Image
           src="/estante.png"
           alt="Ilustración de inicio de sesión"
@@ -14,7 +14,7 @@ export default function LoginPage() {
           className="rounded-lg object-cover"
         />
       </div>
-      <div className="flex justify-center md:order-first">
+      <div className="flex justify-center md:order-last">
         <AuthCard
           title="Bienvenido de Nuevo"
           description="Ingresa tus credenciales para acceder a tu cuenta."
