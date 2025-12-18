@@ -15,7 +15,7 @@ export default function LoginPage() {
       </div>
       <div className="hidden items-center justify-start md:flex">
         <Image
-          src="/est.png"
+          src="/estante.png"
           alt="Ilustración de inicio de sesión"
           width={500}
           height={500}
