@@ -65,7 +65,7 @@ export default function Home() {
               />
             </div>
             <div className="flex flex-col items-center md:items-start text-center md:text-left gap-4">
-              <h1 className="text-4xl font-bold">
+              <h1 className="text-4xl font-bold font-headline">
                 Bienvenido a SIMPLESTOCK
               </h1>
               <p className="text-muted-foreground">
