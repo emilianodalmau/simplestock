@@ -66,7 +66,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col items-center md:items-start text-center md:text-left gap-4">
               <h1 className="text-4xl font-bold">
-                Bienvenido al Gestor de Inventario
+                Bienvenido a SIMPLESTOCK
               </h1>
               <p className="text-muted-foreground">
                 Por favor, inicia sesión o regístrate para continuar.
