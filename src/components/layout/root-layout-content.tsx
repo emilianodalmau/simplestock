@@ -114,7 +114,6 @@ function AppLayout({
   const allMenuItems = [
     { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
     { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
-    { href: '/super-admin/corredera-de-pago', label: 'Corredera de Pago', icon: CreditCard, roles: ['super-admin'] },
     { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
     { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
     { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
@@ -241,5 +240,3 @@ export function RootLayoutContent({
     </FirebaseClientProvider>
   );
 }
-
-    
