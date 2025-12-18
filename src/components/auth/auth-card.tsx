@@ -16,7 +16,7 @@ type AuthCardProps = {
 export function AuthCard({ title, description, children }: AuthCardProps) {
   return (
     <Card className="w-full max-w-sm">
-      <CardHeader className="text-center">
+      <CardHeader className="text-left">
         <CardTitle className="text-2xl font-headline">{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
