@@ -10,7 +10,7 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check } from 'lucide-react';
+import { Check, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -111,6 +111,14 @@ export default function PreciosPage() {
             </CardFooter>
           </Card>
         ))}
+      </div>
+        <div className="mt-12 text-center">
+            <Button asChild variant="ghost">
+            <Link href="/">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver al Inicio
+            </Link>
+            </Button>
       </div>
     </div>
   );
