@@ -366,34 +366,33 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const availableProductsForMovement = useMemo(() => {
     if (!products || !selectedDepositId) return [];
 
-    // All products assigned to the deposit
+    // First, find all products that are assigned to the selected deposit.
     const productsInDeposit = products.filter(
         (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
     );
 
-    // For entries, we can add any product assigned to the deposit
+    // If it's an 'entrada', any product assigned to the deposit is available.
     if (movementType === 'entrada') {
         return productsInDeposit;
     }
 
-    // For exits, we need to check the stock
+    // If it's a 'salida', we need to check stock.
     if (movementType === 'salida') {
-        if (!inventory) return []; // Wait for inventory data to load
+        if (!inventory) return []; // Wait for inventory data.
 
-        // Create a Set of product IDs that have stock in the selected deposit
-        const productsWithStock = new Set(
+        // Create a Set of product IDs that have a stock > 0 in the selected deposit.
+        const productsWithStockInDeposit = new Set(
             inventory
-                .filter(stock => stock.depositId === selectedDepositId && stock.quantity > 0)
-                .map(stock => stock.productId)
+                .filter(stockItem => stockItem.depositId === selectedDepositId && stockItem.quantity > 0)
+                .map(stockItem => stockItem.productId)
         );
-        
-        // Return only the products that are in the deposit AND have stock
-        return productsInDeposit.filter(product => productsWithStock.has(product.id));
+
+        // Return only the products that are both assigned to the deposit AND have stock.
+        return productsInDeposit.filter(product => productsWithStockInDeposit.has(product.id));
     }
     
-    // Default to empty if type is not recognized
-    return [];
-}, [movementType, selectedDepositId, products, inventory]);
+    return []; // Default case
+  }, [movementType, selectedDepositId, products, inventory]);
 
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
