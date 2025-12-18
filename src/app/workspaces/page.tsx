@@ -267,7 +267,7 @@ export default function WorkspacesPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Workspaces</h1>
+          <h1 className="text-3xl font-bold tracking-tight font-headline">Workspaces</h1>
           <p className="text-muted-foreground">
             Administra los espacios de trabajo de cada administrador.
           </p>
@@ -473,5 +473,3 @@ export default function WorkspacesPage() {
     </div>
   );
 }
-
-    

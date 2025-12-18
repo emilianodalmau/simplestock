@@ -553,7 +553,7 @@ export default function ProductosPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">Productos</h1>
         <p className="text-muted-foreground">
           Administra los productos del inventario.
         </p>

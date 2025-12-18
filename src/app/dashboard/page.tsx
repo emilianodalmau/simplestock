@@ -155,7 +155,7 @@ function CreateWorkspaceForm() {
 function MainDashboard() {
     return (
         <>
-         <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
+         <h1 className="text-3xl font-bold tracking-tight font-headline">Panel de Control</h1>
          <p className="text-muted-foreground">Bienvenido a tu panel de control.</p>
         </>
     );

@@ -644,7 +644,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Movimientos de Stock</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">Movimientos de Stock</h1>
         <p className="text-muted-foreground">
           Registra entradas y salidas de inventario o consulta el historial de remitos.
         </p>
