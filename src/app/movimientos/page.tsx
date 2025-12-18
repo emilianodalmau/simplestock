@@ -242,26 +242,21 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     
-    // Roles with broad access
     if (isAdminOrEditor || role === 'visualizador') {
-        return baseRef;
+        return query(baseRef, orderBy('createdAt', 'desc'));
     }
     
-    // Solicitante: MUST filter by their userId to comply with security rules
     if (role === 'solicitante') {
-        return query(baseRef, where('userId', '==', user.uid));
+        return query(baseRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
     }
     
-    // Jefe de Depósito: MUST filter by their depositId(s) to comply with security rules
     if (role === 'jefe_deposito') {
-        if (assignedDepositIds === null) return null; // Still loading deposits, wait.
-        if (assignedDepositIds.length === 0) return null; // No deposits assigned, so no query needed.
+        if (assignedDepositIds === null) return null;
+        if (assignedDepositIds.length === 0) return null; 
         
-        // Firestore 'in' query is limited to 30 elements.
-        return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)));
+        return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)), orderBy('createdAt', 'desc'));
     }
     
-    // Default case: no valid role for this page, so don't query.
     return null;
   }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor]);
   
@@ -379,35 +374,27 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const availableProductsForMovement = useMemo(() => {
     if (!products || !selectedDepositId) return [];
-  
-    // First, filter products that are allowed in the selected deposit
+
     const productsInDeposit = products.filter(
-      (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
+        (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
     );
-  
-    // For 'entrada', we can show all products assigned to the deposit
+
     if (movementType === 'entrada') {
-      return productsInDeposit;
+        return productsInDeposit;
     }
-  
-    // For 'salida', we also need to check if there is stock.
-    // This logic now only applies to 'salida'.
+
     if (movementType === 'salida') {
-        if (!inventory) return []; // If inventory isn't loaded, we can't determine stock
+        if (!inventory) return [];
         const productsWithStock = new Set(
             inventory
-            .filter(
-                (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
-            )
-            .map((stock) => stock.productId)
+                .filter(stock => stock.depositId === selectedDepositId && stock.quantity > 0)
+                .map(stock => stock.productId)
         );
-    
-        return productsInDeposit.filter(
-            (product) => productsWithStock.has(product.id)
-        );
+
+        return productsInDeposit.filter(product => productsWithStock.has(product.id));
     }
-  
-    return []; // Default to empty if no conditions are met
+
+    return [];
   }, [movementType, selectedDepositId, products, inventory]);
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
