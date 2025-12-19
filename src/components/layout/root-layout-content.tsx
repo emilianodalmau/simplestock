@@ -126,6 +126,7 @@ function AppLayout({
     { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
     { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
+    { href: '/precios', label: 'Precios y Planes', icon: CreditCard, roles: ['administrador', 'super-admin']},
     { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
   ];
   
@@ -135,7 +136,7 @@ function AppLayout({
   }, [currentUserProfile?.role]);
 
   const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
-  const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment');
+  const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios';
   
   const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
 
