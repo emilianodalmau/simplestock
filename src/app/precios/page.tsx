@@ -32,6 +32,7 @@ const plans = {
         'Máximo 100 Movimientos/mes',
         'Reportes básicos en pantalla',
         'Soporte comunitario',
+        'Marca de agua "Powered by..."',
       ],
       cta: 'Crear Cuenta Gratis',
       href: '/signup',
@@ -49,7 +50,7 @@ const plans = {
         'Hasta 2,000 Productos',
         'Movimientos de stock ilimitados',
         'Exportación completa (Excel/PDF)',
-        'Personalización con tu logo y nombre',
+        'Logo y nombre propio en interfaz y reportes',
         'Soporte por email prioritario',
       ],
       cta: 'Elegir Plan Crecimiento',
@@ -90,6 +91,7 @@ const plans = {
         'Máximo 100 Movimientos/mes',
         'Reportes básicos en pantalla',
         'Soporte comunitario',
+        'Marca de agua "Powered by..."',
       ],
       cta: 'Crear Cuenta Gratis',
       href: '/signup',
@@ -107,7 +109,7 @@ const plans = {
         'Hasta 2,000 Productos',
         'Movimientos de stock ilimitados',
         'Exportación completa (Excel/PDF)',
-        'Personalización con tu logo y nombre',
+        'Logo y nombre propio en interfaz y reportes',
         'Soporte por email prioritario',
       ],
       cta: 'Elegir Plan Crecimiento',
@@ -154,7 +156,7 @@ export default function PreciosPage() {
       </div>
 
        <div className="flex justify-center items-center space-x-3 mb-10">
-        <Label htmlFor="billing-cycle" className={billingCycle === 'monthly' ? 'text-foreground' : 'text-muted-foreground'}>
+        <Label htmlFor="billing-cycle" className={cn('transition-colors', billingCycle === 'monthly' ? 'text-foreground' : 'text-muted-foreground')}>
           Pago Mensual
         </Label>
         <Switch
@@ -162,7 +164,7 @@ export default function PreciosPage() {
           checked={billingCycle === 'annually'}
           onCheckedChange={(checked) => setBillingCycle(checked ? 'annually' : 'monthly')}
         />
-        <Label htmlFor="billing-cycle" className={billingCycle === 'annually' ? 'text-foreground' : 'text-muted-foreground'}>
+        <Label htmlFor="billing-cycle" className={cn('transition-colors', billingCycle === 'annually' ? 'text-foreground' : 'text-muted-foreground')}>
           Pago Anual (Ahorra 2 meses)
         </Label>
       </div>
