@@ -25,9 +25,9 @@ const plans = {
       period: '',
       description: 'Ideal para emprendedores y para validar tu negocio.',
       features: [
-        '1 Usuario (Rol Administrador)',
+        '1 Usuario (Solo Rol Admin)',
         '1 Workspace',
-        'Hasta 2 Depósitos',
+        'Máximo 2 Depósitos',
         'Máximo 100 Productos',
         'Máximo 100 Movimientos/mes',
         'Reportes básicos en pantalla',
@@ -83,9 +83,9 @@ const plans = {
       period: '',
       description: 'Ideal para emprendedores y para validar tu negocio.',
       features: [
-        '1 Usuario (Rol Administrador)',
+        '1 Usuario (Solo Rol Admin)',
         '1 Workspace',
-        'Hasta 2 Depósitos',
+        'Máximo 2 Depósitos',
         'Máximo 100 Productos',
         'Máximo 100 Movimientos/mes',
         'Reportes básicos en pantalla',
