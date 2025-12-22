@@ -208,8 +208,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const isLoadingDeposits = isJefeDeposito ? isLoadingDepositsForJefe : isLoadingAllDeposits;
 
   const assignedDepositIds = useMemo(() => {
-    if (!isJefeDeposito || !deposits) return null; // Return null if still loading or not applicable
-    if (deposits.length === 0) return []; // Return empty array if loaded but no deposits
+    if (!isJefeDeposito || !deposits) return [];
     return deposits.map(d => d.id);
   }, [isJefeDeposito, deposits]);
   
@@ -237,34 +236,31 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
+  // **** CRITICAL CHANGE: Simplified Query ****
+  // This query is now intentionally broad. The filtering for 'jefe_deposito'
+  // will happen on the client-side in the `filteredMovements` useMemo hook.
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !role || !user) return null;
-
-    const baseRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-    
-    if (isAdminOrEditor || role === 'visualizador') {
-        return query(baseRef, orderBy('createdAt', 'desc'));
-    }
-    
-    if (role === 'solicitante') {
-        return query(baseRef, where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-    }
-    
-    if (role === 'jefe_deposito') {
-        if (assignedDepositIds === null) return null; // Wait until deposit IDs are loaded
-        if (assignedDepositIds.length === 0) return null; // No deposits, so no query needed.
-        
-        return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)), orderBy('createdAt', 'desc'));
-    }
-    
-    return null;
-  }, [firestore, collectionPrefix, role, user, assignedDepositIds, isAdminOrEditor]);
+    if (!firestore || !collectionPrefix) return null;
+    return query(collection(firestore, `${collectionPrefix}/stockMovements`), orderBy('createdAt', 'desc'));
+  }, [firestore, collectionPrefix]);
   
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
     
   const filteredMovements = useMemo(() => {
-    let filtered = movements || [];
+    if (!movements) return [];
+
+    let filtered = movements;
+
+    // **** CRITICAL CHANGE: Client-side filtering for 'jefe_deposito' ****
+    if (isJefeDeposito) {
+        if (assignedDepositIds.length > 0) {
+            const assignedIdsSet = new Set(assignedDepositIds);
+            filtered = filtered.filter(mov => assignedIdsSet.has(mov.depositId));
+        } else {
+            return []; // No deposits assigned, show no movements.
+        }
+    }
 
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
@@ -276,6 +272,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
+    // Filter by deposit for non-jefes
     if (selectedDeposit !== 'all' && !isJefeDeposito) { 
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }
@@ -291,9 +288,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         filtered = filtered.filter(mov => mov.createdAt.toDate() < toDate);
     }
 
-    return filtered.sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime());
+    // The data is already sorted by createdAt desc from the query
+    return filtered;
 
-  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
+  }, [movements, isJefeDeposito, assignedDepositIds, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange]);
+
 
   const inventoryCollection = useMemoFirebase(
     () => {
@@ -637,9 +636,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   };
   
-  if (isLoading || (isJefeDeposito && assignedDepositIds === null)) {
+  const isDataLoading = isLoading || isLoadingMovements;
+  
+  if (isDataLoading && !movements) {
     return <MovementPageSkeleton />;
   }
+
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
@@ -1011,7 +1013,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     {!isLoadingMovements && filteredMovements?.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                          {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0)
+                          {isJefeDeposito && (assignedDepositIds.length === 0)
                             ? "No tienes depósitos asignados para ver movimientos."
                             : "No se encontraron movimientos con los filtros aplicados."
                           }
