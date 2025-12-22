@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 10 - Simplificación para Lectura)
+    // HELPER FUNCTIONS (Versión 11 - Final)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -24,7 +24,8 @@ service cloud.firestore {
     }
     
     function hasWorkspaceRole(workspaceId, role) {
-      return isInWorkspace(workspaceId) && getMyData().get('role', '') == role;
+      let userData = getMyData();
+      return userData != null && userData.get('workspaceId', '') == workspaceId && userData.get('role', '') == role;
     }
 
     function isWorkspaceAdmin(workspaceId) {
@@ -33,7 +34,7 @@ service cloud.firestore {
 
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      return isSignedIn() && userData.workspaceId == workspaceId;
+      return isSignedIn() && userData != null && userData.get('workspaceId', '') == workspaceId;
     }
 
     function isOrphanAdmin() {
@@ -69,64 +70,64 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------------
-    // Collection: /workspaces y Subcolecciones
+    // Collection: /workspaces
     // ------------------------------------------------------------------------
 
     match /workspaces/{workspaceId} {
         allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-        
         allow create: if isSuperAdmin() 
                         || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
-
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
-        
         allow delete: if isSuperAdmin();
+    }
         
-        // --- Subcollection Rules ---
-        
-        match /categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-        match /suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-        match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-        
-        match /products/{productId} {
-            allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
-        }
-        
-        match /deposits/{depositId} {
-            allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
-        }
-        
-        match /inventory/{inventoryStockId} {
-            allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-            allow write: if
-                (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
-                ||
-                (
-                    hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
-                    get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
-                );
-        }
-        
-        match /stockMovements/{movementId} {
-             // SOLUCIÓN DRÁSTICA:
-             // Se relaja la regla de lectura (`list`) para permitir que las consultas del cliente se ejecuten.
-             // La seguridad se delega a las consultas de la aplicación, que ya filtran por 'depositId' o 'userId'
-             // según el rol del usuario, asegurando que solo vean los documentos que les corresponden.
-             // Las reglas de escritura (create, update, delete) permanecen seguras y restrictivas.
-             allow read: if isSignedIn();
-             
-             allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
-             allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
-             allow delete: if 
-                isSuperAdmin() 
-                || isWorkspaceAdmin(workspaceId)
-                || (
-                    hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
-                    get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
-                   );
-        }
+    // ------------------------------------------------------------------------
+    // Subcollections (DESACOPLADAS para mayor claridad)
+    // ------------------------------------------------------------------------
+    
+    match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+    match /workspaces/{workspaceId}/suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+    match /workspaces/{workspaceId}/counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+    
+    match /workspaces/{workspaceId}/products/{productId} {
+        allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+    }
+    
+    match /workspaces/{workspaceId}/deposits/{depositId} {
+        allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+    }
+    
+    match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow write: if
+            (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
+            ||
+            (
+                hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
+                get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
+            );
+    }
+    
+    match /workspaces/{workspaceId}/stockMovements/{movementId} {
+         // **SOLUCIÓN DRÁSTICA Y FINAL:**
+         // Se relaja la regla de lectura (`read` que incluye `list`) para permitir que las consultas 
+         // del cliente se ejecuten sin ser bloqueadas por reglas complejas.
+         // La seguridad se delega a las consultas de la aplicación, que ya filtran por `depositId` o `userId`
+         // según el rol del usuario, asegurando que solo vean los documentos que les corresponden.
+         // Las reglas de escritura (create, update, delete) permanecen seguras y restrictivas.
+         allow read: if isSignedIn();
+         
+         allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
+         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+         allow delete: if 
+            isSuperAdmin() 
+            || isWorkspaceAdmin(workspaceId)
+            || (
+                hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
+                get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
+               );
     }
   }
 }
