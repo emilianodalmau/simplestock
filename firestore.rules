@@ -136,8 +136,18 @@ service cloud.firestore {
         }
         
         match /stockMovements/{movementId} {
-             // CORRECCIÓN FINAL: La lectura debe ser permitida a cualquier miembro del workspace.
-             allow read, create: if isSuperAdmin() || isInWorkspace(workspaceId);
+             // CORRECCIÓN: Permite la lectura (list) a todos los roles que pertenecen al workspace.
+             // La lógica de la UI se encarga de filtrar qué puede ver cada rol.
+             allow read: if isSuperAdmin() || 
+                           (isSignedIn() && 
+                            getMyData().workspaceId == workspaceId &&
+                            (getMyData().role == 'administrador' ||
+                             getMyData().role == 'editor' ||
+                             getMyData().role == 'visualizador' ||
+                             getMyData().role == 'jefe_deposito' ||
+                             getMyData().role == 'solicitante'));
+             
+             allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
              allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
              allow delete: if 
                 isSuperAdmin() 
