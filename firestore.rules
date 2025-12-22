@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 6 - Corregida y Funcional)
+    // HELPER FUNCTIONS (Versión 7 - Con límites de suscripción)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -15,15 +15,25 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     
+    function getWorkspace(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId));
+    }
+    
+    function getWorkspaceData(workspaceId) {
+      return getWorkspace(workspaceId).data;
+    }
+
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      // La comparación debe ser directa con el ID del workspace,
-      // o con la referencia completa al documento del workspace.
-      return isSignedIn() && (userData.workspaceId == workspaceId || userData.workspaceId == /databases/$(database)/documents/workspaces/$(workspaceId));
+      return isSignedIn() && (userData.workspaceId == workspaceId);
     }
 
     function hasWorkspaceRole(workspaceId, role) {
       return isInWorkspace(workspaceId) && getMyData().get('role', '') == role;
+    }
+    
+    function isWorkspaceAdmin(workspaceId) {
+      return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
     function isOwner(userId) {
@@ -34,16 +44,26 @@ service cloud.firestore {
       return isSignedIn() && getMyData().get('role', '') == 'super-admin';
     }
 
-    function isWorkspaceAdmin(workspaceId) {
-      return hasWorkspaceRole(workspaceId, 'administrador');
-    }
-
     function isOrphanAdmin() {
       let userData = getMyData();
       return isSignedIn()
              && userData.get('role', '') == 'administrador'
              && userData.get('workspaceId', null) == null;
     }
+
+    // --- Funciones para límites de suscripción ---
+
+    function getCollectionSize(collectionPath) {
+      return firestore.get(collectionPath).size;
+    }
+    
+    function isWithinLimit(workspaceId, collectionName, limitKey) {
+      let workspaceData = getWorkspaceData(workspaceId);
+      let currentCount = getCollectionSize(/databases/$(database)/documents/workspaces/$(workspaceId)/$(collectionName));
+      let limit = workspaceData.subscription.limits[limitKey];
+      return currentCount < limit;
+    }
+
 
     // ------------------------------------------------------------------------
     // Collection: /users
@@ -59,8 +79,13 @@ service cloud.firestore {
                       && resource.data.workspaceId == getMyData().workspaceId
                       && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
                      );
-
-      allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
+      
+      // La creación de usuarios ahora comprueba el límite del plan
+      allow create: if isSuperAdmin() || 
+                     (
+                       isWorkspaceAdmin(request.resource.data.workspaceId) &&
+                       isWithinLimit(request.resource.data.workspaceId, 'users', 'maxUsers')
+                     );
 
       allow update: if isOwner(userId)
                       || isSuperAdmin()
@@ -87,12 +112,19 @@ service cloud.firestore {
         // --- Subcollection Rules ---
         
         match /categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-        match /products/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         
+        // La creación de productos ahora comprueba el límite del plan
+        match /products/{productId} {
+            allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+            allow create: if (isSuperAdmin() || isInWorkspace(workspaceId)) && isWithinLimit(workspaceId, 'products', 'maxProducts');
+        }
+        
+        // La creación de depósitos ahora comprueba el límite del plan
         match /deposits/{depositId} {
-            allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
+            allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+            allow create: if (isSuperAdmin() || isInWorkspace(workspaceId)) && isWithinLimit(workspaceId, 'deposits', 'maxDeposits');
         }
         
         // --- INVENTORY ---
@@ -110,17 +142,11 @@ service cloud.firestore {
                 );
         }
         
-        // --- STOCK MOVEMENTS (Regla de lectura flexibilizada) ---
+        // --- STOCK MOVEMENTS ---
         match /stockMovements/{movementId} {
-             
-             allow create: if isSuperAdmin() 
-                            || isInWorkspace(workspaceId);
-             
-             // REGLA CORREGIDA: Se permite leer a cualquier usuario que pertenezca al workspace.
+             allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
              allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-
              allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
-
              allow delete: if 
                 isSuperAdmin() 
                 || isWorkspaceAdmin(workspaceId)

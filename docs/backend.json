@@ -89,9 +89,45 @@
         "logoUrl": {
             "type": "string",
             "description": "The URL for the custom logo of the workspace."
+        },
+        "subscription": {
+          "$ref": "#/entities/Subscription"
         }
       },
-      "required": ["id", "name", "ownerId"]
+      "required": ["id", "name", "ownerId", "subscription"]
+    },
+    "Subscription": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Subscription",
+      "type": "object",
+      "description": "Defines the subscription details for a workspace.",
+      "properties": {
+        "planId": {
+          "type": "string",
+          "description": "Identifier for the subscription plan (e.g., 'inicial', 'crecimiento')."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the subscription.",
+          "enum": ["active", "past_due", "canceled", "free"]
+        },
+        "currentPeriodEnd": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date when the current subscription period ends."
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "maxProducts": { "type": "number" },
+            "maxUsers": { "type": "number" },
+            "maxDeposits": { "type": "number" },
+            "maxMovementsPerMonth": { "type": "number" }
+          },
+          "required": ["maxProducts", "maxUsers", "maxDeposits", "maxMovementsPerMonth"]
+        }
+      },
+      "required": ["planId", "status", "currentPeriodEnd", "limits"]
     },
     "Category": {
       "$schema": "http://json-schema.org/draft-07/schema#",

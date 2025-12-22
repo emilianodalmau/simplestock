@@ -76,11 +76,26 @@ function CreateWorkspaceForm() {
 
       // 1. Create the workspace document
       const workspaceRef = doc(collection(firestore, 'workspaces'));
+      
+      // Define the default 'free' plan subscription
+      const freePlanSubscription = {
+        planId: 'inicial',
+        status: 'free',
+        currentPeriodEnd: serverTimestamp(), // Or a far-future date
+        limits: {
+          maxProducts: 100,
+          maxUsers: 1,
+          maxDeposits: 2,
+          maxMovementsPerMonth: 100,
+        },
+      };
+
       const newWorkspace = {
         id: workspaceRef.id,
         name: data.name,
         ownerId: user.uid,
         createdAt: serverTimestamp(),
+        subscription: freePlanSubscription, // Add the default subscription
       };
       batch.set(workspaceRef, newWorkspace);
 
@@ -92,7 +107,7 @@ function CreateWorkspaceForm() {
 
       toast({
         title: 'Workspace Creado',
-        description: `El workspace "${data.name}" ha sido creado.`,
+        description: `El workspace "${data.name}" ha sido creado con el Plan Inicial.`,
       });
 
       // Reload the page to reflect the new state.
@@ -115,7 +130,7 @@ function CreateWorkspaceForm() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardHeader>
-            <CardTitle>Crea tu Espacio de Trabajo</CardTitle>
+            <CardTitle className="font-headline">Crea tu Espacio de Trabajo</CardTitle>
             <CardDescription>
               Para comenzar, dale un nombre a tu workspace. Esto te permitirá
               gestionar tus datos de forma aislada.
