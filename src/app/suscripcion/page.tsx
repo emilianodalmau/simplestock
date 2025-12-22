@@ -228,7 +228,7 @@ export default function SuscripcionPage() {
                         <div className="flex justify-between">
                             <span className="font-medium">Próxima Factura:</span>
                             <span>
-                                {format(currentPlan.currentPeriodEnd.toDate(), 'dd \\'de\\' MMMM, yyyy', { locale: es })}
+                                {format(currentPlan.currentPeriodEnd.toDate(), "dd 'de' MMMM, yyyy", { locale: es })}
                             </span>
                         </div>
                          <div className="flex justify-between">
