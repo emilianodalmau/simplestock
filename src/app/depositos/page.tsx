@@ -159,12 +159,12 @@ export default function DepositosPage() {
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsCollection);
     
-  const jefesDeDeposito = useMemoFirebase(
+  const jefesDeDeposito = useMemo(
     () => users?.filter((user) => user.role === 'jefe_deposito'),
     [users]
   );
   
-  const userMap = useMemoFirebase(() => {
+  const userMap = useMemo(() => {
     if (!users) return new Map<string, string>();
     return new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
   }, [users]);
@@ -598,3 +598,5 @@ export default function DepositosPage() {
     </div>
   );
 }
+
+    

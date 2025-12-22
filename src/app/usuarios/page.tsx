@@ -28,7 +28,6 @@ import {
   useMemoFirebase,
   useUser,
   useDoc,
-  initializeFirebase,
 } from '@/firebase';
 import {
   collection,
@@ -148,6 +147,7 @@ export default function UsuariosPage() {
     if (!firestore || !currentUserProfile) return null;
 
     if (currentUserProfile.role === 'super-admin') {
+      // Super admin can list all users, but a 'where' clause might still be needed depending on rules
       return collection(firestore, 'users');
     }
 
@@ -155,13 +155,14 @@ export default function UsuariosPage() {
       currentUserProfile.role === 'administrador' &&
       currentUserProfile.workspaceId
     ) {
+      // This query now matches the security rule
       return query(
         collection(firestore, 'users'),
         where('workspaceId', '==', currentUserProfile.workspaceId)
       );
     }
 
-    return null;
+    return null; // Return null if conditions aren't met to avoid running a forbidden query
   }, [firestore, currentUserProfile]);
 
   const { data: users, isLoading: isLoadingUsers } =
@@ -673,3 +674,5 @@ export default function UsuariosPage() {
     </>
   );
 }
+
+    
