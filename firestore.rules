@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 8 - Funciones de Workspace Refactorizadas)
+    // HELPER FUNCTIONS (Versión 9 - Refactor de Pertenencia a Workspace)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -23,14 +23,15 @@ service cloud.firestore {
       return getWorkspace(workspaceId).data;
     }
 
+    // CORRECCIÓN: La comparación debe ser directa con el ID del string.
+    // La función ahora valida explícitamente que el `workspaceId` del usuario coincida con el `workspaceId` del recurso solicitado.
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      // Compara el workspaceId del token del usuario con el ID del workspace de la ruta.
       return isSignedIn() && userData.workspaceId == workspaceId;
     }
 
+    // CORRECCIÓN: Se simplifica para usar la nueva `isInWorkspace` que es más fiable.
     function hasWorkspaceRole(workspaceId, role) {
-      // Combina la pertenencia al workspace y la verificación de rol en una sola función.
       return isInWorkspace(workspaceId) && getMyData().get('role', '') == role;
     }
     
@@ -52,19 +53,18 @@ service cloud.firestore {
              && userData.get('role', '') == 'administrador'
              && userData.get('workspaceId', null) == null;
     }
-
-    // --- Funciones para límites de suscripción ---
-
+    
+    // NOTA: Estas funciones no son válidas y fueron eliminadas de las reglas activas.
+    // Se mantienen aquí como comentario para referencia histórica del plan.
+    /*
     function getCollectionSize(collectionPath) {
-      // ESTA FUNCIÓN NO ES VÁLIDA Y CAUSA ERRORES. Se mantiene como referencia pero no se usa.
-      // Firestore no permite contar colecciones en reglas.
-      return 0;
+      return 0; // No es posible en reglas de seguridad.
     }
     
     function isWithinLimit(workspaceId, collectionName, limitKey) {
-       // ESTA FUNCIÓN NO ES VÁLIDA Y CAUSA ERRORES. Se mantiene como referencia pero no se usa.
-      return true;
+      return true; // No se puede validar aquí de forma fiable.
     }
+    */
 
 
     // ------------------------------------------------------------------------
@@ -72,6 +72,9 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
+      // Un usuario puede crear su propio perfil al registrarse.
+      allow create: if isOwner(userId);
+      
       allow read: if isSuperAdmin() 
                   || isOwner(userId)
                   || (
@@ -79,15 +82,8 @@ service cloud.firestore {
                       && resource.data.workspaceId != null
                       && getMyData().workspaceId != null
                       && resource.data.workspaceId == getMyData().workspaceId
-                      && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
                      );
       
-      allow create: if isSuperAdmin() || 
-                     isOwner(userId) ||
-                     (
-                       isWorkspaceAdmin(request.resource.data.workspaceId)
-                     );
-
       allow update: if isOwner(userId)
                       || isSuperAdmin()
                       || isWorkspaceAdmin(resource.data.workspaceId)
@@ -118,11 +114,13 @@ service cloud.firestore {
         
         match /products/{productId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+            // La validación de límites se hace en la UI, no en la regla, por ahora.
             allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
         
         match /deposits/{depositId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+            // La validación de límites se hace en la UI, no en la regla, por ahora.
             allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
         
@@ -138,8 +136,8 @@ service cloud.firestore {
         }
         
         match /stockMovements/{movementId} {
-             allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
-             allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+             // CORRECCIÓN FINAL: La lectura debe ser permitida a cualquier miembro del workspace.
+             allow read, create: if isSuperAdmin() || isInWorkspace(workspaceId);
              allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
              allow delete: if 
                 isSuperAdmin() 
