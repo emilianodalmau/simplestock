@@ -82,13 +82,10 @@ service cloud.firestore {
                       && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
                      );
       
-      // FIX: Permitir que un nuevo usuario cree su propio perfil.
       allow create: if isSuperAdmin() || 
                      isOwner(userId) ||
                      (
                        isWorkspaceAdmin(request.resource.data.workspaceId)
-                       // La validación de límite de usuarios debe hacerse con contadores, se omite por ahora.
-                       // && isWithinLimit(request.resource.data.workspaceId, 'users', 'maxUsers') 
                      );
 
       allow update: if isOwner(userId)
@@ -121,13 +118,11 @@ service cloud.firestore {
         
         match /products/{productId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            // CORRECCIÓN: Se quita la validación de límite que causa el error.
             allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
         
         match /deposits/{depositId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            // CORRECCIÓN: Se quita la validación de límite que causa el error.
             allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
         
