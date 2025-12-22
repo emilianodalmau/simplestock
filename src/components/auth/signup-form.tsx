@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -117,7 +117,7 @@ export function SignupForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}
@@ -172,10 +172,18 @@ export function SignupForm() {
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Crear Cuenta
-        </Button>
+        <div className="space-y-2">
+            <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Crear Cuenta
+            </Button>
+            <Button asChild variant="ghost" className="w-full">
+                <Link href="/">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Volver al Inicio
+                </Link>
+            </Button>
+        </div>
         <div className="text-center text-sm text-muted-foreground">
           ¿Ya tienes una cuenta?{" "}
           <Link href="/login" className="underline hover:text-primary-foreground/80">

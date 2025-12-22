@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -101,7 +101,7 @@ export function LoginForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           control={form.control}
           name="email"
@@ -128,10 +128,18 @@ export function LoginForm() {
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Iniciar Sesión
-        </Button>
+        <div className="space-y-2">
+            <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Iniciar Sesión
+            </Button>
+            <Button asChild variant="ghost" className="w-full">
+                <Link href="/">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Volver al Inicio
+                </Link>
+            </Button>
+        </div>
         <div className="text-center text-sm text-muted-foreground">
           ¿No tienes una cuenta?{" "}
           <Link href="/signup" className="underline hover:text-primary-foreground/80">
