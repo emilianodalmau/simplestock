@@ -80,8 +80,9 @@ service cloud.firestore {
                       && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
                      );
       
-      // La creación de usuarios ahora comprueba el límite del plan
+      // FIX: Allow user to create their own user document upon signup
       allow create: if isSuperAdmin() || 
+                     isOwner(userId) ||
                      (
                        isWorkspaceAdmin(request.resource.data.workspaceId) &&
                        isWithinLimit(request.resource.data.workspaceId, 'users', 'maxUsers')
