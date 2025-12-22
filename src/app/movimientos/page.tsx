@@ -251,8 +251,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     }
     
     if (role === 'jefe_deposito') {
-        if (assignedDepositIds === null) return null;
-        if (assignedDepositIds.length === 0) return null; 
+        if (assignedDepositIds === null) return null; // Wait until deposit IDs are loaded
+        if (assignedDepositIds.length === 0) return null; // No deposits, so no query needed.
         
         return query(baseRef, where('depositId', 'in', assignedDepositIds.slice(0, 30)), orderBy('createdAt', 'desc'));
     }
@@ -1113,5 +1113,3 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
-
-    
