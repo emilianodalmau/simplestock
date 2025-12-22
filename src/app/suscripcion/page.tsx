@@ -9,7 +9,7 @@ import {
   useUser,
   useDoc,
 } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -104,7 +104,7 @@ export default function SuscripcionPage() {
   const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
   
   const usersCollection = useMemoFirebase(
-    () => (firestore && workspaceId ? collection(firestore, 'users') : null),
+    () => (firestore && workspaceId ? query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId)) : null),
     [firestore, workspaceId]
   );
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserInWorkspace>(usersCollection);
@@ -228,7 +228,7 @@ export default function SuscripcionPage() {
                         <div className="flex justify-between">
                             <span className="font-medium">Próxima Factura:</span>
                             <span>
-                                {format(currentPlan.currentPeriodEnd.toDate(), 'dd \'de\' MMMM, yyyy', { locale: es })}
+                                {format(currentPlan.currentPeriodEnd.toDate(), 'dd \\'de\\' MMMM, yyyy', { locale: es })}
                             </span>
                         </div>
                          <div className="flex justify-between">

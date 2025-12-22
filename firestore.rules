@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 11 - Final)
+    // HELPER FUNCTIONS (Versión 12 - Final y Estable)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -50,9 +50,7 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      allow create: if isOwner(userId);
-      
-      allow read: if isSuperAdmin() 
+      allow get: if isSuperAdmin() 
                   || isOwner(userId)
                   || (
                       isSignedIn()
@@ -60,6 +58,16 @@ service cloud.firestore {
                       && getMyData().workspaceId != null
                       && resource.data.workspaceId == getMyData().workspaceId
                      );
+
+      allow list: if isSuperAdmin() 
+                  || (
+                      // Permite a un admin listar solo los usuarios de su propio workspace.
+                      isWorkspaceAdmin(getMyData().workspaceId) &&
+                      request.query.get('where', [['']])[0][0] == 'workspaceId' &&
+                      request.query.get('where', [['']])[0][2] == getMyData().workspaceId
+                  );
+
+      allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
       
       allow update: if isOwner(userId)
                       || isSuperAdmin()
@@ -82,7 +90,7 @@ service cloud.firestore {
     }
         
     // ------------------------------------------------------------------------
-    // Subcollections (DESACOPLADAS para mayor claridad)
+    // Subcollections (DESACOPLADAS para mayor claridad y seguridad)
     // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
@@ -111,12 +119,10 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         // **SOLUCIÓN DRÁSTICA Y FINAL:**
          // Se relaja la regla de lectura (`read` que incluye `list`) para permitir que las consultas 
          // del cliente se ejecuten sin ser bloqueadas por reglas complejas.
          // La seguridad se delega a las consultas de la aplicación, que ya filtran por `depositId` o `userId`
          // según el rol del usuario, asegurando que solo vean los documentos que les corresponden.
-         // Las reglas de escritura (create, update, delete) permanecen seguras y restrictivas.
          allow read: if isSignedIn();
          
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
