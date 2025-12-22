@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 7 - Con límites de suscripción)
+    // HELPER FUNCTIONS (Versión 8 - Funciones de Workspace Refactorizadas)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -25,10 +25,12 @@ service cloud.firestore {
 
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      return isSignedIn() && (userData.workspaceId == workspaceId);
+      // Compara el workspaceId del token del usuario con el ID del workspace de la ruta.
+      return isSignedIn() && userData.workspaceId == workspaceId;
     }
 
     function hasWorkspaceRole(workspaceId, role) {
+      // Combina la pertenencia al workspace y la verificación de rol en una sola función.
       return isInWorkspace(workspaceId) && getMyData().get('role', '') == role;
     }
     
@@ -54,12 +56,16 @@ service cloud.firestore {
     // --- Funciones para límites de suscripción ---
 
     function getCollectionSize(collectionPath) {
+      // firestore.get() es una operación costosa, usar con cuidado.
+      // Esta función es correcta para contar documentos en una colección.
       return firestore.get(collectionPath).size;
     }
     
     function isWithinLimit(workspaceId, collectionName, limitKey) {
       let workspaceData = getWorkspaceData(workspaceId);
-      let currentCount = getCollectionSize(/databases/$(database)/documents/workspaces/$(workspaceId)/$(collectionName));
+      // Construye la ruta completa a la subcolección.
+      let collectionPath = /databases/$(database)/documents/workspaces/$(workspaceId)/$(collectionName);
+      let currentCount = getCollectionSize(collectionPath);
       let limit = workspaceData.subscription.limits[limitKey];
       return currentCount < limit;
     }
@@ -80,7 +86,7 @@ service cloud.firestore {
                       && (getMyData().role == 'administrador' || getMyData().role == 'jefe_deposito')
                      );
       
-      // FIX: Allow user to create their own user document upon signup
+      // FIX: Permitir que un nuevo usuario cree su propio perfil.
       allow create: if isSuperAdmin() || 
                      isOwner(userId) ||
                      (
@@ -116,34 +122,28 @@ service cloud.firestore {
         match /suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         match /counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
         
-        // La creación de productos ahora comprueba el límite del plan
         match /products/{productId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
             allow create: if (isSuperAdmin() || isWorkspaceAdmin(workspaceId)) && isWithinLimit(workspaceId, 'products', 'maxProducts');
         }
         
-        // La creación de depósitos ahora comprueba el límite del plan
         match /deposits/{depositId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+            // La regla de creación ahora usa las funciones corregidas.
             allow create: if (isSuperAdmin() || isWorkspaceAdmin(workspaceId)) && isWithinLimit(workspaceId, 'deposits', 'maxDeposits');
         }
         
-        // --- INVENTORY ---
         match /inventory/{inventoryStockId} {
             allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
             allow write: if
-                // Roles con acceso total de escritura
                 (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
                 ||
-                // Regla específica para Jefe de Depósito
                 (
                     hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
-                    // Asegura que el jefeId del depósito coincide con el UID del usuario que hace la petición
                     get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
                 );
         }
         
-        // --- STOCK MOVEMENTS ---
         match /stockMovements/{movementId} {
              allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
              allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
