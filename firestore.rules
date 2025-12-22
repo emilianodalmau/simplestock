@@ -119,13 +119,13 @@ service cloud.firestore {
         // La creación de productos ahora comprueba el límite del plan
         match /products/{productId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            allow create: if (isSuperAdmin() || isInWorkspace(workspaceId)) && isWithinLimit(workspaceId, 'products', 'maxProducts');
+            allow create: if (isSuperAdmin() || isWorkspaceAdmin(workspaceId)) && isWithinLimit(workspaceId, 'products', 'maxProducts');
         }
         
         // La creación de depósitos ahora comprueba el límite del plan
         match /deposits/{depositId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            allow create: if (isSuperAdmin() || isInWorkspace(workspaceId)) && isWithinLimit(workspaceId, 'deposits', 'maxDeposits');
+            allow create: if (isSuperAdmin() || isWorkspaceAdmin(workspaceId)) && isWithinLimit(workspaceId, 'deposits', 'maxDeposits');
         }
         
         // --- INVENTORY ---
