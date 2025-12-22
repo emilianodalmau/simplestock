@@ -84,7 +84,7 @@ function CreateWorkspaceForm() {
         currentPeriodEnd: serverTimestamp(), // Or a far-future date
         limits: {
           maxProducts: 100,
-          maxUsers: 1,
+          maxUsers: 5,
           maxDeposits: 2,
           maxMovementsPerMonth: 100,
         },

@@ -75,9 +75,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2, FileUp, FileDown } from 'lucide-react';
+import { Loader2, Edit, Trash2, FileUp, FileDown, Info } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
@@ -139,6 +140,14 @@ type Product = {
   createdAt: any; // Used for client-side sorting
 };
 
+type Workspace = {
+    subscription?: {
+        limits?: {
+            maxProducts?: number;
+        }
+    }
+}
+
 type UserProfile = {
   id: string;
   role?: 'administrador' | 'editor' | 'visualizador';
@@ -176,6 +185,12 @@ export default function ProductosPage() {
   );
   const { data: currentUserProfile } = useDoc<UserProfile>(userDocRef);
   const workspaceId = currentUserProfile?.workspaceId;
+
+  const workspaceDocRef = useMemoFirebase(
+    () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
+    [firestore, workspaceId]
+  );
+  const { data: workspaceData } = useDoc<Workspace>(workspaceDocRef);
 
   const collectionPrefix = useMemo(() => {
       if (!workspaceId) return null;
@@ -219,6 +234,10 @@ export default function ProductosPage() {
   );
   const { data: products, isLoading: isLoadingProducts } =
     useCollection<Product>(productsCollection);
+
+  const productsLimit = workspaceData?.subscription?.limits?.maxProducts ?? 0;
+  const productCount = products?.length ?? 0;
+  const atLimit = productCount >= productsLimit;
 
   const filteredProducts = useMemo(() => {
     if (!products) return [];
@@ -564,11 +583,16 @@ export default function ProductosPage() {
           <Card>
             <CardHeader>
               <CardTitle>Agregar Nuevo Producto</CardTitle>
-              <CardDescription>
-                Completa el formulario para añadir un producto.
-              </CardDescription>
             </CardHeader>
             <CardContent>
+              {atLimit && (
+                <Alert className="mb-4">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Has alcanzado el límite de {productsLimit} productos para tu plan actual. Para agregar más, considera actualizar tu plan.
+                  </AlertDescription>
+                </Alert>
+              )}
               <Form {...createForm}>
                 <form
                   onSubmit={createForm.handleSubmit(onCreateSubmit)}
@@ -585,6 +609,7 @@ export default function ProductosPage() {
                             <Input
                               placeholder="Ej: Martillo de Goma"
                               {...field}
+                              disabled={atLimit}
                             />
                           </FormControl>
                           <FormMessage />
@@ -600,6 +625,7 @@ export default function ProductosPage() {
                           <Select
                             onValueChange={field.onChange}
                             value={field.value}
+                            disabled={atLimit}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -633,6 +659,7 @@ export default function ProductosPage() {
                           <Select
                             onValueChange={field.onChange}
                             value={field.value}
+                            disabled={atLimit}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -681,6 +708,7 @@ export default function ProductosPage() {
                           <Select
                             onValueChange={field.onChange}
                             value={field.value}
+                            disabled={atLimit}
                           >
                             <FormControl>
                               <SelectTrigger>
@@ -706,7 +734,7 @@ export default function ProductosPage() {
                         <FormItem>
                           <FormLabel>Precio</FormLabel>
                           <FormControl>
-                            <Input type="number" placeholder="Ej: 1500.50" {...field} />
+                            <Input type="number" placeholder="Ej: 1500.50" {...field} disabled={atLimit}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -719,7 +747,7 @@ export default function ProductosPage() {
                         <FormItem>
                           <FormLabel>Stock Mínimo</FormLabel>
                           <FormControl>
-                            <Input type="number" placeholder="Ej: 10" {...field} />
+                            <Input type="number" placeholder="Ej: 10" {...field} disabled={atLimit}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -729,7 +757,7 @@ export default function ProductosPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || atLimit}
                       className="w-full sm:w-auto"
                     >
                       {isSubmitting && (

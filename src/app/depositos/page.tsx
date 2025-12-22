@@ -76,9 +76,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { Loader2, Edit, Trash2, Info } from 'lucide-react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
@@ -95,6 +96,14 @@ type Deposit = {
   description?: string;
   jefeId?: string;
 };
+
+type Workspace = {
+    subscription?: {
+        limits?: {
+            maxDeposits?: number;
+        }
+    }
+}
 
 type UserProfile = {
   id: string;
@@ -118,6 +127,12 @@ export default function DepositosPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   
+  const workspaceDocRef = useMemoFirebase(
+    () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
+    [firestore, currentUserProfile]
+  );
+  const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
+
   const canAssignJefe =
     currentUserProfile?.role === 'administrador';
 
@@ -153,6 +168,10 @@ export default function DepositosPage() {
     if (!users) return new Map<string, string>();
     return new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
   }, [users]);
+  
+  const depositsLimit = workspaceData?.subscription?.limits?.maxDeposits ?? 0;
+  const depositCount = deposits?.length ?? 0;
+  const atLimit = depositCount >= depositsLimit;
 
 
   const createForm = useForm<FormValues>({
@@ -287,7 +306,7 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'editor';
     
   
-  const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers) || isLoadingProfile;
+  const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers) || isLoadingProfile || isLoadingWorkspace;
   
   if (isLoading) {
     return (
@@ -327,11 +346,16 @@ export default function DepositosPage() {
           <Card>
             <CardHeader>
               <CardTitle>Agregar Nuevo Depósito</CardTitle>
-              <CardDescription>
-                Completa el formulario para añadir un depósito.
-              </CardDescription>
             </CardHeader>
             <CardContent>
+              {atLimit && (
+                <Alert className="mb-4">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Has alcanzado el límite de {depositsLimit} depósitos para tu plan actual. Para agregar más, considera actualizar tu plan.
+                  </AlertDescription>
+                </Alert>
+              )}
               <Form {...createForm}>
                 <form
                   onSubmit={createForm.handleSubmit(onCreateSubmit)}
@@ -344,7 +368,7 @@ export default function DepositosPage() {
                       <FormItem>
                         <FormLabel>Nombre</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ej: Depósito Central" {...field} />
+                          <Input placeholder="Ej: Depósito Central" {...field} disabled={atLimit} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -360,13 +384,14 @@ export default function DepositosPage() {
                           <Textarea
                             placeholder="Una breve descripción del depósito (opcional)"
                             {...field}
+                            disabled={atLimit}
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <Button type="submit" disabled={isSubmitting}>
+                  <Button type="submit" disabled={isSubmitting || atLimit}>
                     {isSubmitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
@@ -397,7 +422,7 @@ export default function DepositosPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading &&
+                    {isLoadingDeposits &&
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
                           <TableCell>
@@ -418,7 +443,7 @@ export default function DepositosPage() {
                           )}
                         </TableRow>
                       ))}
-                    {!isLoading && deposits?.length === 0 && (
+                    {!isLoadingDeposits && deposits?.length === 0 && (
                       <TableRow>
                         <TableCell
                           colSpan={canAssignJefe ? 4 : (canManageDeposits ? 3 : 2)}
@@ -428,7 +453,7 @@ export default function DepositosPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isLoading &&
+                    {!isLoadingDeposits &&
                       deposits?.map((deposit) => (
                         <TableRow key={deposit.id}>
                           <TableCell className="font-medium">
