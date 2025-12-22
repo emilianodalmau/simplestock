@@ -56,18 +56,14 @@ service cloud.firestore {
     // --- Funciones para límites de suscripción ---
 
     function getCollectionSize(collectionPath) {
-      // firestore.get() es una operación costosa, usar con cuidado.
-      // Esta función es correcta para contar documentos en una colección.
-      return firestore.get(collectionPath).size;
+      // ESTA FUNCIÓN NO ES VÁLIDA Y CAUSA ERRORES. Se mantiene como referencia pero no se usa.
+      // Firestore no permite contar colecciones en reglas.
+      return 0;
     }
     
     function isWithinLimit(workspaceId, collectionName, limitKey) {
-      let workspaceData = getWorkspaceData(workspaceId);
-      // Construye la ruta completa a la subcolección.
-      let collectionPath = /databases/$(database)/documents/workspaces/$(workspaceId)/$(collectionName);
-      let currentCount = getCollectionSize(collectionPath);
-      let limit = workspaceData.subscription.limits[limitKey];
-      return currentCount < limit;
+       // ESTA FUNCIÓN NO ES VÁLIDA Y CAUSA ERRORES. Se mantiene como referencia pero no se usa.
+      return true;
     }
 
 
@@ -90,8 +86,9 @@ service cloud.firestore {
       allow create: if isSuperAdmin() || 
                      isOwner(userId) ||
                      (
-                       isWorkspaceAdmin(request.resource.data.workspaceId) &&
-                       isWithinLimit(request.resource.data.workspaceId, 'users', 'maxUsers')
+                       isWorkspaceAdmin(request.resource.data.workspaceId)
+                       // La validación de límite de usuarios debe hacerse con contadores, se omite por ahora.
+                       // && isWithinLimit(request.resource.data.workspaceId, 'users', 'maxUsers') 
                      );
 
       allow update: if isOwner(userId)
@@ -124,13 +121,14 @@ service cloud.firestore {
         
         match /products/{productId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            allow create: if (isSuperAdmin() || isWorkspaceAdmin(workspaceId)) && isWithinLimit(workspaceId, 'products', 'maxProducts');
+            // CORRECCIÓN: Se quita la validación de límite que causa el error.
+            allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
         
         match /deposits/{depositId} {
             allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-            // La regla de creación ahora usa las funciones corregidas.
-            allow create: if (isSuperAdmin() || isWorkspaceAdmin(workspaceId)) && isWithinLimit(workspaceId, 'deposits', 'maxDeposits');
+            // CORRECCIÓN: Se quita la validación de límite que causa el error.
+            allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         }
         
         match /inventory/{inventoryStockId} {
