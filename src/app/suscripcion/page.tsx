@@ -54,6 +54,7 @@ const planNames: Record<string, string> = {
   inicial: 'Plan Inicial',
   crecimiento: 'Plan Crecimiento',
   empresarial: 'Plan Empresarial',
+  fullfree: 'Plan Interno (Full Free)',
 };
 
 const statusTranslations: Record<string, string> = {
@@ -178,21 +179,21 @@ export default function SuscripcionPage() {
                  <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Productos</span>
-                    <span className="text-sm text-muted-foreground">{usage.products.count} / {usage.products.limit}</span>
+                    <span className="text-sm text-muted-foreground">{usage.products.count} / {usage.products.limit >= 9999 ? 'Ilimitados' : usage.products.limit}</span>
                   </div>
                   <Progress value={usage.products.percentage} />
                 </div>
                  <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Depósitos</span>
-                    <span className="text-sm text-muted-foreground">{usage.deposits.count} / {usage.deposits.limit}</span>
+                    <span className="text-sm text-muted-foreground">{usage.deposits.count} / {usage.deposits.limit >= 9999 ? 'Ilimitados' : usage.deposits.limit}</span>
                   </div>
                   <Progress value={usage.deposits.percentage} />
                 </div>
                  <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Usuarios</span>
-                    <span className="text-sm text-muted-foreground">{usage.users.count} / {usage.users.limit}</span>
+                    <span className="text-sm text-muted-foreground">{usage.users.count} / {usage.users.limit >= 9999 ? 'Ilimitados' : usage.users.limit}</span>
                   </div>
                   <Progress value={usage.users.percentage} />
                 </div>
@@ -215,8 +216,8 @@ export default function SuscripcionPage() {
                 <CardDescription>Detalles de tu ciclo de facturación.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-                 {currentPlan.status === 'free' ? (
-                    <p className="text-muted-foreground">Estás en el plan gratuito. Mejora tu plan para acceder a funciones avanzadas y aumentar tus límites.</p>
+                 {currentPlan.status === 'free' || currentPlan.planId === 'fullfree' ? (
+                    <p className="text-muted-foreground">Estás en un plan gratuito o interno. Mejora tu plan para acceder a funciones avanzadas y aumentar tus límites.</p>
                  ) : (
                     <div className="space-y-2">
                         <div className="flex justify-between">
@@ -233,7 +234,7 @@ export default function SuscripcionPage() {
                  )}
             </CardContent>
              <CardFooter>
-                {currentPlan.status !== 'free' && (
+                {currentPlan.status !== 'free' && currentPlan.planId !== 'fullfree' && (
                     <Button variant="outline" disabled>Gestionar Método de Pago</Button>
                 )}
             </CardFooter>

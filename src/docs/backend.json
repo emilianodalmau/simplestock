@@ -1,0 +1,465 @@
+
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the Firebase Blank Slate application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "workspaceId": {
+            "type": "string",
+            "description": "The ID of the workspace this user belongs to. Null for super-admins."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number of the user."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address of the user."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "The URL of the user's profile picture."
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user, which determines their permissions.",
+          "enum": [
+            "super-admin",
+            "administrador",
+            "editor",
+            "visualizador",
+            "jefe_deposito",
+            "solicitante"
+          ]
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "If true, the user is disabled and cannot log in."
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "firstName",
+        "lastName"
+      ]
+    },
+    "Workspace": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Workspace",
+      "type": "object",
+      "description": "Represents an isolated workspace for a single administrator and their team.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Workspace."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the workspace."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The ID of the 'administrador' user who owns this workspace."
+        },
+        "appName": {
+          "type": "string",
+          "description": "The custom display name for the workspace."
+        },
+        "logoUrl": {
+            "type": "string",
+            "description": "The URL for the custom logo of the workspace."
+        },
+        "subscription": {
+          "$ref": "#/entities/Subscription"
+        }
+      },
+      "required": ["id", "name", "ownerId", "subscription"]
+    },
+    "Subscription": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Subscription",
+      "type": "object",
+      "description": "Defines the subscription details for a workspace.",
+      "properties": {
+        "planId": {
+          "type": "string",
+          "description": "Identifier for the subscription plan (e.g., 'inicial', 'crecimiento', 'fullfree').",
+          "enum": ["inicial", "crecimiento", "empresarial", "fullfree"]
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the subscription.",
+          "enum": ["active", "past_due", "canceled", "free"]
+        },
+        "currentPeriodEnd": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date when the current subscription period ends."
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "maxProducts": { "type": "number" },
+            "maxUsers": { "type": "number" },
+            "maxDeposits": { "type": "number" },
+            "maxMovementsPerMonth": { "type": "number" }
+          },
+          "required": ["maxProducts", "maxUsers", "maxDeposits", "maxMovementsPerMonth"]
+        }
+      },
+      "required": ["planId", "status", "currentPeriodEnd", "limits"]
+    },
+    "Category": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Category",
+      "type": "object",
+      "description": "Represents a product category to group items.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Category entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the category."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the category."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Product": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Product",
+      "type": "object",
+      "description": "Represents a product in the inventory.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Product entity."
+        },
+        "code": {
+          "type": "string",
+          "description": "A unique, auto-generated code for the product."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the product."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "Reference to the Category this product belongs to."
+        },
+        "supplierId": {
+          "type": "string",
+          "description": "Reference to the Supplier of this product."
+        },
+        "price": {
+            "type": "number",
+            "description": "The price per unit of the product."
+        },
+        "minStock": {
+          "type": "number",
+          "description": "The minimum stock level for the product."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement for the product stock.",
+          "enum": [
+            "unidades",
+            "litros",
+            "kilos",
+            "metros",
+            "gramos",
+            "cajas"
+          ]
+        },
+        "isArchived": {
+          "type": "boolean",
+          "description": "If true, the product is archived and not available for new transactions."
+        },
+        "depositIds": {
+            "type": "array",
+            "description": "An array of deposit IDs where this product can be stored.",
+            "items": {
+                "type": "string"
+            }
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "categoryId",
+        "supplierId",
+        "price",
+        "minStock",
+        "unit",
+        "depositIds"
+      ]
+    },
+    "Deposit": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Deposit",
+      "type": "object",
+      "description": "Represents a physical location where products are stored (e.g., warehouse, storage room).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Deposit entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the deposit."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description or location details of the deposit."
+        },
+        "jefeId": {
+          "type": "string",
+          "description": "Optional reference to the User assigned as the head of this deposit."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Supplier": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Supplier",
+      "type": "object",
+      "description": "Represents a product supplier.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Supplier entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the supplier."
+        },
+        "contact": {
+          "type": "string",
+          "description": "Contact person at the supplier."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number of the supplier."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "InventoryStock": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "InventoryStock",
+      "type": "object",
+      "description": "Represents the stock of a specific product in a specific deposit. The document ID is a composite key: `${productId}_${depositId}`.",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Reference to the Product."
+        },
+        "depositId": {
+          "type": "string",
+          "description": "Reference to the Deposit where the stock is located."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The quantity of the product in this stock location."
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last stock update."
+        }
+      },
+      "required": [
+        "productId",
+        "depositId",
+        "quantity",
+        "lastUpdated"
+      ]
+    },
+    "StockMovement": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StockMovement",
+      "type": "object",
+      "description": "Represents a single stock movement event (remito), which can be an entry or an exit, involving multiple products.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the StockMovement document."
+        },
+        "remitoNumber": {
+            "type": "string",
+            "description": "A user-defined unique number for the delivery note (remito)."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of movement.",
+          "enum": ["entrada", "salida", "ajuste"]
+        },
+        "depositId": {
+          "type": "string",
+          "description": "Reference to the Deposit where the movement occurs."
+        },
+        "depositName": {
+          "type": "string",
+          "description": "Denormalized name of the deposit for quick display."
+        },
+        "actorId": {
+          "type": "string",
+          "description": "Optional reference to the User (for salidas) or Supplier (for entradas)."
+        },
+        "actorName": {
+          "type": "string",
+          "description": "Denormalized name of the user or supplier."
+        },
+        "actorType": {
+          "type": "string",
+          "description": "Specifies if the actor is a user or supplier.",
+          "enum": ["user", "supplier"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the movement was created."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who registered the movement."
+        },
+        "items": {
+          "type": "array",
+          "description": "A list of all products and quantities involved in this movement.",
+          "items": {
+             "$ref": "#/entities/StockMovementItem"
+          }
+        },
+        "totalValue": {
+          "type": "number",
+          "description": "The total monetary value of the movement."
+        }
+      },
+      "required": ["id", "type", "depositId", "createdAt", "userId", "items", "totalValue"]
+    },
+    "StockMovementItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StockMovementItem",
+      "type": "object",
+      "description": "Represents a single product line within a StockMovement.",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "price": { "type": "number" },
+        "total": { "type": "number" }
+      },
+      "required": ["productId", "productName", "quantity", "unit", "price", "total"]
+    },
+    "RequestItem": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "RequestItem",
+        "type": "object",
+        "description": "Represents a single item within a product request, used for processing.",
+        "properties": {
+          "productId": { "type": "string" },
+          "productName": { "type": "string" },
+          "requested": { "type": "number" },
+          "inStock": { "type": "number" },
+          "unit": { "type": "string" },
+          "toDeliver": { "type": "number" }
+        },
+        "required": ["productId", "productName", "requested", "inStock", "unit", "toDeliver"]
+    },
+    "Counter": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Counter",
+      "type": "object",
+      "description": "Represents an atomic counter used for generating sequential numbers.",
+      "properties": {
+        "lastNumber": {
+          "type": "number",
+          "description": "The last number that was generated by the counter."
+        }
+      },
+      "required": ["lastNumber"]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles. Super-admins are global, other users are scoped to a workspace."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Stores workspace definitions. Each is owned by an 'administrador' user."
+    },
+    "/workspaces/{workspaceId}/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Stores product categories for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Stores products for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/Deposit" },
+      "description": "Stores inventory locations for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/suppliers/{supplierId}": {
+      "schema": { "$ref": "#/entities/Supplier" },
+      "description": "Stores suppliers for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/inventory/{inventoryStockId}": {
+      "schema": { "$ref": "#/entities/InventoryStock" },
+      "description": "Stores stock levels for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/stockMovements/{movementId}": {
+      "schema": { "$ref": "#/entities/StockMovement" },
+      "description": "Stores stock movements for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/counters/{counterId}": {
+      "schema": { "$ref": "#/entities/Counter" },
+      "description": "Stores atomic counters for a specific workspace."
+    }
+  }
+}
