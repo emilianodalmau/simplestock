@@ -236,13 +236,23 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
-  // **** CRITICAL CHANGE: Simplified Query ****
-  // This query is now intentionally broad. The filtering for 'jefe_deposito'
-  // will happen on the client-side in the `filteredMovements` useMemo hook.
   const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !collectionPrefix) return null;
-    return query(collection(firestore, `${collectionPrefix}/stockMovements`), orderBy('createdAt', 'desc'));
-  }, [firestore, collectionPrefix]);
+
+    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+
+    if (isJefeDeposito) {
+        if (assignedDepositIds.length === 0) return null; // No query if no deposits
+        return query(
+            movementsCollectionRef,
+            where('depositId', 'in', assignedDepositIds),
+            orderBy('createdAt', 'desc')
+        );
+    }
+
+    // Default query for other roles
+    return query(movementsCollectionRef, orderBy('createdAt', 'desc'));
+  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositIds]);
   
   const { data: movements, isLoading: isLoadingMovements } =
     useCollection<StockMovement>(movementsQuery);
@@ -251,16 +261,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (!movements) return [];
 
     let filtered = movements;
-
-    // **** CRITICAL CHANGE: Client-side filtering for 'jefe_deposito' ****
-    if (isJefeDeposito) {
-        if (assignedDepositIds.length > 0) {
-            const assignedIdsSet = new Set(assignedDepositIds);
-            filtered = filtered.filter(mov => assignedIdsSet.has(mov.depositId));
-        } else {
-            return []; // No deposits assigned, show no movements.
-        }
-    }
 
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
@@ -291,7 +291,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     // The data is already sorted by createdAt desc from the query
     return filtered;
 
-  }, [movements, isJefeDeposito, assignedDepositIds, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange]);
+  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
 
 
   const inventoryCollection = useMemoFirebase(
