@@ -125,16 +125,25 @@ export default function WorkspacesPage() {
   );
   const { data: workspaces, isLoading: isLoadingWorkspaces } =
     useCollection<Workspace>(workspacesCollection);
-
-  const usersCollectionQuery = useMemoFirebase(() => {
+  
+  // Safe query for all users, only for super-admin
+  const allUsersQuery = useMemoFirebase(() => {
     if (firestore && currentUserProfile?.role === 'super-admin') {
       return collection(firestore, 'users');
     }
     return null;
   }, [firestore, currentUserProfile]);
+  
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(allUsersQuery);
 
-  const { data: users, isLoading: isLoadingUsers } =
-    useCollection<UserProfile>(usersCollectionQuery);
+  const availableAdminsQuery = useMemoFirebase(() => {
+    if (firestore && currentUserProfile?.role === 'super-admin') {
+        return query(collection(firestore, 'users'), where('role', '==', 'administrador'), where('workspaceId', '==', null));
+    }
+    return null;
+  }, [firestore, currentUserProfile]);
+
+  const { data: availableAdmins, isLoading: isLoadingAdmins } = useCollection<UserProfile>(availableAdminsQuery);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -145,15 +154,6 @@ export default function WorkspacesPage() {
     if (!users) return new Map();
     return new Map(users.map((u) => [u.id, u]));
   }, [users]);
-  
-  const availableAdminsQuery = useMemoFirebase(() => {
-    if (firestore && currentUserProfile?.role === 'super-admin') {
-        return query(collection(firestore, 'users'), where('role', '==', 'administrador'), where('workspaceId', '==', null));
-    }
-    return null;
-  }, [firestore, currentUserProfile]);
-
-  const { data: availableAdmins, isLoading: isLoadingAdmins } = useCollection<UserProfile>(availableAdminsQuery);
 
 
   // --- Effects ---
@@ -478,3 +478,5 @@ export default function WorkspacesPage() {
     </div>
   );
 }
+
+    
