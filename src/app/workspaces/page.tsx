@@ -212,9 +212,10 @@ export default function WorkspacesPage() {
 
   useEffect(() => {
     if (managingSubscription) {
+        const sub = managingSubscription.subscription;
         subscriptionForm.reset({
-            planId: managingSubscription.subscription.planId as any,
-            currentPeriodEnd: managingSubscription.subscription.currentPeriodEnd.toDate(),
+            planId: sub?.planId as any || 'inicial',
+            currentPeriodEnd: sub?.currentPeriodEnd?.toDate() || new Date(),
         });
     }
   }, [managingSubscription, subscriptionForm]);
