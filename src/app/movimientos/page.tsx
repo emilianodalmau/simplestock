@@ -18,15 +18,8 @@ import {
   doc,
   serverTimestamp,
   increment,
-  writeBatch,
-  deleteDoc,
   where,
-  orderBy,
-  startAt,
-  endAt,
   query,
-  Query,
-  DocumentData,
 } from 'firebase/firestore';
 import {
   Card,
@@ -36,17 +29,6 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/ui/card';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -67,7 +49,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, Edit, CalendarIcon, FileDown, FileText } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, CalendarIcon, FileDown, FileText } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -93,7 +75,6 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-
 // --- Zod Schemas ---
 const movementItemSchema = z.object({
   productId: z.string().min(1, 'Selecciona un producto.'),
@@ -111,6 +92,7 @@ const movementFormSchema = z.object({
 type MovementFormValues = z.infer<typeof movementFormSchema>;
 
 type Workspace = {
+    name?: string;
     appName?: string;
     logoUrl?: string;
 }
@@ -144,7 +126,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const role = currentUserProfile?.role;
   const isJefeDeposito = role === 'jefe_deposito';
-  const isAdminOrEditor = role === 'administrador' || role === 'editor';
+  const isSolicitante = role === 'solicitante';
+  const isAdmin = role === 'administrador';
   
   const canManageMovements = useMemo(() => {
     if (!role) return false;
@@ -195,7 +178,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const allDepositsQuery = useMemoFirebase(
     () => {
-        if (!firestore || !collectionPrefix || isJefeDeposito) return null; // Jefes usan otra query
+        if (!firestore || !collectionPrefix || isJefeDeposito) return null;
         return collection(firestore, `${collectionPrefix}/deposits`);
     },
     [firestore, collectionPrefix, isJefeDeposito]
@@ -208,11 +191,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const isLoadingDeposits = isJefeDeposito ? isLoadingDepositsForJefe : isLoadingAllDeposits;
 
   const assignedDepositIds = useMemo(() => {
-    if (!isJefeDeposito || !deposits) return null; // Return null when loading
-    if (deposits.length === 0) return []; // Return empty array if no deposits found
+    if (!isJefeDeposito || !deposits) return null;
+    if (deposits.length === 0) return [];
     return deposits.map(d => d.id);
   }, [isJefeDeposito, deposits]);
-  
   
   useEffect(() => {
     if (isJefeDeposito && deposits?.length === 1) {
@@ -228,32 +210,40 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     useCollection<Supplier>(suppliersCollection);
 
   const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix) return null;
-
-    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-
-    if (isJefeDeposito) {
-        if (assignedDepositIds === null) return null; // Wait for deposits to load
-        if (assignedDepositIds.length === 0) return null; // No query if no deposits
-        return query(
-            movementsCollectionRef,
-            where('depositId', 'in', assignedDepositIds),
-            orderBy('createdAt', 'desc')
-        );
-    }
-
-    // Default query for other roles
-    return query(movementsCollectionRef, orderBy('createdAt', 'desc'));
-  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositIds]);
+    if (!firestore || !collectionPrefix || !user) return null;
   
-  const { data: movements, isLoading: isLoadingMovements } =
-    useCollection<StockMovement>(movementsQuery);
+    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+  
+    // CASO 1: JEFE DE DEPOSITO
+    if (isJefeDeposito) {
+      if (assignedDepositIds === null) return null;
+      if (assignedDepositIds.length === 0) return null;
+      return query(
+        movementsCollectionRef,
+        where('depositId', 'in', assignedDepositIds)
+      );
+    }
+  
+    // CASO 2: SOLICITANTE
+    if (isSolicitante) {
+      return query(
+        movementsCollectionRef,
+        where('userId', '==', user.uid)
+      );
+    }
+  
+    // CASO 3: ADMIN/EDITOR/VISUALIZADOR
+    return query(movementsCollectionRef);
+  }, [firestore, collectionPrefix, isJefeDeposito, isSolicitante, user, assignedDepositIds]);
+
+  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
     
   const filteredMovements = useMemo(() => {
     if (!movements) return [];
 
     let filtered = movements;
 
+    // 1. Apply Filters
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(mov => 
@@ -264,7 +254,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (selectedType !== 'all') {
         filtered = filtered.filter(mov => mov.type === selectedType);
     }
-    // Filter by deposit for non-jefes
     if (selectedDeposit !== 'all' && !isJefeDeposito) { 
         filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
     }
@@ -280,8 +269,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         filtered = filtered.filter(mov => mov.createdAt.toDate() < toDate);
     }
 
-    // The data is already sorted by createdAt desc from the query
-    return filtered;
+    // 2. Apply Sorting (Client-side)
+    return filtered.sort((a, b) => {
+        const dateA = a.createdAt?.toDate().getTime() || 0;
+        const dateB = b.createdAt?.toDate().getTime() || 0;
+        return dateB - dateA; 
+    });
 
   }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
 
@@ -348,38 +341,33 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             actorsMap.set(mov.actorId, mov.actorName);
         }
       });
-      return Array.from(actorsMap.entries()).map(([id, name]) => ({ id, name })).sort((a,b) => a.name.localeCompare(b.name));
+      return Array.from(actorsMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a,b) => a.name.localeCompare(b.name));
   }, [movements]);
 
   const availableProductsForMovement = useMemo(() => {
     if (!products || !selectedDepositId) return [];
 
-    // First, find all products that are assigned to the selected deposit.
     const productsInDeposit = products.filter(
         (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
     );
 
-    // If it's an 'entrada', any product assigned to the deposit is available.
     if (movementType === 'entrada') {
         return productsInDeposit;
     }
 
-    // If it's a 'salida', we need to check stock.
     if (movementType === 'salida') {
-        if (!inventory) return []; // Wait for inventory data.
-
-        // Create a Set of product IDs that have a stock > 0 in the selected deposit.
+        if (!inventory) return []; 
         const productsWithStockInDeposit = new Set(
             inventory
                 .filter(stockItem => stockItem.depositId === selectedDepositId && stockItem.quantity > 0)
                 .map(stockItem => stockItem.productId)
         );
-
-        // Return only the products that are both assigned to the deposit AND have stock.
         return productsInDeposit.filter(product => productsWithStockInDeposit.has(product.id));
     }
     
-    return []; // Default case
+    return [];
   }, [movementType, selectedDepositId, products, inventory]);
 
 
@@ -470,9 +458,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             finalActorId = user.uid;
             actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
           } else {
-             // Admin/Editor selected a user, but we don't have the user list.
-             // We can't get the name here without another query. Let's handle this case.
-             actorName = "Usuario (Salida)"; // Fallback name
+             // Fallback
+             actorName = "Usuario (Salida)"; 
           }
         } else {
           actorType = 'supplier';
@@ -546,13 +533,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   };
 
   const handleExportToExcel = () => {
-    // This function will need the user map. Let's assume it's passed or derived differently.
-    const userMap = new Map<string, string>(); // Placeholder
-    movements?.forEach(m => {
-        if(m.actorType === 'user' && m.actorId && m.actorName) userMap.set(m.userId, m.actorName)
-    });
-
-
     const dataToExport = filteredMovements.flatMap(mov => 
         mov.items.map(item => ({
             'Fecha': format(mov.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es }),
@@ -560,7 +540,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             'Tipo': mov.type,
             'Depósito': mov.depositName,
             'Origen/Destino': mov.actorName || '-',
-            'Usuario Registrador': userMap.get(mov.userId) || mov.userId,
+            'ID Usuario': mov.userId,
             'Producto (Nombre)': item.productName,
             'Producto (ID)': item.productId,
             'Cantidad': item.quantity,
@@ -589,12 +569,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     setIsGeneratingPdf(true);
     
-    // This function will need the user map. Let's assume it's passed or derived differently.
-    const userMap = new Map<string, string>(); // Placeholder
-     movements?.forEach(m => {
-        if(m.actorType === 'user' && m.actorId && m.actorName) userMap.set(m.userId, m.actorName)
-    });
-    
     const doc = new jsPDF();
     
     const tableData = filteredMovements.flatMap(mov => 
@@ -604,7 +578,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         mov.type,
         item.productName,
         `${item.quantity} ${item.unit}`,
-        userMap.get(mov.userId) || '-',
+        mov.actorName || mov.userId, 
       ])
     );
     
@@ -619,7 +593,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     autoTable(doc, {
       startY: 35,
-      head: [['Fecha', 'Remito Nº', 'Tipo', 'Producto', 'Cantidad', 'Registrado por']],
+      head: [['Fecha', 'Remito Nº', 'Tipo', 'Producto', 'Cantidad', 'Actor/Usuario']],
       body: tableData,
       theme: 'grid',
       headStyles: { fillColor: [22, 160, 133] },
@@ -629,9 +603,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     setIsGeneratingPdf(false);
   };
 
-  const canSelectActor = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
-  const isAdmin = currentUserProfile?.role === 'administrador';
-  
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   };
@@ -1076,7 +1047,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   );
 }
 
-
 // --- Main Page Component (Wrapper) ---
 export default function MovimientosPage() {
   const { user, isUserLoading } = useUser();
@@ -1090,7 +1060,6 @@ export default function MovimientosPage() {
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    // Extending access to 'visualizador' as they need to see movements
     return ['administrador', 'editor', 'jefe_deposito', 'solicitante', 'visualizador'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
