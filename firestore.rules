@@ -61,10 +61,16 @@ service cloud.firestore {
 
       allow list: if isSuperAdmin() 
                   || (
-                      // Permite a un admin listar solo los usuarios de su propio workspace.
                       isWorkspaceAdmin(getMyData().workspaceId) &&
                       request.query.get('where', [['']])[0][0] == 'workspaceId' &&
                       request.query.get('where', [['']])[0][2] == getMyData().workspaceId
+                  )
+                  || ( // Rule for listing available admins
+                      isSuperAdmin() &&
+                      request.query.get('where', [['']])[0][0] == 'role' &&
+                      request.query.get('where', [['']])[0][2] == 'administrador' &&
+                      request.query.get('where', [['']])[1][0] == 'workspaceId' &&
+                      request.query.get('where', [['']])[1][2] == null
                   );
 
       allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);

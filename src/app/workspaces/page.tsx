@@ -146,10 +146,15 @@ export default function WorkspacesPage() {
     return new Map(users.map((u) => [u.id, u]));
   }, [users]);
   
-  const availableAdmins = useMemo(() => {
-    if (!users) return [];
-    return users.filter(u => u.role === 'administrador' && !u.workspaceId);
-  }, [users]);
+  const availableAdminsQuery = useMemoFirebase(() => {
+    if (firestore && currentUserProfile?.role === 'super-admin') {
+        return query(collection(firestore, 'users'), where('role', '==', 'administrador'), where('workspaceId', '==', null));
+    }
+    return null;
+  }, [firestore, currentUserProfile]);
+
+  const { data: availableAdmins, isLoading: isLoadingAdmins } = useCollection<UserProfile>(availableAdminsQuery);
+
 
   // --- Effects ---
   useEffect(() => {
@@ -262,7 +267,7 @@ export default function WorkspacesPage() {
     setIsCreateDialogOpen(false);
   }
 
-  const isLoading = isLoadingWorkspaces || isLoadingUsers || isLoadingProfile;
+  const isLoading = isLoadingWorkspaces || isLoadingUsers || isLoadingProfile || isLoadingAdmins;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -315,8 +320,8 @@ export default function WorkspacesPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                             {availableAdmins.length === 0 && <SelectItem value="none" disabled>No hay administradores disponibles</SelectItem>}
-                             {availableAdmins.map((admin) => (
+                             {availableAdmins && availableAdmins.length === 0 && <SelectItem value="none" disabled>No hay administradores disponibles</SelectItem>}
+                             {availableAdmins?.map((admin) => (
                                 <SelectItem key={admin.id} value={admin.id}>
                                   {admin.email}
                                 </SelectItem>
