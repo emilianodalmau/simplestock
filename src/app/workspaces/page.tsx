@@ -398,7 +398,44 @@ export default function WorkspacesPage() {
               <Form {...subscriptionForm}>
                   <form onSubmit={subscriptionForm.handleSubmit(handleSubscriptionUpdate)} className="space-y-6">
                       <FormField control={subscriptionForm.control} name="planId" render={({ field }) => (<FormItem><FormLabel>Plan</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Seleccionar plan..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="inicial">Plan Inicial</SelectItem><SelectItem value="crecimiento">Plan Crecimiento</SelectItem><SelectItem value="empresarial">Plan Empresarial</SelectItem><SelectItem value="fullfree">Plan Interno (Full Free)</SelectItem></SelectContent></Select><FormMessage /></FormItem>)}/>
-                      <FormField control={subscriptionForm.control} name="currentPeriodEnd" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Fin del Periodo Actual</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}><>{field.value ? format(field.value, "PPP", { locale: es }) : <span>Elige una fecha</span>}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem>)}/>
+                      <FormField
+                        control={subscriptionForm.control}
+                        name="currentPeriodEnd"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                            <FormLabel>Fin del Periodo Actual</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant={'outline'}
+                                  className={cn(
+                                    'pl-3 text-left font-normal',
+                                    !field.value && 'text-muted-foreground'
+                                  )}
+                                >
+                                  {field.value ? (
+                                    format(field.value, 'PPP', { locale: es })
+                                  ) : (
+                                    <span>Elige una fecha</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <FormControl>
+                                  <Calendar
+                                    mode="single"
+                                    selected={field.value}
+                                    onSelect={field.onChange}
+                                    initialFocus
+                                  />
+                                </FormControl>
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar Cambios</Button></DialogFooter>
                   </form>
               </Form>
