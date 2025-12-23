@@ -75,7 +75,6 @@ export default function SuscripcionPage() {
   const { user: currentUser } = useUser();
   const firestore = useFirestore();
 
-  // Get current user's profile
   const userDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
     [firestore, currentUser]
@@ -83,16 +82,14 @@ export default function SuscripcionPage() {
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   const workspaceId = currentUserProfile?.workspaceId;
 
-  // Get workspace data
   const workspaceDocRef = useMemoFirebase(
     () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
     [firestore, workspaceId]
   );
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
-  // Collections for usage metrics
   const productsCollection = useMemoFirebase(
-    () => (firestore && workspaceId ? collection(firestore, `workspaces/${workspaceId}/products`) : null),
+    () => (firestore && workspaceId ? query(collection(firestore, `workspaces/${workspaceId}/products`), where('isArchived', '!=', true)) : null),
     [firestore, workspaceId]
   );
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsCollection);
@@ -178,15 +175,13 @@ export default function SuscripcionPage() {
             <div>
               <h3 className="text-lg font-medium mb-4">Uso Actual del Plan</h3>
               <div className="space-y-4">
-                 {/* Productos */}
-                <div>
+                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Productos</span>
                     <span className="text-sm text-muted-foreground">{usage.products.count} / {usage.products.limit}</span>
                   </div>
                   <Progress value={usage.products.percentage} />
                 </div>
-                {/* Depósitos */}
                  <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Depósitos</span>
@@ -194,7 +189,6 @@ export default function SuscripcionPage() {
                   </div>
                   <Progress value={usage.deposits.percentage} />
                 </div>
-                {/* Usuarios */}
                  <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Usuarios</span>

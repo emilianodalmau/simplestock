@@ -127,8 +127,6 @@ export default function WorkspacesPage() {
     useCollection<Workspace>(workspacesCollection);
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // This query should ONLY run if the user is a confirmed super-admin.
-    // It must depend on the loaded profile, not just the firestore instance.
     if (firestore && currentUserProfile?.role === 'super-admin') {
       return collection(firestore, 'users');
     }
@@ -150,7 +148,6 @@ export default function WorkspacesPage() {
   
   const availableAdmins = useMemo(() => {
     if (!users) return [];
-    // Admins that don't have a workspaceId yet
     return users.filter(u => u.role === 'administrador' && !u.workspaceId);
   }, [users]);
 
@@ -165,7 +162,6 @@ export default function WorkspacesPage() {
   }, [editingWorkspace, form]);
   
   useEffect(() => {
-    // Reset form when create dialog is opened
     if (isCreateDialogOpen) {
       form.reset({ name: '', ownerId: '' });
     }
@@ -181,25 +177,34 @@ export default function WorkspacesPage() {
 
     try {
         if (editingWorkspace) {
-            // --- Update Logic ---
             const workspaceRef = doc(firestore, 'workspaces', editingWorkspace.id);
             await updateDoc(workspaceRef, { name: data.name });
-            // Owner change is complex, not handled in this simple edit form
         } else {
-            // --- Create Logic ---
             const batch = writeBatch(firestore);
             
-            // 1. Create the workspace document
             const workspaceRef = doc(collection(firestore, 'workspaces'));
+            
+            const freePlanSubscription = {
+                planId: 'inicial',
+                status: 'free',
+                currentPeriodEnd: serverTimestamp(),
+                limits: {
+                    maxProducts: 100,
+                    maxUsers: 5,
+                    maxDeposits: 2,
+                    maxMovementsPerMonth: 100,
+                },
+            };
+
             const newWorkspace = {
                 id: workspaceRef.id,
                 name: data.name,
                 ownerId: data.ownerId,
                 createdAt: serverTimestamp(),
+                subscription: freePlanSubscription,
             };
             batch.set(workspaceRef, newWorkspace);
 
-            // 2. Update the assigned admin user to link them to the new workspace
             const userRef = doc(firestore, 'users', data.ownerId);
             batch.update(userRef, { workspaceId: workspaceRef.id });
             
@@ -230,15 +235,11 @@ export default function WorkspacesPage() {
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
     if (!firestore) return;
-    // This is a placeholder for a much more complex operation.
-    // Deleting a workspace should involve deleting all its sub-collections,
-    // which requires a Cloud Function for proper cleanup.
-    // For now, we just delete the workspace doc itself.
     try {
       await deleteDoc(doc(firestore, 'workspaces', workspaceId));
       toast({
         title: 'Workspace Eliminado',
-        description: 'El workspace ha sido eliminado. (Nota: Los datos anidados pueden requerir limpieza manual).',
+        description: 'El workspace ha sido eliminado.',
       });
     } catch (error) {
       console.error('Error deleting workspace:', error);
@@ -420,7 +421,6 @@ export default function WorkspacesPage() {
         </CardContent>
       </Card>
       
-      {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
             <DialogHeader>
