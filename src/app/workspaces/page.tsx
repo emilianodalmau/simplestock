@@ -22,6 +22,7 @@ import {
   writeBatch,
   query,
   where,
+  Timestamp,
 } from 'firebase/firestore';
 import {
   Card,
@@ -38,6 +39,7 @@ import {
   TableBody,
   TableCell,
 } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -78,19 +80,39 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2, PlusCircle } from 'lucide-react';
+import { Loader2, Edit, Trash2, PlusCircle, CreditCard } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
-const formSchema = z.object({
+const workspaceFormSchema = z.object({
   name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   ownerId: z.string().min(1, { message: 'Debe seleccionar un propietario.' }),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+const subscriptionFormSchema = z.object({
+    planId: z.enum(['inicial', 'crecimiento', 'empresarial', 'fullfree']),
+    currentPeriodEnd: z.date(),
+});
+
+
+type WorkspaceFormValues = z.infer<typeof workspaceFormSchema>;
+type SubscriptionFormValues = z.infer<typeof subscriptionFormSchema>;
+
+type Subscription = {
+    planId: string;
+    status: string;
+    currentPeriodEnd: any;
+};
 
 type Workspace = {
   id: string;
   name: string;
   ownerId: string;
+  subscription: Subscription;
 };
 
 type UserProfile = {
@@ -102,17 +124,44 @@ type UserProfile = {
   workspaceId?: string | null;
 };
 
+const planLimits = {
+  inicial: { maxProducts: 100, maxUsers: 5, maxDeposits: 2, maxMovementsPerMonth: 100 },
+  crecimiento: { maxProducts: 2000, maxUsers: 5, maxDeposits: 5, maxMovementsPerMonth: 999999 },
+  empresarial: { maxProducts: 999999, maxUsers: 50, maxDeposits: 999999, maxMovementsPerMonth: 999999 },
+  fullfree: { maxProducts: 999999, maxUsers: 999999, maxDeposits: 999999, maxMovementsPerMonth: 999999 },
+};
+
+const planNames: Record<string, string> = {
+  inicial: 'Plan Inicial',
+  crecimiento: 'Plan Crecimiento',
+  empresarial: 'Plan Empresarial',
+  fullfree: 'Plan Interno (Full Free)',
+};
+
+const statusTranslations: Record<string, string> = {
+  active: 'Activo',
+  past_due: 'Pago Vencido',
+  canceled: 'Cancelado',
+  free: 'Gratuito',
+};
+
+const statusColors: Record<string, 'default' | 'destructive' | 'secondary'> = {
+  active: 'default',
+  past_due: 'destructive',
+  canceled: 'destructive',
+  free: 'secondary',
+};
+
 export default function WorkspacesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
+  const [managingSubscription, setManagingSubscription] = useState<Workspace | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
 
-  // --- Data Loading ---
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
     [firestore, currentUser]
@@ -126,7 +175,6 @@ export default function WorkspacesPage() {
   const { data: workspaces, isLoading: isLoadingWorkspaces } =
     useCollection<Workspace>(workspacesCollection);
   
-  // Safe query for all users, only for super-admin
   const allUsersQuery = useMemoFirebase(() => {
     if (firestore && currentUserProfile?.role === 'super-admin') {
       return collection(firestore, 'users');
@@ -145,128 +193,124 @@ export default function WorkspacesPage() {
 
   const { data: availableAdmins, isLoading: isLoadingAdmins } = useCollection<UserProfile>(availableAdminsQuery);
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-  });
+  const workspaceForm = useForm<WorkspaceFormValues>({ resolver: zodResolver(workspaceFormSchema) });
+  const subscriptionForm = useForm<SubscriptionFormValues>({ resolver: zodResolver(subscriptionFormSchema) });
 
-  // --- Memos for derived data ---
   const userMap = useMemo(() => {
     if (!users) return new Map();
     return new Map(users.map((u) => [u.id, u]));
   }, [users]);
 
-
-  // --- Effects ---
   useEffect(() => {
     if (editingWorkspace) {
-      form.reset({
+      workspaceForm.reset({
         name: editingWorkspace.name,
         ownerId: editingWorkspace.ownerId,
       });
     }
-  }, [editingWorkspace, form]);
-  
+  }, [editingWorkspace, workspaceForm]);
+
   useEffect(() => {
-    if (isCreateDialogOpen) {
-      form.reset({ name: '', ownerId: '' });
+    if (managingSubscription) {
+        subscriptionForm.reset({
+            planId: managingSubscription.subscription.planId as any,
+            currentPeriodEnd: managingSubscription.subscription.currentPeriodEnd.toDate(),
+        });
     }
-  }, [isCreateDialogOpen, form]);
-
-
-  // --- CRUD Handlers ---
-  const onSubmit: SubmitHandler<FormValues> = async (data) => {
+  }, [managingSubscription, subscriptionForm]);
+  
+  const handleCreateSubmit: SubmitHandler<WorkspaceFormValues> = async (data) => {
     if (!firestore) return;
     setIsSubmitting(true);
     
-    const action = editingWorkspace ? 'actualizado' : 'creado';
-
     try {
-        if (editingWorkspace) {
-            const workspaceRef = doc(firestore, 'workspaces', editingWorkspace.id);
-            await updateDoc(workspaceRef, { name: data.name });
-        } else {
-            const batch = writeBatch(firestore);
-            
-            const workspaceRef = doc(collection(firestore, 'workspaces'));
-            
-            const freePlanSubscription = {
-                planId: 'inicial',
-                status: 'free',
-                currentPeriodEnd: serverTimestamp(),
-                limits: {
-                    maxProducts: 100,
-                    maxUsers: 5,
-                    maxDeposits: 2,
-                    maxMovementsPerMonth: 100,
-                },
-            };
+        const batch = writeBatch(firestore);
+        const workspaceRef = doc(collection(firestore, 'workspaces'));
+        
+        const freePlanSubscription = {
+            planId: 'inicial',
+            status: 'free',
+            currentPeriodEnd: serverTimestamp(),
+            limits: planLimits.inicial,
+        };
 
-            const newWorkspace = {
-                id: workspaceRef.id,
-                name: data.name,
-                ownerId: data.ownerId,
-                createdAt: serverTimestamp(),
-                subscription: freePlanSubscription,
-            };
-            batch.set(workspaceRef, newWorkspace);
+        const newWorkspace = {
+            id: workspaceRef.id,
+            name: data.name,
+            ownerId: data.ownerId,
+            createdAt: serverTimestamp(),
+            subscription: freePlanSubscription,
+        };
+        batch.set(workspaceRef, newWorkspace);
 
-            const userRef = doc(firestore, 'users', data.ownerId);
-            batch.update(userRef, { workspaceId: workspaceRef.id });
-            
-            await batch.commit();
-        }
-
-        toast({
-            title: `Workspace ${action}`,
-            description: `El workspace "${data.name}" ha sido ${action}.`,
-        });
-
+        const userRef = doc(firestore, 'users', data.ownerId);
+        batch.update(userRef, { workspaceId: workspaceRef.id });
+        
+        await batch.commit();
+        toast({ title: "Workspace creado", description: `El workspace "${data.name}" ha sido creado.` });
         setIsCreateDialogOpen(false);
-        setEditingWorkspace(null);
-        setIsEditDialogOpen(false);
-
     } catch (error) {
-        console.error(`Error ${action} workspace:`, error);
-        toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: `Ocurrió un error al ${action} el workspace.`,
-        });
+        console.error("Error creating workspace:", error);
+        toast({ variant: 'destructive', title: 'Error', description: "Ocurrió un error al crear el workspace." });
     } finally {
         setIsSubmitting(false);
     }
   };
 
+  const handleEditSubmit: SubmitHandler<WorkspaceFormValues> = async (data) => {
+      if (!firestore || !editingWorkspace) return;
+      setIsSubmitting(true);
+      try {
+          const workspaceRef = doc(firestore, 'workspaces', editingWorkspace.id);
+          await updateDoc(workspaceRef, { name: data.name });
+          toast({ title: "Workspace actualizado", description: `El workspace "${data.name}" ha sido actualizado.` });
+          setEditingWorkspace(null);
+      } catch (error) {
+          console.error("Error updating workspace:", error);
+          toast({ variant: 'destructive', title: 'Error', description: "Ocurrió un error al actualizar el workspace." });
+      } finally {
+          setIsSubmitting(false);
+      }
+  };
+  
+  const handleSubscriptionUpdate: SubmitHandler<SubscriptionFormValues> = async (data) => {
+      if (!firestore || !managingSubscription) return;
+      setIsSubmitting(true);
+
+      const { planId, currentPeriodEnd } = data;
+      const newLimits = planLimits[planId as keyof typeof planLimits];
+      
+      const newSubscriptionData = {
+          planId: planId,
+          status: planId === 'inicial' ? 'free' : 'active',
+          currentPeriodEnd: Timestamp.fromDate(currentPeriodEnd),
+          limits: newLimits,
+      };
+
+      try {
+          const workspaceRef = doc(firestore, 'workspaces', managingSubscription.id);
+          await updateDoc(workspaceRef, { subscription: newSubscriptionData });
+          toast({ title: "Suscripción actualizada", description: `El plan del workspace se ha cambiado a ${planNames[planId]}.` });
+          setManagingSubscription(null);
+      } catch (error) {
+          console.error("Error updating subscription:", error);
+          toast({ variant: 'destructive', title: 'Error', description: "No se pudo actualizar la suscripción." });
+      } finally {
+          setIsSubmitting(false);
+      }
+  }
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
     if (!firestore) return;
     try {
       await deleteDoc(doc(firestore, 'workspaces', workspaceId));
-      toast({
-        title: 'Workspace Eliminado',
-        description: 'El workspace ha sido eliminado.',
-      });
+      toast({ title: 'Workspace Eliminado', description: 'El workspace ha sido eliminado.' });
     } catch (error) {
       console.error('Error deleting workspace:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'No se pudo eliminar el workspace.',
-      });
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo eliminar el workspace.' });
     }
   };
   
-  const openEditDialog = (workspace: Workspace) => {
-    setEditingWorkspace(workspace);
-    setIsEditDialogOpen(true);
-  };
-  
-  const closeDialogs = () => {
-    setEditingWorkspace(null);
-    setIsEditDialogOpen(false);
-    setIsCreateDialogOpen(false);
-  }
-
   const isLoading = isLoadingWorkspaces || isLoadingUsers || isLoadingProfile || isLoadingAdmins;
 
   return (
@@ -274,73 +318,17 @@ export default function WorkspacesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight font-headline">Workspaces</h1>
-          <p className="text-muted-foreground">
-            Administra los espacios de trabajo de cada administrador.
-          </p>
+          <p className="text-muted-foreground">Administra los espacios de trabajo de cada administrador.</p>
         </div>
          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Crear Workspace
-            </Button>
-          </DialogTrigger>
+          <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" />Crear Workspace</Button></DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Crear Nuevo Workspace</DialogTitle>
-              <DialogDescription>
-                Asigna un nombre y un propietario. El propietario debe ser un usuario con rol 'administrador' que no tenga ya un workspace.
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                 <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre del Workspace</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Ej: Workspace de Acme Corp" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="ownerId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Propietario (Administrador)</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona un administrador sin workspace..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                             {availableAdmins && availableAdmins.length === 0 && <SelectItem value="none" disabled>No hay administradores disponibles</SelectItem>}
-                             {availableAdmins?.map((admin) => (
-                                <SelectItem key={admin.id} value={admin.id}>
-                                  {admin.email}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button variant="outline">Cancelar</Button>
-                  </DialogClose>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Crear Workspace
-                  </Button>
-                </DialogFooter>
+            <DialogHeader><DialogTitle>Crear Nuevo Workspace</DialogTitle><DialogDescription>Asigna un nombre y un propietario.</DialogDescription></DialogHeader>
+            <Form {...workspaceForm}>
+              <form onSubmit={workspaceForm.handleSubmit(handleCreateSubmit)} className="space-y-6">
+                 <FormField control={workspaceForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Nombre del Workspace</FormLabel><FormControl><Input placeholder="Ej: Workspace de Acme Corp" {...field} /></FormControl><FormMessage /></FormItem>)}/>
+                  <FormField control={workspaceForm.control} name="ownerId" render={({ field }) => (<FormItem><FormLabel>Propietario (Administrador)</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un administrador sin workspace..." /></SelectTrigger></FormControl><SelectContent>{availableAdmins && availableAdmins.length === 0 && <SelectItem value="none" disabled>No hay administradores disponibles</SelectItem>}{availableAdmins?.map((admin) => (<SelectItem key={admin.id} value={admin.id}>{admin.email}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)}/>
+                <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear Workspace</Button></DialogFooter>
               </form>
             </Form>
           </DialogContent>
@@ -348,9 +336,7 @@ export default function WorkspacesPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Lista de Workspaces</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Lista de Workspaces</CardTitle></CardHeader>
         <CardContent>
           <div className="rounded-lg border">
             <Table>
@@ -358,62 +344,29 @@ export default function WorkspacesPage() {
                 <TableRow>
                   <TableHead>Nombre del Workspace</TableHead>
                   <TableHead>Propietario</TableHead>
+                  <TableHead>Suscripción</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading &&
-                  [...Array(3)].map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-52" /></TableCell>
-                      <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
-                    </TableRow>
-                  ))}
-                {!isLoading && workspaces?.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center">
-                      No hay workspaces creados.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!isLoading &&
-                  workspaces?.map((ws) => {
-                    const owner = userMap.get(ws.ownerId);
-                    return (
+                {isLoading && [...Array(3)].map((_, i) => (<TableRow key={i}><TableCell><Skeleton className="h-4 w-40" /></TableCell><TableCell><Skeleton className="h-4 w-52" /></TableCell><TableCell><Skeleton className="h-6 w-32" /></TableCell><TableCell className="text-right"><Skeleton className="h-8 w-40 ml-auto" /></TableCell></TableRow>))}
+                {!isLoading && workspaces?.length === 0 && (<TableRow><TableCell colSpan={4} className="text-center">No hay workspaces creados.</TableCell></TableRow>)}
+                {!isLoading && workspaces?.map((ws) => { const owner = userMap.get(ws.ownerId); return (
                       <TableRow key={ws.id}>
                         <TableCell className="font-medium">{ws.name}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {owner?.email || 'Usuario no encontrado'}
+                        <TableCell className="text-muted-foreground">{owner?.email || 'Usuario no encontrado'}</TableCell>
+                        <TableCell>
+                          <div className='flex flex-col gap-1'>
+                            <span>{planNames[ws.subscription?.planId] || ws.subscription?.planId || 'N/A'}</span>
+                            <Badge variant={statusColors[ws.subscription?.status] || 'secondary'}>{statusTranslations[ws.subscription?.status] || ws.subscription?.status || 'N/A'}</Badge>
+                          </div>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(ws)}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Editar</span>
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                                <span className="sr-only">Eliminar</span>
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Esta acción no se puede deshacer. Esto eliminará permanentemente el workspace. La limpieza de datos anidados requiere una Cloud Function.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteWorkspace(ws.id)}
-                                  className="bg-destructive hover:bg-destructive/90"
-                                >
-                                  Eliminar
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
+                        <TableCell className="text-right space-x-1">
+                          <Button variant="ghost" size="icon" onClick={() => setEditingWorkspace(ws)}><Edit className="h-4 w-4" /><span className="sr-only">Editar Nombre</span></Button>
+                          <Button variant="ghost" size="icon" onClick={() => setManagingSubscription(ws)}><CreditCard className="h-4 w-4" /><span className="sr-only">Gestionar Suscripción</span></Button>
+                          <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive" /><span className="sr-only">Eliminar</span></Button></AlertDialogTrigger>
+                            <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Estás seguro?</AlertDialogTitle><AlertDialogDescription>Esta acción es irreversible y eliminará el workspace.</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteWorkspace(ws.id)} className="bg-destructive hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
                         </TableCell>
@@ -426,57 +379,31 @@ export default function WorkspacesPage() {
         </CardContent>
       </Card>
       
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog open={!!editingWorkspace} onOpenChange={() => setEditingWorkspace(null)}>
         <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Editar Workspace</DialogTitle>
-              <DialogDescription>
-                Modifica el nombre del workspace. Cambiar el propietario es una operación avanzada no disponible aquí.
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                 <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre del Workspace</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="ownerId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Propietario</FormLabel>
-                        <FormControl>
-                          <Input value={userMap.get(field.value)?.email || field.value} disabled />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button variant="outline" onClick={closeDialogs}>Cancelar</Button>
-                  </DialogClose>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Guardar Cambios
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
+          <DialogHeader><DialogTitle>Editar Workspace</DialogTitle><DialogDescription>Modifica el nombre del workspace.</DialogDescription></DialogHeader>
+          <Form {...workspaceForm}>
+            <form onSubmit={workspaceForm.handleSubmit(handleEditSubmit)} className="space-y-6">
+               <FormField control={workspaceForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Nombre del Workspace</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)}/>
+                <FormField control={workspaceForm.control} name="ownerId" render={({ field }) => (<FormItem><FormLabel>Propietario</FormLabel><FormControl><Input value={userMap.get(field.value)?.email || field.value} disabled /></FormControl></FormItem>)}/>
+              <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar Cambios</Button></DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!managingSubscription} onOpenChange={() => setManagingSubscription(null)}>
+          <DialogContent>
+              <DialogHeader><DialogTitle>Gestionar Suscripción</DialogTitle><DialogDescription>Modificar el plan para el workspace: {managingSubscription?.name}</DialogDescription></DialogHeader>
+              <Form {...subscriptionForm}>
+                  <form onSubmit={subscriptionForm.handleSubmit(handleSubscriptionUpdate)} className="space-y-6">
+                      <FormField control={subscriptionForm.control} name="planId" render={({ field }) => (<FormItem><FormLabel>Plan</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Seleccionar plan..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="inicial">Plan Inicial</SelectItem><SelectItem value="crecimiento">Plan Crecimiento</SelectItem><SelectItem value="empresarial">Plan Empresarial</SelectItem><SelectItem value="fullfree">Plan Interno (Full Free)</SelectItem></SelectContent></Select><FormMessage /></FormItem>)}/>
+                      <FormField control={subscriptionForm.control} name="currentPeriodEnd" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Fin del Periodo Actual</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}><>{field.value ? format(field.value, "PPP", { locale: es }) : <span>Elige una fecha</span>}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem>)}/>
+                      <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar Cambios</Button></DialogFooter>
+                  </form>
+              </Form>
           </DialogContent>
       </Dialog>
     </div>
   );
 }
-
-    
