@@ -221,11 +221,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    if (firestore && workspaceId && (isAdminOrEditor || isJefeDeposito)) {
+    if (firestore && workspaceId) {
         return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
     }
     return null;
-  }, [firestore, workspaceId, isAdminOrEditor, isJefeDeposito]);
+  }, [firestore, workspaceId]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
