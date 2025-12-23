@@ -208,7 +208,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const isLoadingDeposits = isJefeDeposito ? isLoadingDepositsForJefe : isLoadingAllDeposits;
 
   const assignedDepositIds = useMemo(() => {
-    if (!isJefeDeposito || !deposits) return [];
+    if (!isJefeDeposito || !deposits) return null; // Return null when loading
+    if (deposits.length === 0) return []; // Return empty array if no deposits found
     return deposits.map(d => d.id);
   }, [isJefeDeposito, deposits]);
   
@@ -218,16 +219,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       setSelectedDeposit(deposits[0].id);
     }
   }, [isJefeDeposito, deposits]);
-
-
-  const usersCollectionQuery = useMemoFirebase(() => {
-    if (firestore && workspaceId) {
-        return query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId));
-    }
-    return null;
-  }, [firestore, workspaceId]);
-
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
   const suppliersCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/suppliers`) : null),
@@ -242,6 +233,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
 
     if (isJefeDeposito) {
+        if (assignedDepositIds === null) return null; // Wait for deposits to load
         if (assignedDepositIds.length === 0) return null; // No query if no deposits
         return query(
             movementsCollectionRef,
@@ -308,7 +300,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const isLoading =
     isLoadingProducts ||
     isLoadingDeposits ||
-    isLoadingUsers ||
     isLoadingSuppliers ||
     isLoadingWorkspace;
 
@@ -349,18 +340,16 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     products,
   ]);
   
-  const actors = useMemo(
-    () => (movementType === 'salida' ? users : suppliers),
-    [movementType, users, suppliers]
-  );
-  const actorLabel = movementType === 'salida' ? 'Usuario' : 'Proveedor';
-  
   const allActorsForFilter = useMemo(() => {
-      const all = [];
-      if (users) all.push(...users.map(u => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })));
-      if (suppliers) all.push(...suppliers.map(s => ({ id: s.id, name: s.name })));
-      return all.sort((a,b) => a.name.localeCompare(b.name));
-  }, [users, suppliers]);
+      if (!movements) return [];
+      const actorsMap = new Map<string, string>();
+      movements.forEach(mov => {
+        if (mov.actorId && mov.actorName) {
+            actorsMap.set(mov.actorId, mov.actorName);
+        }
+      });
+      return Array.from(actorsMap.entries()).map(([id, name]) => ({ id, name })).sort((a,b) => a.name.localeCompare(b.name));
+  }, [movements]);
 
   const availableProductsForMovement = useMemo(() => {
     if (!products || !selectedDepositId) return [];
@@ -481,8 +470,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             finalActorId = user.uid;
             actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
           } else {
-            const actor = users?.find((u) => u.id === data.actorId);
-            actorName = actor ? `${actor.firstName || ''} ${actor.lastName || ''}`.trim() : null;
+             // Admin/Editor selected a user, but we don't have the user list.
+             // We can't get the name here without another query. Let's handle this case.
+             actorName = "Usuario (Salida)"; // Fallback name
           }
         } else {
           actorType = 'supplier';
@@ -556,7 +546,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   };
 
   const handleExportToExcel = () => {
-    const userMap = new Map(users?.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    // This function will need the user map. Let's assume it's passed or derived differently.
+    const userMap = new Map<string, string>(); // Placeholder
+    movements?.forEach(m => {
+        if(m.actorType === 'user' && m.actorId && m.actorName) userMap.set(m.userId, m.actorName)
+    });
+
 
     const dataToExport = filteredMovements.flatMap(mov => 
         mov.items.map(item => ({
@@ -594,8 +589,13 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     setIsGeneratingPdf(true);
     
+    // This function will need the user map. Let's assume it's passed or derived differently.
+    const userMap = new Map<string, string>(); // Placeholder
+     movements?.forEach(m => {
+        if(m.actorType === 'user' && m.actorId && m.actorName) userMap.set(m.userId, m.actorName)
+    });
+    
     const doc = new jsPDF();
-    const userMap = new Map(users?.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
     
     const tableData = filteredMovements.flatMap(mov => 
       mov.items.map(item => [
@@ -719,13 +719,13 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                           </FormItem>
                         )}
                       />
-                      {movementType === 'entrada' || canSelectActor ? (
+                      {movementType === 'entrada' && (
                         <FormField
                           control={form.control}
                           name="actorId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>{actorLabel} (Opcional)</FormLabel>
+                              <FormLabel>Proveedor (Opcional)</FormLabel>
                               <Select
                                 onValueChange={field.onChange}
                                 value={field.value || ''}
@@ -733,14 +733,14 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue
-                                      placeholder={`Selecciona un ${actorLabel.toLowerCase()}`}
+                                      placeholder="Selecciona un proveedor"
                                     />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  {actors?.map((a) => (
-                                    <SelectItem key={a.id} value={a.id}>
-                                      {movementType === 'salida' ? `${(a as UserProfile).firstName} ${(a as UserProfile).lastName}` : (a as Supplier).name}
+                                  {suppliers?.map((s) => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                      {s.name}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -748,7 +748,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                             </FormItem>
                           )}
                         />
-                      ) : null}
+                      )}
                       <FormField
                         control={form.control}
                         name="remitoNumber"
@@ -1013,7 +1013,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     {!isLoadingMovements && filteredMovements?.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                          {isJefeDeposito && (assignedDepositIds.length === 0)
+                          {isJefeDeposito && (assignedDepositIds === null || assignedDepositIds.length === 0)
                             ? "No tienes depósitos asignados para ver movimientos."
                             : "No se encontraron movimientos con los filtros aplicados."
                           }

@@ -1,243 +1,243 @@
 
-'use client';
+  'use client';
 
-import { Toaster } from '@/components/ui/toaster';
-import {
-  FirebaseClientProvider,
-  useUser,
-  useFirestore,
-  useDoc,
-  useMemoFirebase,
-  useAuth,
-} from '@/firebase';
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
-import {
-  Home,
-  Warehouse,
-  Box,
-  Users,
-  Archive,
-  Tags,
-  Truck,
-  Building2,
-  LogOut,
-  Replace,
-  Settings,
-  ClipboardList,
-  Shield,
-  FileCode,
-  FileCheck,
-  Calculator,
-  ListChecks,
-  CreditCard,
-  Loader2,
-} from 'lucide-react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { signOut } from 'firebase/auth';
-import type { AppSettings } from '@/types/settings';
-import { useEffect, useMemo } from 'react';
-import Image from 'next/image';
-import { doc } from 'firebase/firestore'; 
-import { Badge } from '@/components/ui/badge';
+  import { Toaster } from '@/components/ui/toaster';
+  import {
+    FirebaseClientProvider,
+    useUser,
+    useFirestore,
+    useDoc,
+    useMemoFirebase,
+    useAuth,
+  } from '@/firebase';
+  import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarHeader,
+    SidebarInset,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarProvider,
+    SidebarTrigger,
+  } from '@/components/ui/sidebar';
+  import {
+    Home,
+    Warehouse,
+    Box,
+    Users,
+    Archive,
+    Tags,
+    Truck,
+    Building2,
+    LogOut,
+    Replace,
+    Settings,
+    ClipboardList,
+    Shield,
+    FileCode,
+    FileCheck,
+    Calculator,
+    ListChecks,
+    CreditCard,
+    Loader2,
+  } from 'lucide-react';
+  import Link from 'next/link';
+  import { usePathname, useRouter } from 'next/navigation';
+  import { signOut } from 'firebase/auth';
+  import type { AppSettings } from '@/types/settings';
+  import { useEffect, useMemo } from 'react';
+  import Image from 'next/image';
+  import { doc } from 'firebase/firestore'; 
+  import { Badge } from '@/components/ui/badge';
 
-type UserProfile = {
-  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
-  workspaceId?: string | null;
-};
-
-type Workspace = {
-    name?: string;
-    appName?: string;
-    logoUrl?: string;
-}
-
-function AppLayout({
-  children,
-  globalSettings,
-}: {
-  children: React.ReactNode;
-  globalSettings: AppSettings | null;
-}) {
-  const pathname = usePathname();
-  const { user, isUserLoading } = useUser();
-  const firestore = useFirestore();
-  const auth = useAuth();
-  const router = useRouter();
-
-  // 1. Cargar Perfil de Usuario
-  const userDocRef = useMemoFirebase(
-    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
-    [firestore, user]
-  );
-  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
-  
-  // 2. Cargar datos del Workspace si existen
-  const workspaceDocRef = useMemoFirebase(
-    () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
-    [firestore, currentUserProfile?.workspaceId]
-  );
-  const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
-
-  // 3. Lógica de redirección para administradores sin workspace
-  useEffect(() => {
-    if (!isLoadingProfile && user && currentUserProfile) {
-      if (
-        currentUserProfile.role === 'administrador' &&
-        !currentUserProfile.workspaceId &&
-        pathname !== '/dashboard'
-      ) {
-        router.replace('/dashboard');
-      }
-    }
-  }, [isLoadingProfile, user, currentUserProfile, pathname, router]);
-
-
-  const handleLogout = async () => {
-    if (auth) {
-      await signOut(auth);
-      router.push('/login');
-    }
+  type UserProfile = {
+    role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
+    workspaceId?: string | null;
   };
 
-  const allMenuItems = [
-    { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
-    { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
-    { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
-    { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
-    { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
-    { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
-    { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
-    { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['solicitante'] },
-    { href: '/test', label: 'Test', icon: ListChecks, roles: ['jefe_deposito'] },
-    { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
-    { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
-    { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador', 'super-admin']},
-    { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
-  ];
-  
-  const menuItems = useMemo(() => {
-    if (!currentUserProfile?.role) return [];
-    return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
-  }, [currentUserProfile?.role]);
+  type Workspace = {
+      name?: string;
+      appName?: string;
+      logoUrl?: string;
+  }
 
-  const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
-  const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios';
-  
-  const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
+  function AppLayout({
+    children,
+    globalSettings,
+  }: {
+    children: React.ReactNode;
+    globalSettings: AppSettings | null;
+  }) {
+    const pathname = usePathname();
+    const { user, isUserLoading } = useUser();
+    const firestore = useFirestore();
+    const auth = useAuth();
+    const router = useRouter();
 
-  if (isLoading || isPendingRedirect) {
+    // 1. Cargar Perfil de Usuario
+    const userDocRef = useMemoFirebase(
+      () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
+      [firestore, user]
+    );
+    const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
+    
+    // 2. Cargar datos del Workspace si existen
+    const workspaceDocRef = useMemoFirebase(
+      () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
+      [firestore, currentUserProfile?.workspaceId]
+    );
+    const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
+
+    // 3. Lógica de redirección para administradores sin workspace
+    useEffect(() => {
+      if (!isLoadingProfile && user && currentUserProfile) {
+        if (
+          currentUserProfile.role === 'administrador' &&
+          !currentUserProfile.workspaceId &&
+          pathname !== '/dashboard'
+        ) {
+          router.replace('/dashboard');
+        }
+      }
+    }, [isLoadingProfile, user, currentUserProfile, pathname, router]);
+
+
+    const handleLogout = async () => {
+      if (auth) {
+        await signOut(auth);
+        router.push('/login');
+      }
+    };
+
+    const allMenuItems = [
+      { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
+      { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
+      { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
+      { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
+      { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+      { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
+      { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
+      { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['solicitante'] },
+      { href: '/test', label: 'Test', icon: ListChecks, roles: ['jefe_deposito'] },
+      { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
+      { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador', 'super-admin']},
+      { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
+    ];
+    
+    const menuItems = useMemo(() => {
+      if (!currentUserProfile?.role) return [];
+      return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
+    }, [currentUserProfile?.role]);
+
+    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
+    const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios';
+    
+    const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
+
+    if (isLoading || isPendingRedirect) {
+      return (
+          <div className="flex h-screen items-center justify-center">
+              <Loader2 className="h-12 w-12 animate-spin" />
+          </div>
+      );
+    }
+
+    if (hideSidebar || !user) {
+      return <main className="flex-1">{children}</main>;
+    }
+    
+    const displayAppName = workspaceData?.name || workspaceData?.appName || globalSettings?.appName || 'Inventario';
+    const logoUrl = workspaceData?.logoUrl || globalSettings?.logoUrl;
+    const globalAppName = globalSettings?.appName || 'SIMPLESTOCK';
+
+
     return (
-        <div className="flex h-screen items-center justify-center">
-            <Loader2 className="h-12 w-12 animate-spin" />
-        </div>
+      <SidebarProvider>
+        <Sidebar>
+          <SidebarHeader>
+            <div className="flex items-center gap-2">
+              {logoUrl && (
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg">
+                  <Image
+                    src={logoUrl}
+                    alt="Logo"
+                    width={24}
+                    height={24}
+                    className="rounded-sm"
+                  />
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="font-semibold">
+                  {displayAppName}
+                </span>
+              </div>
+            </div>
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarMenu>
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.label}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith(item.href)}
+                  >
+                    <Link href={item.href}>
+                      <item.icon />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarContent>
+          <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={handleLogout}>
+                  <LogOut />
+                  <span>Cerrar Sesión</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton disabled>
+                  <FileCode />
+                  <span>{globalAppName}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset>
+          <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
+            <SidebarTrigger className="md:hidden" />
+            <div className="w-full flex-1">
+              {/* Notificaciones globales */}
+            </div>
+          </header>
+          <main className="flex-1">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
     );
   }
 
-  if (hideSidebar || !user) {
-    return <main className="flex-1">{children}</main>;
+  export function RootLayoutContent({ 
+    children, 
+    globalSettings 
+  }: { 
+    children: React.ReactNode, 
+    globalSettings: AppSettings | null 
+  }) {
+    return (
+      <FirebaseClientProvider>
+        <AppLayout globalSettings={globalSettings}>{children}</AppLayout>
+        <Toaster />
+      </FirebaseClientProvider>
+    );
   }
-  
-  const displayAppName = workspaceData?.name || workspaceData?.appName || globalSettings?.appName || 'Inventario';
-  const logoUrl = workspaceData?.logoUrl || globalSettings?.logoUrl;
-  const globalAppName = globalSettings?.appName || 'SIMPLESTOCK';
-
-
-  return (
-    <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader>
-          <div className="flex items-center gap-2">
-            {logoUrl && (
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg">
-                <Image
-                  src={logoUrl}
-                  alt="Logo"
-                  width={24}
-                  height={24}
-                  className="rounded-sm"
-                />
-              </div>
-            )}
-            <div className="flex flex-col">
-              <span className="font-semibold">
-                {displayAppName}
-              </span>
-            </div>
-          </div>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarMenu>
-            {menuItems.map((item) => (
-              <SidebarMenuItem key={item.label}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname.startsWith(item.href)}
-                >
-                  <Link href={item.href}>
-                    <item.icon />
-                    <span>{item.label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={handleLogout}>
-                <LogOut />
-                <span>Cerrar Sesión</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton disabled>
-                <FileCode />
-                <span>{globalAppName}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
-          <SidebarTrigger className="md:hidden" />
-          <div className="w-full flex-1">
-             {/* Notificaciones globales */}
-          </div>
-        </header>
-        <main className="flex-1">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
-  );
-}
-
-export function RootLayoutContent({ 
-  children, 
-  globalSettings 
-}: { 
-  children: React.ReactNode, 
-  globalSettings: AppSettings | null 
-}) {
-  return (
-    <FirebaseClientProvider>
-      <AppLayout globalSettings={globalSettings}>{children}</AppLayout>
-      <Toaster />
-    </FirebaseClientProvider>
-  );
-}
