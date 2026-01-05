@@ -34,7 +34,13 @@ service cloud.firestore {
 
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      return isSignedIn() && userData != null && userData.get('workspaceId', '') == workspaceId;
+      // Un usuario está en un workspace si su documento de usuario lo dice,
+      // O si es el propietario (owner) de ese workspace.
+      // Esto es crucial para el momento de la creación, donde el `workspaceId` del usuario aún puede ser nulo.
+      return isSignedIn() && (
+        (userData != null && userData.get('workspaceId', '') == workspaceId) ||
+        (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
+      );
     }
 
     function isOrphanAdmin() {
