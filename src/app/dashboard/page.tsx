@@ -70,7 +70,8 @@ export default function DashboardPage() {
     )
   }
 
-  // Para todos los casos (super-admin, o admin con workspace), muestra el dashboard normal.
+  // With the new signup flow, any user reaching the dashboard will have a workspace.
+  // The logic to show a creation form is no longer needed here.
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <MainDashboard />

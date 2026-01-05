@@ -81,7 +81,7 @@ export function SignupForm() {
 
       // 3. Define the User document
       const userDocRef = doc(firestore, "users", user.uid);
-      const userData = {
+      const userData: any = {
         id: user.uid,
         email: user.email,
         firstName: values.firstName,
