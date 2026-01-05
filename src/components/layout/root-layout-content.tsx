@@ -90,18 +90,15 @@
     );
     const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
+    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
+    const isPendingRedirect = !isLoading && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
+
     // 3. Lógica de redirección para administradores sin workspace
     useEffect(() => {
-      if (!isLoadingProfile && user && currentUserProfile) {
-        if (
-          currentUserProfile.role === 'administrador' &&
-          !currentUserProfile.workspaceId &&
-          pathname !== '/dashboard'
-        ) {
+        if (isPendingRedirect) {
           router.replace('/dashboard');
         }
-      }
-    }, [isLoadingProfile, user, currentUserProfile, pathname, router]);
+    }, [isPendingRedirect, router]);
 
 
     const handleLogout = async () => {
@@ -140,11 +137,8 @@
       return allMenuItems.filter(item => item.roles.includes(userRole));
     }, [currentUserProfile?.role, currentUserProfile?.workspaceId]);
 
-    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
     const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios';
     
-    const isPendingRedirect = !isLoadingProfile && user && currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId && pathname !== '/dashboard';
-
     if (isLoading || isPendingRedirect) {
       return (
           <div className="flex h-screen items-center justify-center">
