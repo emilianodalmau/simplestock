@@ -1,11 +1,16 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useFirestore, useUser, useDoc, useMemoFirebase } from '@/firebase';
+import {
+  useFirestore,
+  useUser,
+  useDoc,
+  useMemoFirebase,
+} from '@/firebase';
 import {
   collection,
   doc,
@@ -111,7 +116,7 @@ function CreateWorkspaceForm() {
       });
 
       // Force a reload to reflect the new state.
-      router.refresh();
+      window.location.reload();
       
     } catch (error: any) {
       console.error('Error creando el workspace:', error);
@@ -188,16 +193,21 @@ export default function DashboardPage() {
 
   const isLoading = isUserLoading || isLoadingProfile;
   
+  // Condición explícita para mostrar el loader mientras se determina el estado
   if (isLoading) {
     return (
-       <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center">
+       <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
             <Loader2 className="h-12 w-12 animate-spin" />
         </div>
     )
   }
 
-  // Si el usuario es administrador pero no tiene workspace, muestra el formulario de creación.
-  if (currentUserProfile?.role === 'administrador' && !currentUserProfile?.workspaceId) {
+  // Una vez que ha terminado de cargar, decidimos qué mostrar.
+  // Esta lógica ahora es más segura porque `isLoading` es `false`.
+  const isAdminWithoutWorkspace =
+    currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId;
+
+  if (isAdminWithoutWorkspace) {
     return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
             <CreateWorkspaceForm />
