@@ -21,7 +21,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { doc, setDoc, writeBatch, serverTimestamp, collection } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 
 const formSchema = z.object({
   firstName: z.string().min(1, { message: "Por favor, ingresa tu nombre." }),
@@ -76,10 +76,7 @@ export function SignupForm() {
       const isSuperAdmin = values.email === "emilianodalmau@gmail.com";
       const role = isSuperAdmin ? "super-admin" : "administrador";
 
-      // 2. Create a batch write for atomic operation
-      const batch = writeBatch(firestore);
-
-      // 3. Define the User document
+      // 2. Define the User document in Firestore
       const userDocRef = doc(firestore, "users", user.uid);
       const userData: any = {
         id: user.uid,
@@ -88,48 +85,13 @@ export function SignupForm() {
         lastName: values.lastName,
         photoURL: user.photoURL || "",
         role: role,
-        workspaceId: null, // This will be updated if a workspace is created
+        workspaceId: null, // Critical: Starts as null, will be set in the next step
       };
-
-      // 4. If not a super-admin, create a workspace and link it
-      if (!isSuperAdmin) {
-        const workspaceRef = doc(collection(firestore, 'workspaces'));
-        
-        const freePlanSubscription = {
-          planId: 'inicial',
-          status: 'free',
-          currentPeriodEnd: serverTimestamp(),
-          limits: {
-            maxProducts: 100,
-            maxUsers: 5,
-            maxDeposits: 2,
-            maxMovementsPerMonth: 100,
-          },
-        };
-  
-        const newWorkspace = {
-          id: workspaceRef.id,
-          name: `Workspace de ${values.firstName}`,
-          ownerId: user.uid,
-          createdAt: serverTimestamp(),
-          subscription: freePlanSubscription,
-        };
-
-        batch.set(workspaceRef, newWorkspace);
-        userData.workspaceId = workspaceRef.id; // Link user to the new workspace
-      }
       
-      // Add user creation to the batch
-      batch.set(userDocRef, userData);
-
-      // 5. Commit the batch
-      await batch.commit();
+      await setDoc(userDocRef, userData);
       
-      if (role === 'super-admin') {
-        router.push("/super-admin");
-      } else {
-        router.push("/dashboard");
-      }
+      // 3. Redirect to dashboard where the user will be prompted to create a workspace
+      router.push("/dashboard");
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {

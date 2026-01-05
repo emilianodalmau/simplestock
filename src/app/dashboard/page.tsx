@@ -18,6 +18,7 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import { CreateWorkspaceForm } from '@/components/auth/create-workspace-form';
 
 type UserProfile = {
   role?: 'administrador' | 'super-admin';
@@ -62,6 +63,15 @@ export default function DashboardPage() {
 
   const isLoading = isUserLoading || isLoadingProfile;
   
+  // Condición estricta para determinar si mostrar el formulario de creación
+  const needsToCreateWorkspace = useMemo(() => {
+    // Solo aplica si el perfil ha cargado y no está en proceso de carga
+    if (!isLoading && currentUserProfile) {
+        return currentUserProfile.role === 'administrador' && !currentUserProfile.workspaceId;
+    }
+    return false;
+  }, [isLoading, currentUserProfile]);
+
   if (isLoading) {
     return (
        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -70,8 +80,16 @@ export default function DashboardPage() {
     )
   }
 
-  // With the new signup flow, any user reaching the dashboard will have a workspace.
-  // The logic to show a creation form is no longer needed here.
+  // Si el usuario es un administrador sin workspace, se le fuerza a crear uno.
+  if (needsToCreateWorkspace) {
+    return (
+        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
+            <CreateWorkspaceForm />
+        </div>
+    );
+  }
+
+  // Si pasa todas las validaciones anteriores, muestra el dashboard principal.
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <MainDashboard />
