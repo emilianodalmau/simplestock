@@ -132,8 +132,13 @@
     
     const menuItems = useMemo(() => {
       if (!currentUserProfile?.role) return [];
-      return allMenuItems.filter(item => item.roles.includes(currentUserProfile.role!));
-    }, [currentUserProfile?.role]);
+      const userRole = currentUserProfile.role;
+      // Special logic for admin without workspace: only show dashboard
+      if (userRole === 'administrador' && !currentUserProfile.workspaceId) {
+        return allMenuItems.filter(item => item.href === '/dashboard');
+      }
+      return allMenuItems.filter(item => item.roles.includes(userRole));
+    }, [currentUserProfile?.role, currentUserProfile?.workspaceId]);
 
     const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
     const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios';

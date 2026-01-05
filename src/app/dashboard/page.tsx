@@ -110,7 +110,7 @@ function CreateWorkspaceForm() {
         description: `El workspace "${data.name}" ha sido creado con el Plan Inicial.`,
       });
 
-      // Reload the page to reflect the new state.
+      // Force a reload to reflect the new state.
       router.refresh();
       
     } catch (error: any) {
@@ -197,9 +197,9 @@ export default function DashboardPage() {
   }
 
   // Si el usuario es administrador pero no tiene workspace, muestra el formulario de creación.
-  if (currentUserProfile?.role === 'administrador' && !currentUserProfile.workspaceId) {
+  if (currentUserProfile?.role === 'administrador' && !currentUserProfile?.workspaceId) {
     return (
-        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center">
+        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
             <CreateWorkspaceForm />
         </div>
     );
