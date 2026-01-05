@@ -21,7 +21,7 @@ import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, writeBatch, serverTimestamp, collection } from "firebase/firestore";
 
 const formSchema = z.object({
   firstName: z.string().min(1, { message: "Por favor, ingresa tu nombre." }),
@@ -51,7 +51,7 @@ export function SignupForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
-    if (!firestore) {
+    if (!firestore || !auth) {
       toast({
         title: "Error",
         description: "El servicio de base de datos no está disponible.",
@@ -62,6 +62,7 @@ export function SignupForm() {
     }
 
     try {
+      // 1. Create the Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         values.email,
@@ -72,10 +73,13 @@ export function SignupForm() {
       const displayName = `${values.firstName} ${values.lastName}`;
       await updateProfile(user, { displayName });
 
-      // By default, a new user is an administrator, unless they are the super-admin.
       const isSuperAdmin = values.email === "emilianodalmau@gmail.com";
       const role = isSuperAdmin ? "super-admin" : "administrador";
 
+      // 2. Create a batch write for atomic operation
+      const batch = writeBatch(firestore);
+
+      // 3. Define the User document
       const userDocRef = doc(firestore, "users", user.uid);
       const userData = {
         id: user.uid,
@@ -84,17 +88,48 @@ export function SignupForm() {
         lastName: values.lastName,
         photoURL: user.photoURL || "",
         role: role,
-        workspaceId: null, // WorkspaceId is null initially
+        workspaceId: null, // This will be updated if a workspace is created
       };
 
-      await setDoc(userDocRef, userData);
+      // 4. If not a super-admin, create a workspace and link it
+      if (!isSuperAdmin) {
+        const workspaceRef = doc(collection(firestore, 'workspaces'));
+        
+        const freePlanSubscription = {
+          planId: 'inicial',
+          status: 'free',
+          currentPeriodEnd: serverTimestamp(),
+          limits: {
+            maxProducts: 100,
+            maxUsers: 5,
+            maxDeposits: 2,
+            maxMovementsPerMonth: 100,
+          },
+        };
+  
+        const newWorkspace = {
+          id: workspaceRef.id,
+          name: `Workspace de ${values.firstName}`,
+          ownerId: user.uid,
+          createdAt: serverTimestamp(),
+          subscription: freePlanSubscription,
+        };
+
+        batch.set(workspaceRef, newWorkspace);
+        userData.workspaceId = workspaceRef.id; // Link user to the new workspace
+      }
+      
+      // Add user creation to the batch
+      batch.set(userDocRef, userData);
+
+      // 5. Commit the batch
+      await batch.commit();
       
       if (role === 'super-admin') {
         router.push("/super-admin");
       } else {
         router.push("/dashboard");
       }
-
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
@@ -104,6 +139,7 @@ export function SignupForm() {
           variant: "destructive",
         });
       } else {
+        console.error("Signup Error:", error);
         toast({
           title: "Registro Fallido",
           description: "Ocurrió un error inesperado. Por favor, intenta de nuevo.",
