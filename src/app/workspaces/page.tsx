@@ -152,6 +152,20 @@ const statusColors: Record<string, 'default' | 'destructive' | 'secondary'> = {
   free: 'secondary',
 };
 
+// Componente para renderizar la celda del propietario
+function OwnerCell({ ownerId }: { ownerId: string }) {
+    const firestore = useFirestore();
+    const ownerDocRef = useMemoFirebase(() => (firestore ? doc(firestore, 'users', ownerId) : null), [firestore, ownerId]);
+    const { data: owner, isLoading } = useDoc<UserProfile>(ownerDocRef);
+
+    if (isLoading) {
+        return <Skeleton className="h-4 w-40" />;
+    }
+    
+    return <>{owner?.email || 'Usuario no encontrado'}</>;
+}
+
+
 export default function WorkspacesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
@@ -174,15 +188,6 @@ export default function WorkspacesPage() {
   );
   const { data: workspaces, isLoading: isLoadingWorkspaces } =
     useCollection<Workspace>(workspacesCollection);
-  
-  const allUsersQuery = useMemoFirebase(() => {
-    if (firestore && currentUserProfile?.role === 'super-admin') {
-      return collection(firestore, 'users');
-    }
-    return null;
-  }, [firestore, currentUserProfile]);
-  
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(allUsersQuery);
 
   const availableAdminsQuery = useMemoFirebase(() => {
     if (firestore && currentUserProfile?.role === 'super-admin') {
@@ -196,10 +201,6 @@ export default function WorkspacesPage() {
   const workspaceForm = useForm<WorkspaceFormValues>({ resolver: zodResolver(workspaceFormSchema) });
   const subscriptionForm = useForm<SubscriptionFormValues>({ resolver: zodResolver(subscriptionFormSchema) });
 
-  const userMap = useMemo(() => {
-    if (!users) return new Map();
-    return new Map(users.map((u) => [u.id, u]));
-  }, [users]);
 
   useEffect(() => {
     if (editingWorkspace) {
@@ -312,7 +313,7 @@ export default function WorkspacesPage() {
     }
   };
   
-  const isLoading = isLoadingWorkspaces || isLoadingUsers || isLoadingProfile || isLoadingAdmins;
+  const isLoading = isLoadingWorkspaces || isLoadingProfile || isLoadingAdmins;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -352,10 +353,12 @@ export default function WorkspacesPage() {
               <TableBody>
                 {isLoading && [...Array(3)].map((_, i) => (<TableRow key={i}><TableCell><Skeleton className="h-4 w-40" /></TableCell><TableCell><Skeleton className="h-4 w-52" /></TableCell><TableCell><Skeleton className="h-6 w-32" /></TableCell><TableCell className="text-right"><Skeleton className="h-8 w-40 ml-auto" /></TableCell></TableRow>))}
                 {!isLoading && workspaces?.length === 0 && (<TableRow><TableCell colSpan={4} className="text-center">No hay workspaces creados.</TableCell></TableRow>)}
-                {!isLoading && workspaces?.map((ws) => { const owner = userMap.get(ws.ownerId); return (
+                {!isLoading && workspaces?.map((ws) => (
                       <TableRow key={ws.id}>
                         <TableCell className="font-medium">{ws.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{owner?.email || 'Usuario no encontrado'}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                            <OwnerCell ownerId={ws.ownerId} />
+                        </TableCell>
                         <TableCell>
                           <div className='flex flex-col gap-1'>
                             <span>{planNames[ws.subscription?.planId] || ws.subscription?.planId || 'N/A'}</span>
@@ -372,8 +375,7 @@ export default function WorkspacesPage() {
                           </AlertDialog>
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
+                    ))}
               </TableBody>
             </Table>
           </div>
@@ -386,7 +388,7 @@ export default function WorkspacesPage() {
           <Form {...workspaceForm}>
             <form onSubmit={workspaceForm.handleSubmit(handleEditSubmit)} className="space-y-6">
                <FormField control={workspaceForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Nombre del Workspace</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)}/>
-                <FormField control={workspaceForm.control} name="ownerId" render={({ field }) => (<FormItem><FormLabel>Propietario</FormLabel><FormControl><Input value={userMap.get(field.value)?.email || field.value} disabled /></FormControl></FormItem>)}/>
+                <FormField control={workspaceForm.control} name="ownerId" render={({ field }) => (<FormItem><FormLabel>Propietario</FormLabel><FormControl><Input value={field.value} disabled /></FormControl></FormItem>)}/>
               <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar Cambios</Button></DialogFooter>
             </form>
           </Form>

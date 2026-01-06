@@ -79,11 +79,12 @@ service cloud.firestore {
                       request.query.get('where', [['']])[1][2] == null
                   );
 
-      allow create: if isOwner(userId);
+      allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
       
       allow update: if isOwner(userId)
                       || isSuperAdmin()
-                      || isWorkspaceAdmin(resource.data.workspaceId);
+                      || isWorkspaceAdmin(resource.data.workspaceId)
+                      || (isOrphanAdmin() && isOwner(userId));
 
       allow delete: if isSuperAdmin() || isWorkspaceAdmin(resource.data.workspaceId);
     }
@@ -94,8 +95,8 @@ service cloud.firestore {
 
     match /workspaces/{workspaceId} {
         allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-        // Permite crear si es un Super Admin o si el usuario que crea es el dueño definido en el nuevo documento.
-        allow create: if isSuperAdmin() || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
+        allow create: if isSuperAdmin() 
+                        || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
         allow delete: if isSuperAdmin();
     }
