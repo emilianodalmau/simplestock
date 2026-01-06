@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -137,8 +136,7 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador';
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // CRITICAL: Only query users if the current user is an admin and has a workspace.
-    // This prevents other roles from triggering a permission error.
+    // ESTA CONSULTA AHORA COINCIDE PERFECTAMENTE CON LA NUEVA REGLA EN FIRESTORE
     if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
@@ -164,6 +162,7 @@ export default function DepositosPage() {
     [users]
   );
   
+  // Mapeo simple para mostrar nombres en UI si fuese necesario en el futuro
   const userMap = useMemo(() => {
     if (!users) return new Map<string, string>();
     return new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
@@ -172,7 +171,6 @@ export default function DepositosPage() {
   const depositsLimit = workspaceData?.subscription?.limits?.maxDeposits ?? 0;
   const depositCount = deposits?.length ?? 0;
   const atLimit = depositCount >= depositsLimit;
-
 
   const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -300,12 +298,10 @@ export default function DepositosPage() {
         });
   };
 
-
   const canManageDeposits =
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
     
-  
   // The page is loading if the profile is loading, or if the user is an admin and the users list is still loading.
   const isLoading = isLoadingProfile || isLoadingWorkspace || isLoadingDeposits || (canAssignJefe && isLoadingUsers);
   
@@ -318,7 +314,7 @@ export default function DepositosPage() {
   }
 
   // Check access after loading all user profile data
-  if (currentUserProfile?.role === 'jefe_deposito') {
+  if (!isLoadingProfile && currentUserProfile?.role === 'jefe_deposito') {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <Card>
@@ -416,7 +412,7 @@ export default function DepositosPage() {
                     <TableRow>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Descripción</TableHead>
-                       {canAssignJefe && <TableHead>Jefe Asignado</TableHead>}
+                        {canAssignJefe && <TableHead>Jefe Asignado</TableHead>}
                       {canManageDeposits && (
                         <TableHead className="text-right">Acciones</TableHead>
                       )}
