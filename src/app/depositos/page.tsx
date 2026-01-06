@@ -138,8 +138,8 @@ export default function DepositosPage() {
 
   const usersCollectionQuery = useMemoFirebase(() => {
     // Only admins can list users from their workspace
+    // This query MUST be filtered by workspaceId to comply with security rules
     if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
-        // This query MUST be filtered by workspaceId to comply with security rules
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
     return null;
@@ -598,5 +598,3 @@ export default function DepositosPage() {
     </div>
   );
 }
-
-    

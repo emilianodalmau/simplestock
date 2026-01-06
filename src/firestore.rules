@@ -111,12 +111,12 @@ service cloud.firestore {
     
     match /workspaces/{workspaceId}/products/{productId} {
         allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
         allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
