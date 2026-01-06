@@ -191,12 +191,17 @@ export default function WorkspacesPage() {
 
   const availableAdminsQuery = useMemoFirebase(() => {
     if (firestore && currentUserProfile?.role === 'super-admin') {
-        return query(collection(firestore, 'users'), where('role', '==', 'administrador'), where('workspaceId', '==', null));
+      return query(
+        collection(firestore, 'users'),
+        where('role', '==', 'administrador'),
+        where('workspaceId', '==', null)
+      );
     }
-    return null;
+    return null; // Return null if not a super-admin
   }, [firestore, currentUserProfile]);
 
-  const { data: availableAdmins, isLoading: isLoadingAdmins } = useCollection<UserProfile>(availableAdminsQuery);
+  const { data: availableAdmins, isLoading: isLoadingAdmins } =
+    useCollection<UserProfile>(availableAdminsQuery);
 
   const workspaceForm = useForm<WorkspaceFormValues>({ resolver: zodResolver(workspaceFormSchema) });
   const subscriptionForm = useForm<SubscriptionFormValues>({ resolver: zodResolver(subscriptionFormSchema) });
@@ -213,11 +218,11 @@ export default function WorkspacesPage() {
 
   useEffect(() => {
     if (managingSubscription) {
-        const sub = managingSubscription.subscription;
-        subscriptionForm.reset({
-            planId: sub?.planId as any || 'inicial',
-            currentPeriodEnd: sub?.currentPeriodEnd?.toDate() || new Date(),
-        });
+      const sub = managingSubscription.subscription;
+      subscriptionForm.reset({
+        planId: sub?.planId as any || 'inicial',
+        currentPeriodEnd: sub?.currentPeriodEnd?.toDate() || new Date(),
+      });
     }
   }, [managingSubscription, subscriptionForm]);
   
@@ -313,7 +318,11 @@ export default function WorkspacesPage() {
     }
   };
   
-  const isLoading = isLoadingWorkspaces || isLoadingProfile || isLoadingAdmins;
+  const isLoading = isLoadingWorkspaces || isLoadingProfile || (currentUserProfile?.role === 'super-admin' && isLoadingAdmins);
+
+  if (!currentUserProfile?.role) {
+    return <div className="container mx-auto p-4 sm:p-6 md:p-8"><Loader2 className="animate-spin" /></div>
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -409,30 +418,30 @@ export default function WorkspacesPage() {
                             <FormLabel>Fin del Periodo Actual</FormLabel>
                             <Popover>
                               <PopoverTrigger asChild>
-                                <Button
-                                  variant={'outline'}
-                                  className={cn(
-                                    'pl-3 text-left font-normal',
-                                    !field.value && 'text-muted-foreground'
-                                  )}
-                                >
-                                  {field.value ? (
-                                    format(field.value, 'PPP', { locale: es })
-                                  ) : (
-                                    <span>Elige una fecha</span>
-                                  )}
-                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
+                                <FormControl>
+                                  <Button
+                                    variant={'outline'}
+                                    className={cn(
+                                      'pl-3 text-left font-normal',
+                                      !field.value && 'text-muted-foreground'
+                                    )}
+                                  >
+                                    {field.value ? (
+                                      format(field.value, 'PPP', { locale: es })
+                                    ) : (
+                                      <span>Elige una fecha</span>
+                                    )}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                  </Button>
+                                </FormControl>
                               </PopoverTrigger>
                               <PopoverContent className="w-auto p-0" align="start">
-                                <FormControl>
-                                  <Calendar
-                                    mode="single"
-                                    selected={field.value}
-                                    onSelect={field.onChange}
-                                    initialFocus
-                                  />
-                                </FormControl>
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  initialFocus
+                                />
                               </PopoverContent>
                             </Popover>
                             <FormMessage />
@@ -447,3 +456,5 @@ export default function WorkspacesPage() {
     </div>
   );
 }
+
+    
