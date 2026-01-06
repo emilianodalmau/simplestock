@@ -137,8 +137,8 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador';
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // Only admins can list users from their workspace to assign a 'jefe'.
-    // This query MUST be filtered by workspaceId to comply with security rules.
+    // CRITICAL: Only query users if the current user is an admin and has a workspace.
+    // This prevents other roles from triggering a permission error.
     if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
@@ -306,11 +306,12 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'editor';
     
   
+  // The page is loading if the profile is loading, or if the user is an admin and the users list is still loading.
   const isLoading = isLoadingProfile || isLoadingWorkspace || isLoadingDeposits || (canAssignJefe && isLoadingUsers);
   
   if (isLoading && !deposits) { // Show loader only on initial load
     return (
-        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center">
+        <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
             <Loader2 className="h-12 w-12 animate-spin" />
         </div>
     )
