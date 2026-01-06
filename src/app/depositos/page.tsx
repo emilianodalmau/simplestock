@@ -137,8 +137,8 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador';
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // Only admins can list users from their workspace
-    // This query MUST be filtered by workspaceId to comply with security rules
+    // Only admins can list users from their workspace to assign a 'jefe'.
+    // This query MUST be filtered by workspaceId to comply with security rules.
     if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
@@ -306,9 +306,9 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'editor';
     
   
-  const isLoading = isLoadingDeposits || (canAssignJefe && isLoadingUsers) || isLoadingProfile || isLoadingWorkspace;
+  const isLoading = isLoadingProfile || isLoadingWorkspace || isLoadingDeposits || (canAssignJefe && isLoadingUsers);
   
-  if (isLoading) {
+  if (isLoading && !deposits) { // Show loader only on initial load
     return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center">
             <Loader2 className="h-12 w-12 animate-spin" />
@@ -467,9 +467,10 @@ export default function DepositosPage() {
                               <Select
                                 value={deposit.jefeId || 'unassigned'}
                                 onValueChange={(value) => handleJefeChange(deposit.id, value)}
+                                disabled={isLoadingUsers}
                               >
                                 <SelectTrigger className="w-[200px]">
-                                  <SelectValue placeholder="Asignar jefe..." />
+                                  <SelectValue placeholder={isLoadingUsers ? "Cargando..." : "Asignar jefe..."} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="unassigned">Sin asignar</SelectItem>
