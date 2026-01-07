@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -14,9 +13,13 @@ import { useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CheckoutButton } from '@/components/checkout-button';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
 
 type UserProfile = {
   workspaceId?: string;
+  role?: 'administrador';
 };
 
 const plans = {
@@ -155,13 +158,13 @@ const plans = {
 function PlanCard({ plan, onSelectPlan, isProcessing, isUserLoggedIn }: { plan: any; onSelectPlan: (plan: any) => void; isProcessing: string | null, isUserLoggedIn: boolean }) {
   const isButtonDisabled = plan.priceValue === 0 || plan.cta.startsWith('Contactar');
   const isLoading = isProcessing === plan.planId;
+  const router = useRouter();
   
   const handleButtonClick = () => {
     if (isUserLoggedIn) {
         onSelectPlan(plan);
     } else {
-        // Redirect to signup but include the planId
-        window.location.href = plan.href;
+        router.push(plan.href);
     }
   };
 
@@ -207,6 +210,8 @@ export default function PreciosPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const userDocRef = useMemoFirebase(() => (user ? doc(firestore, 'users', user.uid) : null), [user, firestore]);
   const { data: userProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
@@ -215,11 +220,20 @@ export default function PreciosPage() {
   
   const handleSelectPlan = async (plan: any) => {
     if (!userProfile?.workspaceId) {
-        toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'No se pudo encontrar tu workspace. Asegúrate de haber completado la configuración inicial.',
-        });
+        if(userProfile?.role === 'administrador' && !userProfile.workspaceId){
+             toast({
+                variant: 'default',
+                title: 'Acción Requerida',
+                description: 'Primero debes crear un workspace. Serás redirigido.',
+            });
+            router.push('/dashboard'); // Go to create workspace
+        } else {
+             toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: 'No se pudo encontrar tu workspace. Asegúrate de haber completado la configuración inicial.',
+            });
+        }
         return;
     }
     
@@ -245,6 +259,20 @@ export default function PreciosPage() {
         setIsProcessing(null);
     }
   };
+
+  useEffect(() => {
+    const planIdToPurchase = searchParams.get('plan');
+    if (planIdToPurchase && user && !isUserLoading && userProfile && !isLoadingProfile) {
+        const allPlans = [...plans.monthly, ...plans.annually];
+        const selectedPlan = allPlans.find(p => p.planId === planIdToPurchase);
+        if (selectedPlan) {
+            handleSelectPlan(selectedPlan);
+            // Clean the URL to avoid re-triggering
+            router.replace('/precios', {scroll: false});
+        }
+    }
+  }, [searchParams, user, isUserLoading, userProfile, isLoadingProfile, router]);
+
 
   return (
     <div className="container mx-auto max-w-6xl py-12 px-4 sm:px-6 lg:px-8">
@@ -298,5 +326,3 @@ export default function PreciosPage() {
     </div>
   );
 }
-
-    
