@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo, useState } from 'react';
@@ -48,6 +47,7 @@ export default function TestPage() {
   const [isFetchingInventory, setIsFetchingInventory] = useState(false);
   const [isFetchingPedidos, setIsFetchingPedidos] = useState(false);
   const [isFetchingAjustes, setIsFetchingAjustes] = useState(false);
+  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
   const { toast } = useToast();
 
   const currentUserDocRef = useMemoFirebase(
@@ -55,7 +55,7 @@ export default function TestPage() {
     [firestore, user]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } =
-    useDoc<UserProfile>(currentUserDocRef);
+    useDoc<UserProfile>(currentUserProfile);
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile) return false;
@@ -351,6 +351,42 @@ export default function TestPage() {
     }
   };
 
+  const handleSimulatePayment = async () => {
+    if (!currentUserProfile?.workspaceId) {
+        toast({ variant: 'destructive', title: 'Error', description: 'No se puede identificar el workspace actual.' });
+        return;
+    }
+    setIsSimulatingPayment(true);
+
+    const fakePaymentId = `test_${Date.now()}`;
+    const fakePayload = {
+      type: "payment",
+      data: { id: fakePaymentId },
+    };
+
+    // This simulates the external call Mercado Pago would make to our webhook endpoint
+    const response = await fetch('/api/webhooks/mercadopago', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fakePayload),
+    });
+
+    if (response.ok) {
+      toast({
+        title: 'Simulación Exitosa',
+        description: 'El webhook fue llamado. Revisa la página de Suscripción para ver los cambios.',
+      });
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'Error en la Simulación',
+        description: 'La llamada al webhook falló. Revisa la consola del servidor para más detalles.',
+      });
+    }
+
+    setIsSimulatingPayment(false);
+  };
+
 
   const isLoading = isUserLoading || isLoadingProfile;
 
@@ -591,6 +627,23 @@ export default function TestPage() {
                    <Button onClick={handleFetchAjustes} disabled={isFetchingAjustes}>
                       {isFetchingAjustes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Consultar Historial de Ajustes
+                  </Button>
+              </CardFooter>
+              
+            <Separator />
+
+            {/* PRUEBA 6 */}
+            <div>
+              <h3 className="text-lg font-medium">Prueba 6: Simulación de Webhook de Mercado Pago</h3>
+              <p className="text-sm text-muted-foreground">
+                Este botón simula una notificación de pago aprobado para el Plan Crecimiento (mensual).
+                Después de presionarlo, ve a la página de "Suscripción" para verificar si el plan cambió.
+              </p>
+            </div>
+             <CardFooter>
+                   <Button onClick={handleSimulatePayment} disabled={isSimulatingPayment}>
+                      {isSimulatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Simular Pago Aprobado
                   </Button>
               </CardFooter>
 

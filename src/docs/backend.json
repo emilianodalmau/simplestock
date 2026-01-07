@@ -104,7 +104,7 @@
       "properties": {
         "planId": {
           "type": "string",
-          "description": "Identifier for the subscription plan (e.g., 'inicial', 'crecimiento', 'fullfree').",
+          "description": "Identifier for the subscription plan (e.g., 'inicial', 'crecimiento').",
           "enum": ["inicial", "crecimiento", "empresarial", "fullfree"]
         },
         "status": {

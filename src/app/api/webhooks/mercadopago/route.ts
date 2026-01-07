@@ -2,8 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { initAdmin } from '@/lib/firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // Define los límites para cada plan.
 const planLimits = {
@@ -16,7 +15,7 @@ const planLimits = {
   fullfree: { maxProducts: 999999, maxUsers: 999999, maxDeposits: 999999, maxMovementsPerMonth: 999999 },
 };
 
-
+// Asegúrate de tener tu Access Token como una variable de entorno.
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
 });
@@ -33,17 +32,36 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Inicializa Firebase Admin
+    // Inicializa Firebase Admin para operaciones de backend seguras.
     await initAdmin();
     const firestore = getFirestore();
-
-    // Obtiene la información del pago desde Mercado Pago
-    const payment = await new Payment(client).get({ id: paymentId });
+    const payment = new Payment(client);
     
-    console.log('Datos del pago obtenidos de MP:', payment);
+    let paymentDetails;
+    let workspaceId;
+    let paymentStatus;
+    let planId: keyof typeof planLimits | undefined;
 
-    const workspaceId = payment.external_reference;
-    const paymentStatus = payment.status;
+    // --- Simulación para pruebas locales desde /test ---
+    if (paymentId.startsWith('test_')) {
+      console.log(`SIMULACIÓN de pago con ID: ${paymentId}`);
+      const url = new URL(req.url);
+      workspaceId = url.searchParams.get('workspaceId');
+      if (!workspaceId) {
+        throw new Error('La simulación de webhook requiere un "workspaceId" como query param.');
+      }
+      paymentStatus = 'approved';
+      planId = 'crecimiento_mensual'; // Forzamos el plan crecimiento para la simulación
+    } else {
+    // --- Flujo normal para notificaciones reales de Mercado Pago ---
+      paymentDetails = await payment.get({ id: paymentId });
+      console.log('Detalles del pago obtenidos de MP:', paymentDetails);
+
+      workspaceId = paymentDetails.external_reference;
+      paymentStatus = paymentDetails.status;
+      const item = paymentDetails.additional_information?.items?.[0];
+      planId = item?.id as keyof typeof planLimits;
+    }
     
     if (!workspaceId) {
       console.error('Error: external_reference (workspaceId) no encontrado en el pago.');
@@ -53,11 +71,8 @@ export async function POST(req: NextRequest) {
     if (paymentStatus === 'approved') {
       console.log(`Pago aprobado para el workspace: ${workspaceId}`);
       
-      const item = payment.additional_information?.items?.[0];
-      const planId = item?.id as keyof typeof planLimits;
-
       if (!planId || !planLimits[planId]) {
-        console.error(`Error: Plan ID "${planId}" no es válido o no se encontró en la lista de planes.`);
+        console.error(`Error: Plan ID "${planId}" no es válido.`);
         return NextResponse.json({ success: false, message: 'Invalid Plan ID' }, { status: 400 });
       }
       
@@ -90,8 +105,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error procesando el webhook de Mercado Pago:', error);
-    return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
+    // Agrega el mensaje de error a la respuesta para facilitar la depuración
+    return NextResponse.json({ success: false, message: 'Internal server error', error: error.message }, { status: 500 });
   }
 }
