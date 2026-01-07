@@ -28,6 +28,9 @@ export async function createPreference(
   try {
     const preference = new Preference(client);
 
+    // Si la variable de entorno no está definida, usa una URL relativa como fallback.
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+
     const result = await preference.create({
       body: {
         items: [
@@ -36,19 +39,19 @@ export async function createPreference(
             title: title,
             quantity: 1,
             unit_price: price,
-            currency_id: 'USD', // CORRECCIÓN: Usar USD para coincidir con los precios de los planes.
+            currency_id: 'USD',
           },
         ],
         // URL a la que Mercado Pago enviará notificaciones sobre el estado del pago.
         // Esto es CRÍTICO para automatizar la activación del plan.
-        notification_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/mercadopago`,
+        notification_url: `${baseUrl}/api/webhooks/mercadopago`,
         // Metadatos para identificar el pago en el webhook.
         external_reference: workspaceId,
         // URLs a las que el usuario será redirigido.
         back_urls: {
-          success: `${process.env.NEXT_PUBLIC_APP_URL}/suscripcion?status=success`,
-          failure: `${process.env.NEXT_PUBLIC_APP_URL}/suscripcion?status=failure`,
-          pending: `${process.env.NEXT_PUBLIC_APP_URL}/suscripcion?status=pending`,
+          success: `${baseUrl}/suscripcion?status=success`,
+          failure: `${baseUrl}/suscripcion?status=failure`,
+          pending: `${baseUrl}/suscripcion?status=pending`,
         },
         auto_return: 'approved', // Redirige automáticamente solo si el pago es aprobado.
       },
