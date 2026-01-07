@@ -136,8 +136,8 @@ export default function DepositosPage() {
   const canAssignJefe =
     currentUserProfile?.role === 'administrador';
 
+  // SOLUCIÓN: La consulta de usuarios solo se ejecuta si el rol es 'administrador'
   const usersCollectionQuery = useMemoFirebase(() => {
-    // This query is now correctly conditioned and will only run for admins
     if (firestore && currentUserProfile?.workspaceId && currentUserProfile.role === 'administrador') {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
@@ -163,7 +163,6 @@ export default function DepositosPage() {
     [users]
   );
   
-  // Mapeo simple para mostrar nombres en UI si fuese necesario en el futuro
   const userMap = useMemo(() => {
     if (!users) return new Map<string, string>();
     return new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
@@ -303,28 +302,26 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador' ||
     currentUserProfile?.role === 'editor';
     
-  // The page is loading if the profile is loading, or if the user is an admin and the users list is still loading.
   const isLoading = isLoadingProfile || isLoadingWorkspace || isLoadingDeposits || (canAssignJefe && isLoadingUsers);
   
-  if (isLoading && !deposits) { // Show loader only on initial load
+  if (isLoading && !deposits) {
     return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
             <Loader2 className="h-12 w-12 animate-spin" />
         </div>
     )
   }
+  
+  const hasAccess = currentUserProfile?.role && ['administrador', 'editor', 'visualizador'].includes(currentUserProfile.role);
 
-  // Check access after loading all user profile data
-  if (!isLoadingProfile && !canManageDeposits && currentUserProfile?.role === 'visualizador') {
-     // Visualizador can see the list but not manage it. We let the component render but disable actions.
-  } else if (!isLoadingProfile && currentUserProfile?.role === 'jefe_deposito') {
+  if (!isLoadingProfile && !hasAccess) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <Card>
           <CardHeader>
-            <CardTitle>Acceso Limitado</CardTitle>
+            <CardTitle>Acceso Denegado</CardTitle>
             <CardDescription>
-              Como Jefe de Depósito, no puedes administrar la lista de depósitos.
+              No tienes los permisos necesarios para ver esta página.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -599,5 +596,3 @@ export default function DepositosPage() {
     </div>
   );
 }
-
-    

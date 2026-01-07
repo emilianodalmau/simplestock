@@ -82,6 +82,7 @@ export default function SuscripcionPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
   const workspaceId = currentUserProfile?.workspaceId;
+  const isWorkspaceAdmin = currentUserProfile?.role === 'administrador';
 
   const workspaceDocRef = useMemoFirebase(
     () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
@@ -101,18 +102,19 @@ export default function SuscripcionPage() {
   );
   const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsCollection);
   
-  const usersCollection = useMemoFirebase(
-    () => (firestore && workspaceId ? query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId)) : null),
-    [firestore, workspaceId]
+  // SOLUCIÓN: Solo ejecutar esta consulta si el usuario es administrador
+  const usersCollectionQuery = useMemoFirebase(
+    () => (firestore && workspaceId && isWorkspaceAdmin ? query(collection(firestore, 'users'), where('workspaceId', '==', workspaceId)) : null),
+    [firestore, workspaceId, isWorkspaceAdmin]
   );
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserInWorkspace>(usersCollection);
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserInWorkspace>(usersCollectionQuery);
 
   const isLoading =
     isLoadingProfile ||
     isLoadingWorkspace ||
     isLoadingProducts ||
     isLoadingDeposits ||
-    isLoadingUsers;
+    (isWorkspaceAdmin && isLoadingUsers); // El loading de usuarios solo aplica si es admin
 
   const currentPlan = workspaceData?.subscription;
   
@@ -190,13 +192,16 @@ export default function SuscripcionPage() {
                   </div>
                   <Progress value={usage.deposits.percentage} />
                 </div>
-                 <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium">Usuarios</span>
-                    <span className="text-sm text-muted-foreground">{usage.users.count} / {usage.users.limit >= 9999 ? 'Ilimitados' : usage.users.limit}</span>
+                {/* SOLUCIÓN: Solo mostrar la barra de usuarios si es admin */}
+                 {isWorkspaceAdmin && (
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium">Usuarios</span>
+                      <span className="text-sm text-muted-foreground">{usage.users.count} / {usage.users.limit >= 9999 ? 'Ilimitados' : usage.users.limit}</span>
+                    </div>
+                    <Progress value={usage.users.percentage} />
                   </div>
-                  <Progress value={usage.users.percentage} />
-                </div>
+                 )}
               </div>
             </div>
             

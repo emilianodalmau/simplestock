@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -155,7 +154,8 @@ const statusColors: Record<string, 'default' | 'destructive' | 'secondary'> = {
 // Componente para renderizar la celda del propietario
 function OwnerCell({ ownerId }: { ownerId: string }) {
     const firestore = useFirestore();
-    const ownerDocRef = useMemoFirebase(() => (firestore ? doc(firestore, 'users', ownerId) : null), [firestore, ownerId]);
+    // Solo intentamos buscar si hay firestore y ownerId válido
+    const ownerDocRef = useMemoFirebase(() => (firestore && ownerId ? doc(firestore, 'users', ownerId) : null), [firestore, ownerId]);
     const { data: owner, isLoading } = useDoc<UserProfile>(ownerDocRef);
 
     if (isLoading) {
@@ -182,24 +182,27 @@ export default function WorkspacesPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(currentUserDocRef);
   
+  const isSuperAdmin = currentUserProfile?.role === 'super-admin';
+
+  // CORRECCIÓN: Solo consultamos workspaces si YA sabemos que es super-admin
   const workspacesCollection = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'workspaces') : null),
-    [firestore]
+    () => (firestore && isSuperAdmin ? collection(firestore, 'workspaces') : null),
+    [firestore, isSuperAdmin]
   );
   const { data: workspaces, isLoading: isLoadingWorkspaces } =
     useCollection<Workspace>(workspacesCollection);
 
   const availableAdminsQuery = useMemoFirebase(() => {
-    // Only build and execute this query if the user is a super-admin.
-    if (firestore && currentUserProfile?.role === 'super-admin') {
+    // CORRECCIÓN: Mantenemos la protección aquí también
+    if (firestore && isSuperAdmin) {
       return query(
         collection(firestore, 'users'),
         where('role', '==', 'administrador'),
         where('workspaceId', '==', null)
       );
     }
-    return null; // For any other role, do not run this query.
-  }, [firestore, currentUserProfile]);
+    return null;
+  }, [firestore, isSuperAdmin]);
 
   const { data: availableAdmins, isLoading: isLoadingAdmins } =
     useCollection<UserProfile>(availableAdminsQuery);
@@ -319,10 +322,17 @@ export default function WorkspacesPage() {
     }
   };
   
-  const isSuperAdmin = currentUserProfile?.role === 'super-admin';
   const isLoading = isLoadingWorkspaces || isLoadingProfile || (isSuperAdmin && isLoadingAdmins);
 
-  if (!isSuperAdmin && !isLoadingProfile) {
+  if (isLoadingProfile) {
+      return (
+        <div className="container mx-auto p-4 flex justify-center items-center min-h-[50vh]">
+            <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      )
+  }
+
+  if (!isSuperAdmin) {
     return (
         <div className="container mx-auto p-4 sm:p-6 md:p-8">
             <Card>
