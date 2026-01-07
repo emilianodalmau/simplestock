@@ -32,9 +32,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Inicializa Firebase Admin para operaciones de backend seguras.
-    await initAdmin();
-    const firestore = getFirestore();
+    // Inicializa Firebase Admin y obtén la instancia de la app.
+    const adminApp = await initAdmin();
+    // Pasa la instancia de la app a getFirestore.
+    const firestore = getFirestore(adminApp);
     const payment = new Payment(client);
     
     let paymentDetails;

@@ -7,25 +7,23 @@ const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
 let adminApp: App | null = null;
 
 export async function initAdmin(): Promise<App> {
-  if (adminApp) {
-    return adminApp;
+  // If the app is already initialized, return it.
+  const existingApp = getApps().find(app => app.name === 'firebase-admin');
+  if (existingApp) {
+    return existingApp;
   }
   
-  if (getApps().some(app => app.name === 'firebase-admin')) {
-      adminApp = getApps().find(app => app.name === 'firebase-admin')!;
-      return adminApp;
-  }
-
   if (!serviceAccountString) {
     console.error(
         'FIREBASE_SERVICE_ACCOUNT environment variable is not set. ' +
         'Server-side Firebase operations will fail.'
     );
-    throw new Error('Firebase Admin SDK not initialized.');
+    throw new Error('Firebase Admin SDK not initialized: Service account credentials not found.');
   }
   
   try {
     const serviceAccount = JSON.parse(serviceAccountString);
+    // Initialize with a specific name to avoid conflicts
     adminApp = initializeApp({
       credential: cert(serviceAccount),
     }, 'firebase-admin');
