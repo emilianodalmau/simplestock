@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     // --- Simulación para pruebas locales desde /test ---
     if (paymentId.startsWith('test_')) {
       console.log(`SIMULACIÓN de pago con ID: ${paymentId}`);
-      workspaceId = body.workspaceId; // Corrected: Read from body
+      workspaceId = body.workspaceId; // Read from body
       if (!workspaceId) {
         throw new Error('La simulación de webhook requiere un "workspaceId" en el cuerpo de la solicitud.');
       }
@@ -107,6 +107,6 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Error procesando el webhook de Mercado Pago:', error);
     // Agrega el mensaje de error a la respuesta para facilitar la depuración
-    return NextResponse.json({ success: false, message: 'Internal server error', error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: error.message || 'Internal server error' }, { status: 500 });
   }
 }
