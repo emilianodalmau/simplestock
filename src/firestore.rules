@@ -66,23 +66,23 @@ service cloud.firestore {
                       && resource.data.workspaceId == getMyData().workspaceId
                      );
 
-      // LIST: REGLA CORREGIDA
-      // En lugar de inspeccionar request.query, verificamos que los datos devueltos
-      // coincidan con el workspace del usuario que hace la petición.
-      // Firestore fuerza automáticamente que la query del cliente tenga el .where() correspondiente.
       allow list: if isSuperAdmin() 
                   || (
                       isWorkspaceAdmin(getMyData().workspaceId) &&
-                      resource.data.workspaceId == getMyData().workspaceId
+                      request.query.get('where', [['']])[0][0] == 'workspaceId' &&
+                      request.query.get('where', [['']])[0][2] == getMyData().workspaceId
                   )
-                  || ( 
-                      // Permite a super-admin ver admins sin workspace asignado
+                  || ( // Rule for listing available admins
                       isSuperAdmin() &&
-                      resource.data.role == 'administrador' &&
-                      resource.data.workspaceId == null
+                      request.query.get('where', [['']])[0][0] == 'role' &&
+                      request.query.get('where', [['']])[0][2] == 'administrador' &&
+                      request.query.get('where', [['']])[1][0] == 'workspaceId' &&
+                      request.query.get('where', [['']])[1][2] == null
                   );
 
-      allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
+      allow create: if (isOwner(userId))
+                      || isSuperAdmin() 
+                      || isWorkspaceAdmin(request.resource.data.workspaceId);
       
       allow update: if isOwner(userId)
                       || isSuperAdmin()
