@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 13 - Ajuste para creación de usuario)
+    // HELPER FUNCTIONS
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -33,13 +33,9 @@ service cloud.firestore {
     }
 
     function isInWorkspace(workspaceId) {
-      let userData = getMyData();
-      // Un usuario está en un workspace si su documento de usuario lo dice,
-      // O si es el propietario (owner) de ese workspace.
-      return isSignedIn() && (
-        (userData != null && userData.get('workspaceId', '') == workspaceId) ||
-        (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
-      );
+      // Un usuario está en un workspace si su documento de usuario lo dice.
+      // Esta es la versión corregida y segura que evita lecturas recursivas.
+      return isSignedIn() && getMyData().get('workspaceId', '') == workspaceId;
     }
 
     function isOrphanAdmin() {
@@ -78,8 +74,8 @@ service cloud.firestore {
                       request.query.get('where', [['']])[1][2] == null
                   );
 
-      // A user can create their own profile, or an admin can create a user for their workspace.
-      allow create: if (isOwner(userId)) // <-- ESTA ES LA LÍNEA CLAVE AÑADIDA
+      // Un usuario puede crear su propio perfil, o un admin puede crear un usuario para su workspace.
+      allow create: if (isOwner(userId))
                       || isSuperAdmin() 
                       || isWorkspaceAdmin(request.resource.data.workspaceId);
       
@@ -107,18 +103,18 @@ service cloud.firestore {
     // Subcollections
     // ------------------------------------------------------------------------
     
-    match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'); }
-    match /workspaces/{workspaceId}/suppliers/{docId} { allow read, write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'); }
-    match /workspaces/{workspaceId}/counters/{docId} { allow read, write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'); }
+    match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+    match /workspaces/{workspaceId}/suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+    match /workspaces/{workspaceId}/counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
     
     match /workspaces/{workspaceId}/products/{productId} {
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+        allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+        allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
