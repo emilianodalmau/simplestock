@@ -34,7 +34,7 @@ type AggregatedInventoryItem = {
 export default function TestPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const [assignedDeposits, setAssignedDeposits] = useState<Deposit[] | null>(null);
+  const [workspaceDeposits, setWorkspaceDeposits] = useState<Deposit[] | null>(null);
   const [movements, setMovements] = useState<StockMovement[] | null>(null);
   const [inventory, setInventory] = useState<AggregatedInventoryItem[] | null>(null);
   const [pedidos, setPedidos] = useState<StockMovement[] | null>(null);
@@ -59,30 +59,29 @@ export default function TestPage() {
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile) return false;
-    return currentUserProfile.role === 'jefe_deposito';
+    return ['administrador', 'super-admin'].includes(currentUserProfile.role!);
   }, [currentUserProfile]);
   
-  const getAssignedDeposits = async (): Promise<Deposit[] | null> => {
-    if (assignedDeposits) return assignedDeposits;
+  const getWorkspaceDeposits = async (): Promise<Deposit[] | null> => {
+    if (workspaceDeposits) return workspaceDeposits;
     
     if (!firestore || !user || !currentUserProfile?.workspaceId) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'No se pudo obtener la información necesaria.',
+        description: 'No se pudo obtener la información del workspace.',
       });
       return null;
     }
     
     setIsFetchingDeposits(true);
-    setAssignedDeposits(null);
+    setWorkspaceDeposits(null);
 
     const depositsQuery = query(
       collection(
         firestore,
         `workspaces/${currentUserProfile.workspaceId}/deposits`
-      ),
-      where('jefeId', '==', user.uid)
+      )
     );
 
     try {
@@ -90,14 +89,14 @@ export default function TestPage() {
       const depositsData = querySnapshot.docs.map(
         (doc) => ({ id: doc.id, ...doc.data() } as Deposit)
       );
-      setAssignedDeposits(depositsData);
+      setWorkspaceDeposits(depositsData);
       return depositsData;
     } catch (error) {
-      console.error('Error fetching assigned deposits:', error);
+      console.error('Error fetching workspace deposits:', error);
       toast({
         variant: 'destructive',
         title: 'Error de Consulta',
-        description: 'No se pudieron obtener los depósitos asignados.',
+        description: 'No se pudieron obtener los depósitos del workspace.',
       });
       return null;
     } finally {
@@ -113,26 +112,12 @@ export default function TestPage() {
     
     setIsFetchingMovements(true);
     setMovements(null);
-    const currentAssignedDeposits = await getAssignedDeposits();
-
-    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Sin Depósitos',
-        description: 'No tienes depósitos asignados para consultar movimientos.',
-      });
-      setIsFetchingMovements(false);
-      return;
-    }
-
-    const depositIds = currentAssignedDeposits.map(d => d.id);
-
+    
     const movementsQuery = query(
       collection(
         firestore,
         `workspaces/${currentUserProfile.workspaceId}/stockMovements`
-      ),
-      where('depositId', 'in', depositIds)
+      )
     );
 
     try {
@@ -161,18 +146,9 @@ export default function TestPage() {
 
     setIsFetchingInventory(true);
     setInventory(null);
-    const currentAssignedDeposits = await getAssignedDeposits();
-
-    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
-        toast({ variant: 'destructive', title: 'Sin Depósitos', description: 'No tienes depósitos asignados.' });
-        setIsFetchingInventory(false);
-        return;
-    }
-
-    const depositIds = currentAssignedDeposits.map(d => d.id);
 
     try {
-        const inventoryQuery = query(collection(firestore, `workspaces/${currentUserProfile.workspaceId}/inventory`), where('depositId', 'in', depositIds));
+        const inventoryQuery = query(collection(firestore, `workspaces/${currentUserProfile.workspaceId}/inventory`));
         const inventorySnapshot = await getDocs(inventoryQuery);
         const inventoryData = inventorySnapshot.docs.map(doc => doc.data() as InventoryStock);
 
@@ -213,13 +189,6 @@ export default function TestPage() {
   };
   
   const handleFetchPedidos = async () => {
-    // NOTA PARA EL DESARROLLADOR:
-    // Esta consulta es compleja y requiere un ÍNDICE COMPUESTO en Firestore.
-    // Si esta consulta falla con un error "The query requires an index...",
-    // haz clic en el enlace que proporciona Firestore en la consola de error de tu navegador.
-    // Esto te llevará a la Consola de Firebase para crear el índice automáticamente.
-    // El índice necesario combinará los campos `depositId` (ascendente) y `remitoNumber` (ascendente).
-    
     if (!firestore || !currentUserProfile?.workspaceId) {
       toast({ variant: 'destructive', title: 'Error de Configuración' });
       return;
@@ -227,26 +196,12 @@ export default function TestPage() {
 
     setIsFetchingPedidos(true);
     setPedidos(null);
-    const currentAssignedDeposits = await getAssignedDeposits();
-
-    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Sin Depósitos',
-        description: 'No tienes depósitos asignados para consultar pedidos.',
-      });
-      setIsFetchingPedidos(false);
-      return;
-    }
-
-    const depositIds = currentAssignedDeposits.map((d) => d.id);
 
     const pedidosQuery = query(
       collection(
         firestore,
         `workspaces/${currentUserProfile.workspaceId}/stockMovements`
       ),
-      where('depositId', 'in', depositIds),
       orderBy('remitoNumber'),
       startAt('S-'),
       endAt('S-\\uf8ff')
@@ -263,7 +218,7 @@ export default function TestPage() {
       toast({
         variant: 'destructive',
         title: 'Error de Consulta',
-        description: 'No se pudieron obtener los pedidos pendientes. Revisa la consola para crear un índice si es necesario.',
+        description: 'No se pudieron obtener los pedidos pendientes.',
       });
     } finally {
       setIsFetchingPedidos(false);
@@ -271,7 +226,6 @@ export default function TestPage() {
   };
 
   const handleFetchAjustes = async () => {
-    // Esta consulta también podría requerir un índice compuesto.
     if (!firestore || !currentUserProfile?.workspaceId) {
       toast({ variant: 'destructive', title: 'Error de Configuración' });
       return;
@@ -279,26 +233,12 @@ export default function TestPage() {
 
     setIsFetchingAjustes(true);
     setAjustes(null);
-    const currentAssignedDeposits = await getAssignedDeposits();
-
-    if (!currentAssignedDeposits || currentAssignedDeposits.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Sin Depósitos',
-        description: 'No tienes depósitos asignados para consultar ajustes.',
-      });
-      setIsFetchingAjustes(false);
-      return;
-    }
-
-    const depositIds = currentAssignedDeposits.map((d) => d.id);
 
     const ajustesQuery = query(
       collection(
         firestore,
         `workspaces/${currentUserProfile.workspaceId}/stockMovements`
       ),
-      where('depositId', 'in', depositIds),
       where('type', '==', 'ajuste'),
       orderBy('createdAt', 'desc')
     );
@@ -314,7 +254,7 @@ export default function TestPage() {
       toast({
         variant: 'destructive',
         title: 'Error de Consulta',
-        description: 'No se pudo obtener el historial de ajustes. Revisa la consola para crear un índice si es necesario.',
+        description: 'No se pudo obtener el historial de ajustes.',
       });
     } finally {
       setIsFetchingAjustes(false);
@@ -401,7 +341,6 @@ export default function TestPage() {
         });
         
         toast({ title: 'Pedido de Prueba Procesado', description: `Se ha generado un remito entregando 1 unidad de cada item.` });
-        // Refetch pedidos to update the list
         await handleFetchPedidos();
 
     } catch (error: any) {
@@ -430,8 +369,7 @@ export default function TestPage() {
           <CardHeader>
             <CardTitle>Acceso Denegado</CardTitle>
             <CardDescription>
-              No tienes los permisos necesarios para acceder a esta página de
-              prueba.
+              Esta página de prueba es solo para Administradores.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -444,24 +382,22 @@ export default function TestPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Página de Prueba</h1>
         <p className="text-muted-foreground">
-          Esta es una página de prueba exclusiva para el rol Jefe de Depósito.
+          Panel de prueba para Administradores.
         </p>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Acceso Concedido</CardTitle>
+          <CardTitle>Acceso de Administrador Concedido</CardTitle>
           <CardDescription>
-            Si estás viendo esto, significa que has iniciado sesión como un
-            usuario con el rol `jefe_deposito`.
+            Usa estos botones para testear las consultas principales de la aplicación en el contexto de tu workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* PRUEBA 1 */}
           <div>
-              <h3 className="text-lg font-medium">Prueba 1: Depósitos Asignados</h3>
+              <h3 className="text-lg font-medium">Prueba 1: Depósitos del Workspace</h3>
               <p className="text-sm text-muted-foreground">
-              Presiona el siguiente botón para consultar y listar los depósitos
-              que tienes asignados.
+              Presiona el siguiente botón para consultar y listar todos los depósitos de tu workspace.
               </p>
           </div>
           {isFetchingDeposits && (
@@ -470,26 +406,26 @@ export default function TestPage() {
               <Skeleton className="h-5 w-40" />
             </div>
           )}
-          {assignedDeposits !== null && !isFetchingDeposits && (
+          {workspaceDeposits !== null && !isFetchingDeposits && (
             <div>
               <h4 className="font-semibold mb-2">Resultados:</h4>
-              {assignedDeposits.length > 0 ? (
+              {workspaceDeposits.length > 0 ? (
                 <ul className="list-disc pl-5 space-y-1">
-                  {assignedDeposits.map((deposit) => (
+                  {workspaceDeposits.map((deposit) => (
                     <li key={deposit.id}>{deposit.name}</li>
                   ))}
                 </ul>
               ) : (
                 <p className="text-muted-foreground">
-                  No se encontraron depósitos asignados a tu usuario.
+                  No se encontraron depósitos en este workspace.
                 </p>
               )}
             </div>
           )}
            <CardFooter>
-              <Button onClick={getAssignedDeposits} disabled={isFetchingDeposits}>
+              <Button onClick={getWorkspaceDeposits} disabled={isFetchingDeposits}>
                   {isFetchingDeposits && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Consultar Mis Depósitos
+                  Consultar Depósitos
               </Button>
           </CardFooter>
 
@@ -497,9 +433,9 @@ export default function TestPage() {
           
           {/* PRUEBA 2 */}
            <div>
-              <h3 className="text-lg font-medium">Prueba 2: Movimientos por Depósito</h3>
+              <h3 className="text-lg font-medium">Prueba 2: Todos los Movimientos</h3>
               <p className="text-sm text-muted-foreground">
-               Presiona para buscar todos los movimientos de los depósitos que tengas asignados.
+               Presiona para buscar todos los movimientos del workspace.
               </p>
           </div>
           {isFetchingMovements && (
@@ -519,7 +455,7 @@ export default function TestPage() {
                 </ul>
               ) : (
                 <p className="text-muted-foreground">
-                  No se encontraron movimientos para tus depósitos.
+                  No se encontraron movimientos para este workspace.
                 </p>
               )}
             </div>
@@ -535,9 +471,9 @@ export default function TestPage() {
           
           {/* PRUEBA 3 */}
           <div>
-            <h3 className="text-lg font-medium">Prueba 3: Inventario por Depósito</h3>
+            <h3 className="text-lg font-medium">Prueba 3: Inventario del Workspace</h3>
             <p className="text-sm text-muted-foreground">
-                Presiona para ver el inventario total de tus depósitos.
+                Presiona para ver el inventario total de tu workspace.
             </p>
           </div>
           {isFetchingInventory && (
@@ -559,7 +495,7 @@ export default function TestPage() {
                       </ul>
                   ) : (
                       <p className="text-muted-foreground">
-                          No se encontró inventario en tus depósitos.
+                          No se encontró inventario en este workspace.
                       </p>
                   )}
               </div>
@@ -575,9 +511,9 @@ export default function TestPage() {
 
            {/* PRUEBA 4 */}
            <div>
-             <h3 className="text-lg font-medium">Prueba 4: Pedidos Pendientes</h3>
+             <h3 className="text-lg font-medium">Prueba 4: Pedidos Pendientes del Workspace</h3>
              <p className="text-sm text-muted-foreground">
-               Presiona para ver las solicitudes de productos (pedidos) pendientes para tus depósitos.
+               Presiona para ver todas las solicitudes de productos (pedidos) pendientes del workspace.
              </p>
            </div>
            {isFetchingPedidos && (
@@ -608,7 +544,7 @@ export default function TestPage() {
                  </ul>
                ) : (
                  <p className="text-muted-foreground">
-                   No se encontraron pedidos pendientes para tus depósitos.
+                   No se encontraron pedidos pendientes para este workspace.
                  </p>
                )}
              </div>
@@ -626,7 +562,7 @@ export default function TestPage() {
             <div>
               <h3 className="text-lg font-medium">Prueba 5: Historial de Ajustes</h3>
               <p className="text-sm text-muted-foreground">
-                Presiona para ver los movimientos de ajuste de stock de tus depósitos.
+                Presiona para ver los movimientos de ajuste de stock del workspace.
               </p>
             </div>
             {isFetchingAjustes && (
@@ -646,7 +582,7 @@ export default function TestPage() {
                   </ul>
                 ) : (
                   <p className="text-muted-foreground">
-                    No se encontraron ajustes para tus depósitos.
+                    No se encontraron ajustes para este workspace.
                   </p>
                 )}
               </div>
@@ -663,4 +599,3 @@ export default function TestPage() {
     </div>
   );
 }
-
