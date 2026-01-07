@@ -190,6 +190,7 @@ export default function WorkspacesPage() {
     useCollection<Workspace>(workspacesCollection);
 
   const availableAdminsQuery = useMemoFirebase(() => {
+    // Only build and execute this query if the user is a super-admin.
     if (firestore && currentUserProfile?.role === 'super-admin') {
       return query(
         collection(firestore, 'users'),
@@ -197,7 +198,7 @@ export default function WorkspacesPage() {
         where('workspaceId', '==', null)
       );
     }
-    return null; // Return null if not a super-admin
+    return null; // For any other role, do not run this query.
   }, [firestore, currentUserProfile]);
 
   const { data: availableAdmins, isLoading: isLoadingAdmins } =
@@ -318,10 +319,22 @@ export default function WorkspacesPage() {
     }
   };
   
-  const isLoading = isLoadingWorkspaces || isLoadingProfile || (currentUserProfile?.role === 'super-admin' && isLoadingAdmins);
+  const isSuperAdmin = currentUserProfile?.role === 'super-admin';
+  const isLoading = isLoadingWorkspaces || isLoadingProfile || (isSuperAdmin && isLoadingAdmins);
 
-  if (!currentUserProfile?.role) {
-    return <div className="container mx-auto p-4 sm:p-6 md:p-8"><Loader2 className="animate-spin" /></div>
+  if (!isSuperAdmin && !isLoadingProfile) {
+    return (
+        <div className="container mx-auto p-4 sm:p-6 md:p-8">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Acceso Denegado</CardTitle>
+                    <CardDescription>
+                        Esta sección es solo para super-administradores.
+                    </CardDescription>
+                </CardHeader>
+            </Card>
+        </div>
+    );
   }
 
   return (
@@ -331,19 +344,21 @@ export default function WorkspacesPage() {
           <h1 className="text-3xl font-bold tracking-tight font-headline">Workspaces</h1>
           <p className="text-muted-foreground">Administra los espacios de trabajo de cada administrador.</p>
         </div>
-         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" />Crear Workspace</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Crear Nuevo Workspace</DialogTitle><DialogDescription>Asigna un nombre y un propietario.</DialogDescription></DialogHeader>
-            <Form {...workspaceForm}>
-              <form onSubmit={workspaceForm.handleSubmit(handleCreateSubmit)} className="space-y-6">
-                 <FormField control={workspaceForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Nombre del Workspace</FormLabel><FormControl><Input placeholder="Ej: Workspace de Acme Corp" {...field} /></FormControl><FormMessage /></FormItem>)}/>
-                  <FormField control={workspaceForm.control} name="ownerId" render={({ field }) => (<FormItem><FormLabel>Propietario (Administrador)</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un administrador sin workspace..." /></SelectTrigger></FormControl><SelectContent>{availableAdmins && availableAdmins.length === 0 && <SelectItem value="none" disabled>No hay administradores disponibles</SelectItem>}{availableAdmins?.map((admin) => (<SelectItem key={admin.id} value={admin.id}>{admin.email}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)}/>
-                <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear Workspace</Button></DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+        {isSuperAdmin && (
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild><Button><PlusCircle className="mr-2 h-4 w-4" />Crear Workspace</Button></DialogTrigger>
+            <DialogContent>
+                <DialogHeader><DialogTitle>Crear Nuevo Workspace</DialogTitle><DialogDescription>Asigna un nombre y un propietario.</DialogDescription></DialogHeader>
+                <Form {...workspaceForm}>
+                <form onSubmit={workspaceForm.handleSubmit(handleCreateSubmit)} className="space-y-6">
+                    <FormField control={workspaceForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Nombre del Workspace</FormLabel><FormControl><Input placeholder="Ej: Workspace de Acme Corp" {...field} /></FormControl><FormMessage /></FormItem>)}/>
+                    <FormField control={workspaceForm.control} name="ownerId" render={({ field }) => (<FormItem><FormLabel>Propietario (Administrador)</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder={isLoadingAdmins ? "Cargando..." : "Selecciona un administrador sin workspace..."} /></SelectTrigger></FormControl><SelectContent>{availableAdmins && availableAdmins.length === 0 && <SelectItem value="none" disabled>No hay administradores disponibles</SelectItem>}{availableAdmins?.map((admin) => (<SelectItem key={admin.id} value={admin.id}>{admin.email}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>)}/>
+                    <DialogFooter><DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear Workspace</Button></DialogFooter>
+                </form>
+                </Form>
+            </DialogContent>
+            </Dialog>
+        )}
       </div>
 
       <Card>
@@ -456,5 +471,3 @@ export default function WorkspacesPage() {
     </div>
   );
 }
-
-    
