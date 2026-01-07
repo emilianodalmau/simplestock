@@ -32,37 +32,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Inicializa Firebase Admin y obtén la instancia de la app.
     const adminApp = await initAdmin();
-    // Pasa la instancia de la app a getFirestore.
     const firestore = getFirestore(adminApp);
     const payment = new Payment(client);
     
-    let paymentDetails;
-    let workspaceId;
-    let paymentStatus;
-    let planId: keyof typeof planLimits | undefined;
-
-    // --- Simulación para pruebas locales desde /test ---
-    if (paymentId.startsWith('test_')) {
-      console.log(`SIMULACIÓN de pago con ID: ${paymentId}`);
-      workspaceId = body.workspaceId; // Read from body
-      if (!workspaceId) {
-        throw new Error('La simulación de webhook requiere un "workspaceId" en el cuerpo de la solicitud.');
-      }
-      paymentStatus = 'approved';
-      planId = 'crecimiento_mensual'; // Forzamos el plan crecimiento para la simulación
-    } else {
+    console.log(`Procesando notificación para el ID de pago: ${paymentId}`);
+    
     // --- Flujo normal para notificaciones reales de Mercado Pago ---
-      paymentDetails = await payment.get({ id: paymentId });
-      console.log('Detalles del pago obtenidos de MP:', paymentDetails);
+    const paymentDetails = await payment.get({ id: paymentId });
+    console.log('Detalles completos del pago obtenidos de MP:', JSON.stringify(paymentDetails, null, 2));
 
-      workspaceId = paymentDetails.external_reference;
-      paymentStatus = paymentDetails.status;
-      const item = paymentDetails.additional_information?.items?.[0];
-      // CORRECCIÓN: Comprobar tanto 'id' como 'category_id' para el plan.
-      planId = (item?.id || item?.category_id) as keyof typeof planLimits;
-    }
+    const workspaceId = paymentDetails.external_reference;
+    const paymentStatus = paymentDetails.status;
+    // CORRECCIÓN: Obtener el item del cuerpo principal, no de additional_information
+    const item = paymentDetails.additional_information?.items?.[0];
+    // CORRECCIÓN: Comprobar tanto 'id' como 'category_id' para el plan.
+    const planId = (item?.id || item?.category_id) as keyof typeof planLimits;
     
     if (!workspaceId) {
       console.error('Error: external_reference (workspaceId) no encontrado en el pago.');
@@ -73,8 +58,8 @@ export async function POST(req: NextRequest) {
       console.log(`Pago aprobado para el workspace: ${workspaceId}`);
       
       if (!planId || !planLimits[planId]) {
-        console.error(`Error: Plan ID "${planId}" no es válido.`);
-        return NextResponse.json({ success: false, message: 'Invalid Plan ID' }, { status: 400 });
+        console.error(`Error: Plan ID "${planId}" no es válido o no se encontró en los detalles del pago.`);
+        return NextResponse.json({ success: false, message: `Invalid Plan ID: ${planId}` }, { status: 400 });
       }
       
       const isAnnual = planId.includes('_anual');
@@ -96,6 +81,8 @@ export async function POST(req: NextRequest) {
       
       const workspaceRef = firestore.collection('workspaces').doc(workspaceId);
       
+      console.log(`Actualizando workspace ${workspaceId} con los siguientes datos de suscripción:`, JSON.stringify(newSubscriptionData, null, 2));
+      
       await workspaceRef.update({
         subscription: newSubscriptionData
       });
@@ -108,7 +95,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error procesando el webhook de Mercado Pago:', error);
-    // Agrega el mensaje de error a la respuesta para facilitar la depuración
     return NextResponse.json({ success: false, message: error.message || 'Internal server error' }, { status: 500 });
   }
 }
