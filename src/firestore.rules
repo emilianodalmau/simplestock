@@ -1,16 +1,16 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 12 - Final y Estable)
+    // HELPER FUNCTIONS
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
       return request.auth != null;
     }
 
+    // Obtiene los datos del usuario actual
     function getMyData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -34,9 +34,8 @@ service cloud.firestore {
 
     function isInWorkspace(workspaceId) {
       let userData = getMyData();
-      // Un usuario está en un workspace si su documento de usuario lo dice,
-      // O si es el propietario (owner) de ese workspace.
-      // Esto es crucial para el momento de la creación, donde el `workspaceId` del usuario aún puede ser nulo.
+      // Un usuario está en un workspace si su documento lo dice
+      // O si es el owner (necesario durante la creación inicial)
       return isSignedIn() && (
         (userData != null && userData.get('workspaceId', '') == workspaceId) ||
         (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
@@ -56,6 +55,8 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
+      // GET: Permite leer un solo usuario si es super-admin, si es el mismo usuario,
+      // o si ambos pertenecen al mismo workspace.
       allow get: if isSuperAdmin() 
                   || isOwner(userId)
                   || (
@@ -65,18 +66,20 @@ service cloud.firestore {
                       && resource.data.workspaceId == getMyData().workspaceId
                      );
 
+      // LIST: REGLA CORREGIDA
+      // En lugar de inspeccionar request.query, verificamos que los datos devueltos
+      // coincidan con el workspace del usuario que hace la petición.
+      // Firestore fuerza automáticamente que la query del cliente tenga el .where() correspondiente.
       allow list: if isSuperAdmin() 
                   || (
                       isWorkspaceAdmin(getMyData().workspaceId) &&
-                      request.query.get('where', [['']])[0][0] == 'workspaceId' &&
-                      request.query.get('where', [['']])[0][2] == getMyData().workspaceId
+                      resource.data.workspaceId == getMyData().workspaceId
                   )
-                  || ( // Rule for listing available admins
+                  || ( 
+                      // Permite a super-admin ver admins sin workspace asignado
                       isSuperAdmin() &&
-                      request.query.get('where', [['']])[0][0] == 'role' &&
-                      request.query.get('where', [['']])[0][2] == 'administrador' &&
-                      request.query.get('where', [['']])[1][0] == 'workspaceId' &&
-                      request.query.get('where', [['']])[1][2] == null
+                      resource.data.role == 'administrador' &&
+                      resource.data.workspaceId == null
                   );
 
       allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
@@ -102,7 +105,7 @@ service cloud.firestore {
     }
         
     // ------------------------------------------------------------------------
-    // Subcollections (DESACOPLADAS para mayor claridad y seguridad)
+    // Subcollections
     // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
@@ -131,10 +134,6 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         // Se relaja la regla de lectura (`read` que incluye `list`) para permitir que las consultas 
-         // del cliente se ejecuten sin ser bloqueadas por reglas complejas.
-         // La seguridad se delega a las consultas de la aplicación, que ya filtran por `depositId` o `userId`
-         // según el rol del usuario, asegurando que solo vean los documentos que les corresponden.
          allow read: if isSignedIn();
          
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
