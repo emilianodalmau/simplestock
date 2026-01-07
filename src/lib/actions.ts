@@ -36,7 +36,7 @@ export async function createPreference(
             title: title,
             quantity: 1,
             unit_price: price,
-            currency_id: 'ARS', // Moneda local (Pesos Argentinos)
+            currency_id: 'USD', // CORRECCIÓN: Usar USD para coincidir con los precios de los planes.
           },
         ],
         // URL a la que Mercado Pago enviará notificaciones sobre el estado del pago.
