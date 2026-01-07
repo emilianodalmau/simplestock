@@ -60,7 +60,8 @@ export async function POST(req: NextRequest) {
       workspaceId = paymentDetails.external_reference;
       paymentStatus = paymentDetails.status;
       const item = paymentDetails.additional_information?.items?.[0];
-      planId = item?.id as keyof typeof planLimits;
+      // CORRECCIÓN: Comprobar tanto 'id' como 'category_id' para el plan.
+      planId = (item?.id || item?.category_id) as keyof typeof planLimits;
     }
     
     if (!workspaceId) {
