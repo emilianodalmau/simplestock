@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { useAuth, useFirestore } from "@/firebase";
 import { useState } from "react";
@@ -35,6 +35,7 @@ const formSchema = z.object({
 export function SignupForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const auth = useAuth();
   const firestore = useFirestore();
@@ -90,8 +91,12 @@ export function SignupForm() {
       
       await setDoc(userDocRef, userData);
       
-      // 3. Redirect to dashboard where the user will be prompted to create a workspace
-      router.push("/dashboard");
+      const plan = searchParams.get('plan');
+      if (plan) {
+          router.push(`/precios?plan=${plan}`);
+      } else {
+          router.push("/dashboard");
+      }
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
@@ -192,3 +197,5 @@ export function SignupForm() {
     </Form>
   );
 }
+
+    

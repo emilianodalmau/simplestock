@@ -59,7 +59,7 @@ const plans = {
         'Soporte por email prioritario',
       ],
       cta: 'Elegir Plan Crecimiento',
-      href: '/signup?plan=crecimiento',
+      href: '/signup?plan=crecimiento_mensual',
       featured: true,
       planId: 'crecimiento_mensual',
     },
@@ -160,7 +160,8 @@ function PlanCard({ plan, onSelectPlan, isProcessing, isUserLoggedIn }: { plan: 
     if (isUserLoggedIn) {
         onSelectPlan(plan);
     } else {
-        window.location.href = '/signup';
+        // Redirect to signup but include the planId
+        window.location.href = plan.href;
     }
   };
 
@@ -187,11 +188,11 @@ function PlanCard({ plan, onSelectPlan, isProcessing, isUserLoggedIn }: { plan: 
         </ul>
       </CardContent>
       <CardFooter>
-        <Button onClick={handleButtonClick} className="w-full" variant={plan.featured ? 'default' : 'outline'} disabled={isButtonDisabled || isLoading}>
+        <Button onClick={handleButtonClick} className="w-full" variant={plan.featured ? 'default' : 'outline'} disabled={(isUserLoggedIn && isButtonDisabled) || isLoading}>
           {isLoading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
-            isUserLoggedIn ? plan.cta : 'Registrarse para Elegir'
+            plan.cta
           )}
         </Button>
       </CardFooter>
@@ -297,3 +298,5 @@ export default function PreciosPage() {
     </div>
   );
 }
+
+    

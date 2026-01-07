@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -136,12 +137,12 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador';
 
   const usersCollectionQuery = useMemoFirebase(() => {
-    // ESTA CONSULTA AHORA COINCIDE PERFECTAMENTE CON LA NUEVA REGLA EN FIRESTORE
-    if (firestore && currentUserProfile?.workspaceId && canAssignJefe) {
+    // This query is now correctly conditioned and will only run for admins
+    if (firestore && currentUserProfile?.workspaceId && currentUserProfile.role === 'administrador') {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
     return null;
-  }, [firestore, currentUserProfile, canAssignJefe]);
+  }, [firestore, currentUserProfile]);
 
   const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersCollectionQuery);
 
@@ -314,14 +315,16 @@ export default function DepositosPage() {
   }
 
   // Check access after loading all user profile data
-  if (!isLoadingProfile && currentUserProfile?.role === 'jefe_deposito') {
+  if (!isLoadingProfile && !canManageDeposits && currentUserProfile?.role === 'visualizador') {
+     // Visualizador can see the list but not manage it. We let the component render but disable actions.
+  } else if (!isLoadingProfile && currentUserProfile?.role === 'jefe_deposito') {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <Card>
           <CardHeader>
-            <CardTitle>Acceso Denegado</CardTitle>
+            <CardTitle>Acceso Limitado</CardTitle>
             <CardDescription>
-              No tienes los permisos necesarios para administrar los depósitos.
+              Como Jefe de Depósito, no puedes administrar la lista de depósitos.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -596,3 +599,5 @@ export default function DepositosPage() {
     </div>
   );
 }
+
+    
