@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useState } from 'react';
@@ -55,7 +56,7 @@ export default function TestPage() {
     [firestore, user]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } =
-    useDoc<UserProfile>(currentUserProfile);
+    useDoc<UserProfile>(currentUserDocRef);
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile) return false;
@@ -358,14 +359,14 @@ export default function TestPage() {
     }
     setIsSimulatingPayment(true);
 
-    const fakePaymentId = `test_${Date.now()}`;
+    const fakePaymentId = `test_${Date.now()}?workspaceId=${currentUserProfile.workspaceId}`;
     const fakePayload = {
       type: "payment",
       data: { id: fakePaymentId },
     };
 
     // This simulates the external call Mercado Pago would make to our webhook endpoint
-    const response = await fetch('/api/webhooks/mercadopago', {
+    const response = await fetch(`/api/webhooks/mercadopago?workspaceId=${currentUserProfile.workspaceId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fakePayload),
@@ -377,10 +378,11 @@ export default function TestPage() {
         description: 'El webhook fue llamado. Revisa la página de Suscripción para ver los cambios.',
       });
     } else {
+      const errorData = await response.json();
       toast({
         variant: 'destructive',
         title: 'Error en la Simulación',
-        description: 'La llamada al webhook falló. Revisa la consola del servidor para más detalles.',
+        description: `La llamada al webhook falló: ${errorData.message || 'Error desconocido'}`,
       });
     }
 
