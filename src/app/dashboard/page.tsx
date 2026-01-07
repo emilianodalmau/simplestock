@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { CreateWorkspaceForm } from '@/components/auth/create-workspace-form';
+import { useSearchParams } from 'next/navigation';
 
 type UserProfile = {
   role?: 'administrador' | 'super-admin';
@@ -54,6 +55,8 @@ function MainDashboard() {
 export default function DashboardPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const searchParams = useSearchParams();
+  const plan = searchParams.get('plan');
 
   const userDocRef = useMemoFirebase(
     () => (user ? doc(firestore, 'users', user.uid) : null),
@@ -63,9 +66,7 @@ export default function DashboardPage() {
 
   const isLoading = isUserLoading || isLoadingProfile;
   
-  // Condición estricta para determinar si mostrar el formulario de creación
   const needsToCreateWorkspace = useMemo(() => {
-    // Solo aplica si el perfil ha cargado y no está en proceso de carga
     if (!isLoading && currentUserProfile) {
         return currentUserProfile.role === 'administrador' && !currentUserProfile.workspaceId;
     }

@@ -32,6 +32,7 @@ import {
   collection,
   serverTimestamp,
 } from 'firebase/firestore';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const formSchema = z.object({
   workspaceName: z
@@ -46,6 +47,8 @@ export function CreateWorkspaceForm() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -68,7 +71,6 @@ export function CreateWorkspaceForm() {
     try {
       const batch = writeBatch(firestore);
 
-      // 1. Define la referencia al nuevo workspace
       const workspaceRef = doc(collection(firestore, 'workspaces'));
       
       const freePlanSubscription = {
@@ -83,7 +85,6 @@ export function CreateWorkspaceForm() {
         },
       };
 
-      // 2. Prepara los datos del nuevo workspace
       const newWorkspace = {
         id: workspaceRef.id,
         name: data.workspaceName,
@@ -92,14 +93,10 @@ export function CreateWorkspaceForm() {
         subscription: freePlanSubscription,
       };
 
-      // 3. Añade la creación del workspace al batch
       batch.set(workspaceRef, newWorkspace);
-
-      // 4. Define la referencia al documento del usuario y prepara la actualización
       const userDocRef = doc(firestore, 'users', user.uid);
       batch.update(userDocRef, { workspaceId: workspaceRef.id });
 
-      // 5. Ejecuta el batch
       await batch.commit();
 
       toast({
@@ -107,8 +104,14 @@ export function CreateWorkspaceForm() {
         description: `Tu espacio de trabajo "${data.workspaceName}" ha sido creado.`,
       });
       
-      // Forzar una recarga de la página para que el layout se actualice con los nuevos datos
-      window.location.reload();
+      const planToPurchase = searchParams.get('plan');
+      if (planToPurchase) {
+        // Redirect to pricing to complete the purchase
+        router.push(`/precios?plan=${planToPurchase}`);
+      } else {
+        // Standard flow, reload to update layout
+        window.location.reload();
+      }
 
     } catch (error) {
       console.error('Error creando el workspace:', error);

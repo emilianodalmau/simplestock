@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Check, ArrowLeft, Loader2 } from 'lucide-react';
@@ -14,8 +15,6 @@ import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CheckoutButton } from '@/components/checkout-button';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-
 
 type UserProfile = {
   workspaceId?: string;
@@ -226,7 +225,7 @@ export default function PreciosPage() {
                 title: 'Acción Requerida',
                 description: 'Primero debes crear un workspace. Serás redirigido.',
             });
-            router.push('/dashboard'); // Go to create workspace
+            router.push(`/dashboard?plan=${plan.planId}`);
         } else {
              toast({
                 variant: 'destructive',
@@ -262,12 +261,11 @@ export default function PreciosPage() {
 
   useEffect(() => {
     const planIdToPurchase = searchParams.get('plan');
-    if (planIdToPurchase && user && !isUserLoading && userProfile && !isLoadingProfile) {
+    if (planIdToPurchase && user && !isUserLoading && userProfile && !isLoadingProfile && userProfile.workspaceId) {
         const allPlans = [...plans.monthly, ...plans.annually];
         const selectedPlan = allPlans.find(p => p.planId === planIdToPurchase);
         if (selectedPlan) {
             handleSelectPlan(selectedPlan);
-            // Clean the URL to avoid re-triggering
             router.replace('/precios', {scroll: false});
         }
     }

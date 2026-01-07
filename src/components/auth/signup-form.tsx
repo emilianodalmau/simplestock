@@ -86,17 +86,15 @@ export function SignupForm() {
         lastName: values.lastName,
         photoURL: user.photoURL || "",
         role: role,
-        workspaceId: null, // Critical: Starts as null, will be set in the next step
+        workspaceId: null, // Critical: Starts as null
       };
       
       await setDoc(userDocRef, userData);
       
+      // 3. Redirect to dashboard to force workspace creation
       const plan = searchParams.get('plan');
-      if (plan) {
-          router.push(`/precios?plan=${plan}`);
-      } else {
-          router.push("/dashboard");
-      }
+      const redirectUrl = plan ? `/dashboard?plan=${plan}` : "/dashboard";
+      router.push(redirectUrl);
 
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
