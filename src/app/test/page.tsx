@@ -249,7 +249,7 @@ export default function TestPage() {
       where('depositId', 'in', depositIds),
       orderBy('remitoNumber'),
       startAt('S-'),
-      endAt('S-\uf8ff')
+      endAt('S-\\uf8ff')
     );
 
     try {
@@ -663,3 +663,4 @@ export default function TestPage() {
     </div>
   );
 }
+
