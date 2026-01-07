@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------------
-    // HELPER FUNCTIONS (Versión 12 - Final y Estable)
+    // HELPER FUNCTIONS (Versión 13 - Ajuste para creación de usuario)
     // ------------------------------------------------------------------------
 
     function isSignedIn() {
@@ -36,7 +36,6 @@ service cloud.firestore {
       let userData = getMyData();
       // Un usuario está en un workspace si su documento de usuario lo dice,
       // O si es el propietario (owner) de ese workspace.
-      // Esto es crucial para el momento de la creación, donde el `workspaceId` del usuario aún puede ser nulo.
       return isSignedIn() && (
         (userData != null && userData.get('workspaceId', '') == workspaceId) ||
         (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
@@ -79,7 +78,10 @@ service cloud.firestore {
                       request.query.get('where', [['']])[1][2] == null
                   );
 
-      allow create: if isSuperAdmin() || isWorkspaceAdmin(request.resource.data.workspaceId);
+      // A user can create their own profile, or an admin can create a user for their workspace.
+      allow create: if (isOwner(userId)) // <-- ESTA ES LA LÍNEA CLAVE AÑADIDA
+                      || isSuperAdmin() 
+                      || isWorkspaceAdmin(request.resource.data.workspaceId);
       
       allow update: if isOwner(userId)
                       || isSuperAdmin()
@@ -102,21 +104,21 @@ service cloud.firestore {
     }
         
     // ------------------------------------------------------------------------
-    // Subcollections (DESACOPLADAS para mayor claridad y seguridad)
+    // Subcollections
     // ------------------------------------------------------------------------
     
-    match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-    match /workspaces/{workspaceId}/suppliers/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
-    match /workspaces/{workspaceId}/counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
+    match /workspaces/{workspaceId}/categories/{docId} { allow read, write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'); }
+    match /workspaces/{workspaceId}/suppliers/{docId} { allow read, write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'); }
+    match /workspaces/{workspaceId}/counters/{docId} { allow read, write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'); }
     
     match /workspaces/{workspaceId}/products/{productId} {
-        allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
-        allow read, update, delete: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow create: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
@@ -131,10 +133,6 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         // Se relaja la regla de lectura (`read` que incluye `list`) para permitir que las consultas 
-         // del cliente se ejecuten sin ser bloqueadas por reglas complejas.
-         // La seguridad se delega a las consultas de la aplicación, que ya filtran por `depositId` o `userId`
-         // según el rol del usuario, asegurando que solo vean los documentos que les corresponden.
          allow read: if isSignedIn();
          
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
