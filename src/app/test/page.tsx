@@ -359,14 +359,15 @@ export default function TestPage() {
     }
     setIsSimulatingPayment(true);
 
-    const fakePaymentId = `test_${Date.now()}?workspaceId=${currentUserProfile.workspaceId}`;
+    const fakePaymentId = `test_${Date.now()}`;
     const fakePayload = {
       type: "payment",
       data: { id: fakePaymentId },
+      workspaceId: currentUserProfile.workspaceId, // Pass workspaceId in the body
     };
 
     // This simulates the external call Mercado Pago would make to our webhook endpoint
-    const response = await fetch(`/api/webhooks/mercadopago?workspaceId=${currentUserProfile.workspaceId}`, {
+    const response = await fetch(`/api/webhooks/mercadopago`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fakePayload),

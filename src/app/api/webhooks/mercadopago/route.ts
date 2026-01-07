@@ -45,10 +45,9 @@ export async function POST(req: NextRequest) {
     // --- Simulación para pruebas locales desde /test ---
     if (paymentId.startsWith('test_')) {
       console.log(`SIMULACIÓN de pago con ID: ${paymentId}`);
-      const url = new URL(req.url);
-      workspaceId = url.searchParams.get('workspaceId');
+      workspaceId = body.workspaceId; // Corrected: Read from body
       if (!workspaceId) {
-        throw new Error('La simulación de webhook requiere un "workspaceId" como query param.');
+        throw new Error('La simulación de webhook requiere un "workspaceId" en el cuerpo de la solicitud.');
       }
       paymentStatus = 'approved';
       planId = 'crecimiento_mensual'; // Forzamos el plan crecimiento para la simulación
