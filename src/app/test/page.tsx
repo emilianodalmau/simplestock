@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo, useState } from 'react';
@@ -363,7 +362,8 @@ export default function TestPage() {
     const fakePayload = {
       type: "payment",
       data: { id: fakePaymentId },
-      workspaceId: currentUserProfile.workspaceId, // Pass workspaceId in the body
+      // This is the key change. We now pass the workspaceId in the body for testing.
+      workspaceId: currentUserProfile.workspaceId,
     };
 
     // This simulates the external call Mercado Pago would make to our webhook endpoint

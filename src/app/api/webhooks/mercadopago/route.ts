@@ -31,6 +31,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'Not a payment notification' });
   }
 
+  // Handle test webhook simulation
+  if (paymentId.startsWith('test_')) {
+    console.log('Procesando simulación de webhook de prueba.');
+    const workspaceId = body.workspaceId;
+    if (!workspaceId) {
+      console.error('Error en simulación: Falta el workspaceId en el cuerpo de la petición.');
+      return NextResponse.json({ success: false, message: 'Test simulation requires workspaceId' }, { status: 400 });
+    }
+    
+    try {
+        const adminApp = await initAdmin();
+        const firestore = getFirestore(adminApp);
+        
+        const planId = 'crecimiento_mensual' as keyof typeof planLimits; // Simula la compra del plan Crecimiento
+        const isAnnual = planId.includes('_anual');
+        const currentPeriodEndDate = new Date();
+        if (isAnnual) {
+            currentPeriodEndDate.setFullYear(currentPeriodEndDate.getFullYear() + 1);
+        } else {
+            currentPeriodEndDate.setMonth(currentPeriodEndDate.getMonth() + 1);
+        }
+
+        const newSubscriptionData = {
+            planId: planId,
+            status: 'active',
+            currentPeriodEnd: Timestamp.fromDate(currentPeriodEndDate),
+            limits: planLimits[planId],
+            lastPaymentId: paymentId,
+            updatedAt: Timestamp.now(),
+        };
+
+        const workspaceRef = firestore.collection('workspaces').doc(workspaceId);
+        await workspaceRef.update({ subscription: newSubscriptionData });
+
+        console.log(`Simulación exitosa: Workspace ${workspaceId} actualizado al plan ${planId}.`);
+        return NextResponse.json({ success: true, message: 'Test simulation processed successfully.' });
+
+    } catch (error: any) {
+        console.error('Error procesando la simulación del webhook:', error);
+        return NextResponse.json({ success: false, message: error.message || 'Internal server error during simulation' }, { status: 500 });
+    }
+  }
+
+
   try {
     const adminApp = await initAdmin();
     const firestore = getFirestore(adminApp);
@@ -44,9 +88,7 @@ export async function POST(req: NextRequest) {
 
     const workspaceId = paymentDetails.external_reference;
     const paymentStatus = paymentDetails.status;
-    // CORRECCIÓN: Obtener el item del cuerpo principal, no de additional_information
     const item = paymentDetails.additional_information?.items?.[0];
-    // CORRECCIÓN: Comprobar tanto 'id' como 'category_id' para el plan.
     const planId = (item?.id || item?.category_id) as keyof typeof planLimits;
     
     if (!workspaceId) {
