@@ -315,7 +315,7 @@ export default function PreciosPage() {
 
       <div className="mt-12 text-center">
         <Button asChild variant="ghost">
-          <Link href="/">
+          <Link href={user ? "/dashboard" : "/"}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver al Inicio
           </Link>
