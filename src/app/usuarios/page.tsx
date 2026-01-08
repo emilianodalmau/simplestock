@@ -37,6 +37,7 @@ import {
   query,
   where,
   setDoc,
+  orderBy,
 } from 'firebase/firestore';
 import { getApp, getApps, initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -159,9 +160,11 @@ export default function UsuariosPage() {
   const usersCollectionQuery = useMemoFirebase(() => {
     if (!firestore || !currentUserProfile) return null;
 
+    const usersRef = collection(firestore, 'users');
+
     if (currentUserProfile.role === 'super-admin') {
-      // Super admin can list all users, but a 'where' clause might still be needed depending on rules
-      return collection(firestore, 'users');
+      // Super admin can list all users. Adding an orderBy clause makes the query specific enough.
+      return query(usersRef, orderBy('email'));
     }
 
     if (
@@ -170,7 +173,7 @@ export default function UsuariosPage() {
     ) {
       // This query now matches the security rule
       return query(
-        collection(firestore, 'users'),
+        usersRef,
         where('workspaceId', '==', currentUserProfile.workspaceId)
       );
     }

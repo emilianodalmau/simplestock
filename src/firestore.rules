@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -10,7 +11,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Obtiene los datos del usuario actual
     function getMyData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -33,13 +33,9 @@ service cloud.firestore {
     }
 
     function isInWorkspace(workspaceId) {
-      let userData = getMyData();
-      // Un usuario está en un workspace si su documento lo dice
-      // O si es el owner (necesario durante la creación inicial)
-      return isSignedIn() && (
-        (userData != null && userData.get('workspaceId', '') == workspaceId) ||
-        (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
-      );
+      // Un usuario está en un workspace si su documento de usuario lo dice.
+      // Esta es la versión corregida y segura que evita lecturas recursivas.
+      return isSignedIn() && getMyData().get('workspaceId', '') == workspaceId;
     }
 
     function isOrphanAdmin() {
@@ -55,8 +51,6 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      // GET: Permite leer un solo usuario si es super-admin, si es el mismo usuario,
-      // o si ambos pertenecen al mismo workspace.
       allow get: if isSuperAdmin() 
                   || isOwner(userId)
                   || (
@@ -66,20 +60,15 @@ service cloud.firestore {
                       && resource.data.workspaceId == getMyData().workspaceId
                      );
 
+      // Super-admin puede listar con cualquier query. El resto necesita filtros específicos.
       allow list: if isSuperAdmin() 
                   || (
                       isWorkspaceAdmin(getMyData().workspaceId) &&
                       request.query.get('where', [['']])[0][0] == 'workspaceId' &&
                       request.query.get('where', [['']])[0][2] == getMyData().workspaceId
-                  )
-                  || ( // Rule for listing available admins
-                      isSuperAdmin() &&
-                      request.query.get('where', [['']])[0][0] == 'role' &&
-                      request.query.get('where', [['']])[0][2] == 'administrador' &&
-                      request.query.get('where', [['']])[1][0] == 'workspaceId' &&
-                      request.query.get('where', [['']])[1][2] == null
                   );
 
+      // Un usuario puede crear su propio perfil, o un admin puede crear un usuario para su workspace.
       allow create: if (isOwner(userId))
                       || isSuperAdmin() 
                       || isWorkspaceAdmin(request.resource.data.workspaceId);
