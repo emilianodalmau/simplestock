@@ -71,12 +71,15 @@ export default function Home() {
               <p className="text-muted-foreground">
                 Por favor, inicia sesión o regístrate para continuar.
               </p>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <Button asChild>
                   <Link href="/login">Iniciar Sesión</Link>
                 </Button>
                 <Button asChild variant="outline">
                   <Link href="/signup">Registrarse</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/precios">Ver Precios</Link>
                 </Button>
               </div>
             </div>
