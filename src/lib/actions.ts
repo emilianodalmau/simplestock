@@ -2,6 +2,10 @@
 'use server';
 
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { initAdmin } from './firebase-admin';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { revalidatePath } from 'next/cache';
 
 // Inicializa el cliente de Mercado Pago.
 // Es crucial que el ACCESS_TOKEN se configure como una variable de entorno.
@@ -65,5 +69,36 @@ export async function createPreference(
     console.error('Error al crear la preferencia de Mercado Pago:', error);
     // Devuelve un objeto con un mensaje de error claro.
     return { error: 'No se pudo generar el enlace de pago.' };
+  }
+}
+
+/**
+ * Elimina un usuario de Firebase Authentication y Firestore.
+ * Esta acción solo debe ser accesible para super-administradores.
+ * @param userId - El UID del usuario a eliminar.
+ */
+export async function deleteUser(userId: string) {
+  try {
+    const adminApp = await initAdmin();
+    const adminAuth = getAdminAuth(adminApp);
+    const firestore = getFirestore(adminApp);
+
+    // Paso 1: Eliminar el usuario de Firebase Authentication
+    await adminAuth.deleteUser(userId);
+
+    // Paso 2: Eliminar el documento del usuario de Firestore
+    await firestore.collection('users').doc(userId).delete();
+    
+    // Revalida la ruta para refrescar la lista de usuarios en el cliente
+    revalidatePath('/usuarios');
+
+    return { success: true, message: 'Usuario eliminado correctamente.' };
+  } catch (error: any) {
+    console.error('Error al eliminar el usuario:', error);
+    let message = 'No se pudo eliminar el usuario.';
+    if (error.code === 'auth/user-not-found') {
+        message = 'El usuario ya no existe en Firebase Authentication.';
+    }
+    return { success: false, error: message };
   }
 }

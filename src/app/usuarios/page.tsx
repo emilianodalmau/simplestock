@@ -44,7 +44,7 @@ import { firebaseConfig } from '@/firebase/config';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { Edit, Loader2, PlusCircle, Copy } from 'lucide-react';
+import { Edit, Loader2, PlusCircle, Copy, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -56,6 +56,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+  } from '@/components/ui/alert-dialog';
+import {
   Form,
   FormControl,
   FormField,
@@ -66,6 +77,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { deleteUser } from '@/lib/actions';
 
 const editFormSchema = z.object({
   firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -129,6 +141,7 @@ export default function UsuariosPage() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newUserCredentials, setNewUserCredentials] = useState<NewUserCredentials | null>(null);
   const firestore = useFirestore();
@@ -322,6 +335,24 @@ export default function UsuariosPage() {
       setIsCreateSubmitting(false);
     }
   };
+
+  const handleDeleteUser = async (userIdToDelete: string) => {
+    setIsDeleting(userIdToDelete);
+    const result = await deleteUser(userIdToDelete);
+    if (result.success) {
+        toast({
+            title: 'Usuario Eliminado',
+            description: result.message,
+        });
+    } else {
+        toast({
+            variant: 'destructive',
+            title: 'Error al eliminar',
+            description: result.error,
+        });
+    }
+    setIsDeleting(null);
+  }
 
   const getInitials = (firstName?: string, lastName?: string) => {
     if (!firstName) return 'U';
@@ -541,6 +572,29 @@ export default function UsuariosPage() {
                             aria-label="Activar o desactivar usuario"
                             disabled={user.id === currentUser?.uid || (user.role === 'super-admin' && !currentUserIsSuperAdmin)}
                         />
+                        {currentUserIsSuperAdmin && user.id !== currentUser?.uid && (
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" disabled={isDeleting === user.id}>
+                                        {isDeleting === user.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-destructive" />}
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Esta acción es irreversible. Se eliminará permanentemente al usuario de Firebase Authentication y su documento de Firestore.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">
+                                            Sí, eliminar usuario
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        )}
                     </TableCell>
                   )}
                 </TableRow>
