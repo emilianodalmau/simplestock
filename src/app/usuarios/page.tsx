@@ -163,7 +163,6 @@ export default function UsuariosPage() {
     const usersRef = collection(firestore, 'users');
 
     if (currentUserProfile.role === 'super-admin') {
-      // Super admin can list all users. Adding an orderBy clause makes the query specific enough.
       return query(usersRef, orderBy('email'));
     }
 
@@ -171,14 +170,13 @@ export default function UsuariosPage() {
       currentUserProfile.role === 'administrador' &&
       currentUserProfile.workspaceId
     ) {
-      // This query now matches the security rule
       return query(
         usersRef,
         where('workspaceId', '==', currentUserProfile.workspaceId)
       );
     }
 
-    return null; // Return null if conditions aren't met to avoid running a forbidden query
+    return null;
   }, [firestore, currentUserProfile]);
 
   const { data: users, isLoading: isLoadingUsers } =
@@ -731,5 +729,7 @@ export default function UsuariosPage() {
     </>
   );
 }
+
+    
 
     

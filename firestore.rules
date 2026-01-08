@@ -33,9 +33,12 @@ service cloud.firestore {
     }
 
     function isInWorkspace(workspaceId) {
-      // Un usuario está en un workspace si su documento de usuario lo dice.
-      // Esta es la versión corregida y segura que evita lecturas recursivas.
-      return isSignedIn() && getMyData().get('workspaceId', '') == workspaceId;
+      // Un usuario está en un workspace si su documento de usuario lo dice
+      // O si es el owner (necesario durante la creación inicial)
+      return isSignedIn() && (
+        (getMyData().get('workspaceId', '') == workspaceId) ||
+        (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
+      );
     }
 
     function isOrphanAdmin() {
@@ -65,13 +68,6 @@ service cloud.firestore {
                       isWorkspaceAdmin(getMyData().workspaceId) &&
                       request.query.get('where', [['']])[0][0] == 'workspaceId' &&
                       request.query.get('where', [['']])[0][2] == getMyData().workspaceId
-                  )
-                  || ( // Rule for listing available admins
-                      isSuperAdmin() &&
-                      request.query.get('where', [['']])[0][0] == 'role' &&
-                      request.query.get('where', [['']])[0][2] == 'administrador' &&
-                      request.query.get('where', [['']])[1][0] == 'workspaceId' &&
-                      request.query.get('where', [['']])[1][2] == null
                   );
 
       // Un usuario puede crear su propio perfil, o un admin puede crear un usuario para su workspace.
@@ -143,3 +139,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
