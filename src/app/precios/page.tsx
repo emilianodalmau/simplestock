@@ -53,8 +53,8 @@ const plans = {
     },
     {
       name: 'Plan Crecimiento',
-      price: 'US$ 29',
-      priceValue: 29,
+      price: 'US$ 1',
+      priceValue: 1,
       period: '/mes',
       description: 'Para PyMEs y equipos en expansión que necesitan más potencia.',
       features: [
@@ -74,8 +74,8 @@ const plans = {
     },
     {
       name: 'Plan Empresarial',
-      price: 'US$ 79',
-      priceValue: 79,
+      price: 'US$ 1.5',
+      priceValue: 1.5,
       period: '/mes',
       description: 'Soluciones a medida para empresas y consultores.',
       features: [
@@ -118,8 +118,8 @@ const plans = {
     },
     {
       name: 'Plan Crecimiento',
-      price: 'US$ 290',
-      priceValue: 290,
+      price: 'US$ 10',
+      priceValue: 10,
       period: '/año',
       description: 'Ahorra ~2 meses con el plan anual.',
       features: [
@@ -139,8 +139,8 @@ const plans = {
     },
     {
       name: 'Plan Empresarial',
-      price: 'US$ 790',
-      priceValue: 790,
+      price: 'US$ 15',
+      priceValue: 15,
       period: '/año',
       description: 'Ahorra ~2 meses con el plan anual.',
       features: [
