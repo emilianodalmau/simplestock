@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -15,6 +14,14 @@ import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CheckoutButton } from '@/components/checkout-button';
 import { useSearchParams, useRouter } from 'next/navigation';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+
 
 type UserProfile = {
   workspaceId?: string;
@@ -295,19 +302,20 @@ export default function PreciosPage() {
         ))}
       </div>
       
-      {preferenceId && (
-        <div className='mt-8 flex justify-center'>
-            <Card className="w-full max-w-md">
-                <CardHeader>
-                    <CardTitle>Completa tu Pago</CardTitle>
-                    <CardDescription>Haz clic en el botón de Mercado Pago para finalizar la compra de tu plan.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <CheckoutButton preferenceId={preferenceId} />
-                </CardContent>
-            </Card>
-        </div>
-      )}
+      <Dialog open={!!preferenceId} onOpenChange={(open) => !open && setPreferenceId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Completa tu Pago</DialogTitle>
+            <DialogDescription>
+              Haz clic en el botón de Mercado Pago para finalizar la compra de tu
+              plan. Serás redirigido a una página segura.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {preferenceId && <CheckoutButton preferenceId={preferenceId} />}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="mt-12 text-center text-sm text-muted-foreground max-w-4xl mx-auto">
         <p>*Los precios se muestran en dólares estadounidenses (USD) como referencia. El cobro se realizará en pesos argentinos (ARS) a través de Mercado Pago al tipo de cambio aplicable el día de la transacción, más los impuestos correspondientes (IVA, etc.).</p>
@@ -315,10 +323,10 @@ export default function PreciosPage() {
 
       <div className="mt-12 text-center">
         <Button asChild variant="ghost">
-          <Link href={user ? "/dashboard" : "/"}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver al Inicio
-          </Link>
+            <Link href={user ? "/dashboard" : "/"}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver
+            </Link>
         </Button>
       </div>
     </div>

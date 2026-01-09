@@ -83,22 +83,28 @@ export async function deleteUser(userId: string) {
     const adminAuth = getAdminAuth(adminApp);
     const firestore = getFirestore(adminApp);
 
-    // Paso 1: Eliminar el usuario de Firebase Authentication
-    await adminAuth.deleteUser(userId);
+    // Paso 1: Intentar eliminar de Auth
+    try {
+        await adminAuth.deleteUser(userId);
+    } catch (authError: any) {
+        // Si el error es que el usuario no existe, lo ignoramos y seguimos
+        // para borrar el documento "zombie" de Firestore.
+        if (authError.code === 'auth/user-not-found') {
+            console.warn(`Usuario ${userId} no encontrado en Auth, eliminando solo de Firestore.`);
+        } else {
+            // Si es otro error de Auth, lo lanzamos.
+            throw authError;
+        }
+    }
 
-    // Paso 2: Eliminar el documento del usuario de Firestore
+    // Paso 2: Eliminar de Firestore (siempre se ejecuta)
     await firestore.collection('users').doc(userId).delete();
     
-    // Revalida la ruta para refrescar la lista de usuarios en el cliente
     revalidatePath('/usuarios');
 
     return { success: true, message: 'Usuario eliminado correctamente.' };
   } catch (error: any) {
     console.error('Error al eliminar el usuario:', error);
-    let message = 'No se pudo eliminar el usuario.';
-    if (error.code === 'auth/user-not-found') {
-        message = 'El usuario ya no existe en Firebase Authentication.';
-    }
-    return { success: false, error: message };
+    return { success: false, error: error.message };
   }
 }
