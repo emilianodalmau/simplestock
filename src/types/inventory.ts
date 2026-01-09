@@ -1,4 +1,5 @@
 
+
 export type Product = {
   id: string;
   name: string;
@@ -25,8 +26,13 @@ export type UserProfile = {
   id: string;
   firstName?: string;
   lastName?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
+  email: string;
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'super-admin';
   workspaceId?: string;
+  photoURL?: string;
+  phone?: string;
+  address?: string;
+  disabled?: boolean;
 };
 
 export type StockMovementItem = {
@@ -68,4 +74,9 @@ export type RequestItem = {
     inStock: number;
     unit: string;
     toDeliver: number;
+}
+
+export type Workspace = {
+    id: string;
+    name: string;
 }

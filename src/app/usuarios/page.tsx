@@ -79,6 +79,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { deleteUser } from '@/lib/actions';
+import type { UserProfile as UserProfileType, Workspace } from '@/types/inventory';
+
 
 const editFormSchema = z.object({
   firstName: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -98,19 +100,6 @@ const createFormSchema = z.object({
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
-
-type UserProfile = {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  photoURL?: string;
-  phone?: string;
-  address?: string;
-  workspaceId?: string | null;
-  role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
-  disabled?: boolean;
-};
 
 type NewUserCredentials = {
   email: string;
@@ -139,7 +128,7 @@ const generatePassword = (length = 8): string => {
 
 
 export default function UsuariosPage() {
-  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editingUser, setEditingUser] = useState<UserProfileType | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -149,20 +138,29 @@ export default function UsuariosPage() {
   const { user: currentUser } = useUser();
   const { toast } = useToast();
 
+  // Filtros para super-admin
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedWorkspace, setSelectedWorkspace] = useState('all');
+
   const currentUserDocRef = useMemoFirebase(
     () =>
       firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null,
     [firestore, currentUser]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } =
-    useDoc<UserProfile>(currentUserDocRef);
+    useDoc<UserProfileType>(currentUserDocRef);
+    
+  const currentUserIsSuperAdmin = currentUserProfile?.role === 'super-admin';
+
 
   const usersCollectionQuery = useMemoFirebase(() => {
     if (!firestore || !currentUserProfile) return null;
 
     const usersRef = collection(firestore, 'users');
 
-    if (currentUserProfile.role === 'super-admin') {
+    if (currentUserIsSuperAdmin) {
       return query(usersRef, orderBy('email'));
     }
 
@@ -177,10 +175,39 @@ export default function UsuariosPage() {
     }
 
     return null;
-  }, [firestore, currentUserProfile]);
+  }, [firestore, currentUserProfile, currentUserIsSuperAdmin]);
 
   const { data: users, isLoading: isLoadingUsers } =
-    useCollection<UserProfile>(usersCollectionQuery);
+    useCollection<UserProfileType>(usersCollectionQuery);
+
+  const workspacesCollectionQuery = useMemoFirebase(
+    () => (firestore && currentUserIsSuperAdmin ? collection(firestore, 'workspaces') : null),
+    [firestore, currentUserIsSuperAdmin]
+  );
+  const { data: workspaces, isLoading: isLoadingWorkspaces } = useCollection<Workspace>(workspacesCollectionQuery);
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    if (!currentUserIsSuperAdmin) return users;
+
+    return users.filter(user => {
+      const searchMatch = searchTerm === '' ||
+        user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const roleMatch = selectedRole === 'all' || user.role === selectedRole;
+      
+      const statusMatch = selectedStatus === 'all' ||
+        (selectedStatus === 'active' && !user.disabled) ||
+        (selectedStatus === 'inactive' && user.disabled);
+        
+      const workspaceMatch = selectedWorkspace === 'all' || user.workspaceId === selectedWorkspace;
+
+      return searchMatch && roleMatch && statusMatch && workspaceMatch;
+    });
+  }, [users, searchTerm, selectedRole, selectedStatus, selectedWorkspace, currentUserIsSuperAdmin]);
+
 
   const editForm = useForm<EditFormValues>({
     resolver: zodResolver(editFormSchema),
@@ -364,9 +391,8 @@ export default function UsuariosPage() {
 
   const currentUserIsAdmin =
     currentUserProfile?.role === 'administrador' ||
-    currentUserProfile?.role === 'super-admin';
-  const currentUserIsSuperAdmin = currentUserProfile?.role === 'super-admin';
-  const isLoading = isLoadingProfile || isLoadingUsers;
+    currentUserIsSuperAdmin;
+  const isLoading = isLoadingProfile || isLoadingUsers || (currentUserIsSuperAdmin && isLoadingWorkspaces);
 
   return (
     <>
@@ -448,6 +474,58 @@ export default function UsuariosPage() {
         )}
       </div>
 
+      {currentUserIsSuperAdmin && (
+        <Card className="mb-6">
+            <CardHeader>
+                <CardTitle>Filtros</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                 <Input
+                    placeholder="Buscar por nombre, apellido, email..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="flex-grow"
+                />
+                <Select value={selectedRole} onValueChange={setSelectedRole}>
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Filtrar por rol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todos los Roles</SelectItem>
+                        <SelectItem value="super-admin">Super Admin</SelectItem>
+                        <SelectItem value="administrador">Administrador</SelectItem>
+                        <SelectItem value="editor">Editor</SelectItem>
+                        <SelectItem value="visualizador">Visualizador</SelectItem>
+                        <SelectItem value="jefe_deposito">Jefe de Depósito</SelectItem>
+                        <SelectItem value="solicitante">Solicitante</SelectItem>
+                    </SelectContent>
+                </Select>
+                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Filtrar por estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todos los Estados</SelectItem>
+                        <SelectItem value="active">Activo</SelectItem>
+                        <SelectItem value="inactive">Inactivo</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={selectedWorkspace} onValueChange={setSelectedWorkspace} disabled={isLoadingWorkspaces}>
+                    <SelectTrigger className="w-full sm:w-[200px]">
+                        <SelectValue placeholder="Filtrar por workspace" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todos los Workspaces</SelectItem>
+                        <SelectItem value="null">Sin Workspace</SelectItem>
+                        {workspaces?.map((ws) => (
+                            <SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </CardContent>
+        </Card>
+      )}
+
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -463,7 +541,7 @@ export default function UsuariosPage() {
           </TableHeader>
           <TableBody>
             {isLoading &&
-              [...Array(3)].map((_, i) => (
+              [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -489,8 +567,15 @@ export default function UsuariosPage() {
                   )}
                 </TableRow>
               ))}
+            {!isLoading && filteredUsers?.length === 0 && (
+                <TableRow>
+                    <TableCell colSpan={currentUserIsAdmin ? 5 : 4} className="h-24 text-center">
+                        No se encontraron usuarios con los filtros aplicados.
+                    </TableCell>
+                </TableRow>
+            )}
             {!isLoading &&
-              users?.map((user) => (
+              filteredUsers?.map((user) => (
                 <TableRow key={user.id} className={user.disabled ? 'opacity-50' : ''}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -729,7 +814,3 @@ export default function UsuariosPage() {
     </>
   );
 }
-
-    
-
-    
