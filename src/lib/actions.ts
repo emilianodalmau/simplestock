@@ -32,8 +32,11 @@ export async function createPreference(
   try {
     const preference = new Preference(client);
 
-    // Si la variable de entorno no está definida, usa una URL relativa como fallback.
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    // La URL base debe estar configurada en las variables de entorno para producción.
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!baseUrl) {
+        throw new Error("La variable de entorno NEXT_PUBLIC_APP_URL no está configurada.");
+    }
 
     const result = await preference.create({
       body: {
@@ -65,10 +68,10 @@ export async function createPreference(
 
     // Devolvemos el ID de la preferencia. El frontend lo usará para renderizar el botón de pago.
     return { id: result.id };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al crear la preferencia de Mercado Pago:', error);
     // Devuelve un objeto con un mensaje de error claro.
-    return { error: 'No se pudo generar el enlace de pago.' };
+    return { error: error.message || 'No se pudo generar el enlace de pago.' };
   }
 }
 
