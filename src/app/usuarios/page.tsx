@@ -14,6 +14,12 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
   Select,
   SelectContent,
   SelectItem,
