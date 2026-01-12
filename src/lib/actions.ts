@@ -6,6 +6,7 @@ import { initAdmin } from './firebase-admin';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 
 // Inicializa el cliente de Mercado Pago.
 // Es crucial que el ACCESS_TOKEN se configure como una variable de entorno.
@@ -32,10 +33,14 @@ export async function createPreference(
   try {
     const preference = new Preference(client);
 
-    // La URL base debe estar configurada en las variables de entorno para producción.
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    // FIX: Detecta dinámicamente la URL base desde los encabezados de la solicitud.
+    const headersList = headers();
+    const host = headersList.get('host');
+    const protocol = host?.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
     if (!baseUrl) {
-        throw new Error("La variable de entorno NEXT_PUBLIC_APP_URL no está configurada.");
+        throw new Error("No se pudo determinar la URL base de la aplicación.");
     }
 
     const result = await preference.create({
