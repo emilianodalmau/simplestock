@@ -18,6 +18,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription
 } from '@/components/ui/card';
 import {
   Select,
@@ -167,6 +168,7 @@ export default function UsuariosPage() {
     const usersRef = collection(firestore, 'users');
 
     if (currentUserIsSuperAdmin) {
+      // Super Admin can query all users, optionally ordered.
       return query(usersRef, orderBy('email'));
     }
 
@@ -174,12 +176,14 @@ export default function UsuariosPage() {
       currentUserProfile.role === 'administrador' &&
       currentUserProfile.workspaceId
     ) {
+      // Workspace Admin MUST filter by their workspaceId to comply with security rules.
       return query(
         usersRef,
         where('workspaceId', '==', currentUserProfile.workspaceId)
       );
     }
-
+    
+    // For any other role, or if data is missing, don't run the query.
     return null;
   }, [firestore, currentUserProfile, currentUserIsSuperAdmin]);
 
