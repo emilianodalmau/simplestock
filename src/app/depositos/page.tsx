@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -137,6 +136,7 @@ export default function DepositosPage() {
     currentUserProfile?.role === 'administrador';
 
   const usersCollectionQuery = useMemoFirebase(() => {
+    // IMPORTANTE: Esta query coincide con la regla: resource.data.workspaceId == getMyUserData().workspaceId
     if (firestore && currentUserProfile?.workspaceId && currentUserProfile.role === 'administrador') {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
     }
@@ -161,11 +161,6 @@ export default function DepositosPage() {
     () => users?.filter((user) => user.role === 'jefe_deposito'),
     [users]
   );
-  
-  const userMap = useMemo(() => {
-    if (!users) return new Map<string, string>();
-    return new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
-  }, [users]);
   
   const depositsLimit = workspaceData?.subscription?.limits?.maxDeposits ?? 0;
   const depositCount = deposits?.length ?? 0;
