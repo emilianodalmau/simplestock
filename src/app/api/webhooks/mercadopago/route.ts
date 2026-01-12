@@ -21,14 +21,16 @@ const client = new MercadoPagoConfig({
 });
 
 export async function POST(req: NextRequest) {
-  console.log('Webhook de Mercado Pago recibido.');
+  console.log('--- Webhook de Mercado Pago recibido ---');
   
   const body = await req.json();
+  console.log('Cuerpo de la notificación:', body);
+
   const paymentId = body.data?.id;
 
   if (body.type !== 'payment' || !paymentId) {
-    console.log('Notificación no es de tipo "payment" o no tiene ID.');
-    return NextResponse.json({ success: false, message: 'Not a payment notification' });
+    console.log('Notificación no es de tipo "payment" o no tiene ID. Ignorando.');
+    return NextResponse.json({ success: true, message: 'Not a processable payment notification.' });
   }
 
   // Handle test webhook simulation

@@ -33,7 +33,7 @@ export async function createPreference(
   try {
     const preference = new Preference(client);
 
-    // FIX: Detecta dinámicamente la URL base desde los encabezados de la solicitud.
+    // Detecta dinámicamente la URL base desde los encabezados de la solicitud.
     const headersList = headers();
     const host = headersList.get('host');
     const protocol = host?.includes('localhost') ? 'http' : 'https';
@@ -42,6 +42,10 @@ export async function createPreference(
     if (!baseUrl) {
         throw new Error("No se pudo determinar la URL base de la aplicación.");
     }
+    
+    // URL a la que Mercado Pago enviará notificaciones sobre el estado del pago.
+    // Esto es CRÍTICO para automatizar la activación del plan.
+    const notificationUrl = `${baseUrl}/api/webhooks/mercadopago`;
 
     const result = await preference.create({
       body: {
@@ -54,9 +58,7 @@ export async function createPreference(
             currency_id: 'USD',
           },
         ],
-        // URL a la que Mercado Pago enviará notificaciones sobre el estado del pago.
-        // Esto es CRÍTICO para automatizar la activación del plan.
-        notification_url: `${baseUrl}/api/webhooks/mercadopago`,
+        notification_url: notificationUrl,
         // Metadatos para identificar el pago en el webhook.
         external_reference: workspaceId,
         // URLs a las que el usuario será redirigido.
