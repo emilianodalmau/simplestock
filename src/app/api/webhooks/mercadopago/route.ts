@@ -33,6 +33,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, message: 'Not a processable payment notification.' });
   }
 
+  // **INICIO DE LA CORRECCIÓN**
+  // Manejar el webhook de prueba de Mercado Pago.
+  // MP envía un paymentId de prueba que no existe en su sistema.
+  // Si intentamos buscarlo, causará un error.
+  if (body.user_id === 37807761 && body.live_mode === false && paymentId === '123456') {
+      console.log('Webhook de prueba de Mercado Pago detectado. Respondiendo con éxito.');
+      return NextResponse.json({ success: true, message: 'Test webhook received successfully.' });
+  }
+  // **FIN DE LA CORRECCIÓN**
+
   // Handle test webhook simulation
   if (paymentId.startsWith('test_')) {
     console.log('Procesando simulación de webhook de prueba.');
@@ -139,6 +149,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error procesando el webhook de Mercado Pago:', error);
+    // Agregamos un log más detallado del error específico de MP si existe
+    if (error.cause) {
+      console.error('Causa del error de Mercado Pago:', error.cause);
+    }
     return NextResponse.json({ success: false, message: error.message || 'Internal server error' }, { status: 500 });
   }
 }
