@@ -30,6 +30,12 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion"
+import {
   useFirestore,
   useCollection,
   useMemoFirebase,
@@ -133,6 +139,118 @@ const generatePassword = (length = 8): string => {
   return password;
 };
 
+// Component to render a table of users for a specific group
+function UserTable({
+    users,
+    currentUser,
+    currentUserIsSuperAdmin,
+    handleEditUser,
+    handleRoleChange,
+    handleStatusChange,
+    handleDeleteUser,
+    isDeleting,
+  }: {
+    users: UserProfileType[];
+    currentUser: UserProfileType | null | undefined;
+    currentUserIsSuperAdmin: boolean;
+    handleEditUser: (user: UserProfileType) => void;
+    handleRoleChange: (userId: string, role: string) => void;
+    handleStatusChange: (userId: string, disabled: boolean) => void;
+    handleDeleteUser: (userId: string) => void;
+    isDeleting: string | null;
+  }) {
+    const getInitials = (firstName?: string, lastName?: string) => {
+      if (!firstName) return 'U';
+      const firstInitial = firstName[0] || '';
+      const lastInitial = lastName ? lastName[0] : '';
+      return `${firstInitial}${lastInitial}`.toUpperCase();
+    };
+
+    const currentUserIsAdmin = currentUser?.role === 'administrador' || currentUserIsSuperAdmin;
+  
+    return (
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Usuario</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Estado</TableHead>
+              {currentUserIsAdmin && <TableHead className="text-right">Acciones</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map((user) => (
+              <TableRow key={user.id} className={user.disabled ? 'opacity-50' : ''}>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <Avatar>
+                      <AvatarImage src={user.photoURL} />
+                      <AvatarFallback>{getInitials(user.firstName, user.lastName)}</AvatarFallback>
+                    </Avatar>
+                    <span className="font-medium">{user.firstName || ''} {user.lastName || 'Sin Nombre'}</span>
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                <TableCell>
+                  {user.role ? (
+                    <Badge variant={roleColors[user.role] || 'default'}>{user.role}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">Sin rol</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={user.disabled ? 'destructive' : 'default'} className={user.disabled ? '' : 'bg-green-500 hover:bg-green-500/80'}>
+                    {user.disabled ? 'Inactivo' : 'Activo'}
+                  </Badge>
+                </TableCell>
+                {currentUserIsAdmin && (
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="ghost" size="icon" onClick={() => handleEditUser(user)}>
+                      <Edit className="h-4 w-4" />
+                      <span className="sr-only">Editar</span>
+                    </Button>
+                    <Select defaultValue={user.role} onValueChange={(value) => handleRoleChange(user.id, value)} disabled={user.id === currentUser?.id || (user.role === 'super-admin' && !currentUserIsSuperAdmin)}>
+                      <SelectTrigger className="w-40 ml-auto inline-flex"><SelectValue placeholder="Seleccionar rol" /></SelectTrigger>
+                      <SelectContent>
+                        {currentUserIsSuperAdmin && <SelectItem value="super-admin">Super Admin</SelectItem>}
+                        <SelectItem value="administrador">Administrador</SelectItem>
+                        <SelectItem value="editor">Editor</SelectItem>
+                        <SelectItem value="visualizador">Visualizador</SelectItem>
+                        <SelectItem value="jefe_deposito">Jefe de Depósito</SelectItem>
+                        <SelectItem value="solicitante">Solicitante</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Switch checked={!user.disabled} onCheckedChange={(checked) => handleStatusChange(user.id, !checked)} aria-label="Activar o desactivar usuario" disabled={user.id === currentUser?.id || (user.role === 'super-admin' && !currentUserIsSuperAdmin)} />
+                    {currentUserIsSuperAdmin && user.id !== currentUser?.id && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" disabled={isDeleting === user.id}>
+                            {isDeleting === user.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-destructive" />}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
+                            <AlertDialogDescription>Esta acción es irreversible. Se eliminará permanentemente al usuario de Firebase Authentication y su documento de Firestore.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">Sí, eliminar usuario</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+}
 
 export default function UsuariosPage() {
   const [editingUser, setEditingUser] = useState<UserProfileType | null>(null);
@@ -145,7 +263,6 @@ export default function UsuariosPage() {
   const { user: currentUser } = useUser();
   const { toast } = useToast();
 
-  // Filtros para super-admin
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -168,7 +285,6 @@ export default function UsuariosPage() {
     const usersRef = collection(firestore, 'users');
 
     if (currentUserIsSuperAdmin) {
-      // Super Admin can query all users, optionally ordered.
       return query(usersRef, orderBy('email'));
     }
 
@@ -176,14 +292,12 @@ export default function UsuariosPage() {
       currentUserProfile.role === 'administrador' &&
       currentUserProfile.workspaceId
     ) {
-      // Workspace Admin MUST filter by their workspaceId to comply with security rules.
       return query(
         usersRef,
         where('workspaceId', '==', currentUserProfile.workspaceId)
       );
     }
     
-    // For any other role, or if data is missing, don't run the query.
     return null;
   }, [firestore, currentUserProfile, currentUserIsSuperAdmin]);
 
@@ -195,6 +309,10 @@ export default function UsuariosPage() {
     [firestore, currentUserIsSuperAdmin]
   );
   const { data: workspaces, isLoading: isLoadingWorkspaces } = useCollection<Workspace>(workspacesCollectionQuery);
+  const workspaceMap = useMemo(() => {
+    if (!workspaces) return new Map<string, string>();
+    return new Map(workspaces.map(ws => [ws.id, ws.name]));
+  }, [workspaces]);
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
@@ -212,11 +330,39 @@ export default function UsuariosPage() {
         (selectedStatus === 'active' && !user.disabled) ||
         (selectedStatus === 'inactive' && user.disabled);
         
-      const workspaceMatch = selectedWorkspace === 'all' || user.workspaceId === selectedWorkspace;
+      const workspaceMatch = selectedWorkspace === 'all' || 
+        (selectedWorkspace === 'null' && !user.workspaceId) ||
+        user.workspaceId === selectedWorkspace;
 
       return searchMatch && roleMatch && statusMatch && workspaceMatch;
     });
   }, [users, searchTerm, selectedRole, selectedStatus, selectedWorkspace, currentUserIsSuperAdmin]);
+
+  const groupedUsers = useMemo(() => {
+    if (!currentUserIsSuperAdmin || !filteredUsers) return null;
+
+    const groups: { [key: string]: UserProfileType[] } = {};
+
+    for (const user of filteredUsers) {
+      const workspaceId = user.workspaceId || 'no-workspace';
+      if (!groups[workspaceId]) {
+        groups[workspaceId] = [];
+      }
+      groups[workspaceId].push(user);
+    }
+    return groups;
+  }, [currentUserIsSuperAdmin, filteredUsers]);
+
+  const sortedGroupKeys = useMemo(() => {
+    if (!groupedUsers) return [];
+    return Object.keys(groupedUsers).sort((a, b) => {
+        if (a === 'no-workspace') return -1;
+        if (b === 'no-workspace') return 1;
+        const nameA = workspaceMap.get(a) || '';
+        const nameB = workspaceMap.get(b) || '';
+        return nameA.localeCompare(nameB);
+    });
+  }, [groupedUsers, workspaceMap]);
 
 
   const editForm = useForm<EditFormValues>({
@@ -323,7 +469,6 @@ export default function UsuariosPage() {
     }
     setIsCreateSubmitting(true);
     
-    // Create a temporary, secondary Firebase App instance for user creation
     const tempAppName = `temp-user-creation-${Date.now()}`;
     const tempApp = initializeApp(firebaseConfig, tempAppName);
     const tempAuth = getAuth(tempApp);
@@ -331,11 +476,9 @@ export default function UsuariosPage() {
     const password = generatePassword();
 
     try {
-      // Step 1: Create user in Auth with the temporary app instance
       const userCredential = await createUserWithEmailAndPassword(tempAuth, data.email, password);
       const newUid = userCredential.user.uid;
 
-      // Step 2: Create the user document in Firestore using the main app instance (where the admin is logged in)
       const userDocRef = doc(firestore, 'users', newUid);
       await setDoc(userDocRef, {
         id: newUid,
@@ -347,10 +490,9 @@ export default function UsuariosPage() {
         role: 'solicitante',
         workspaceId: currentUserProfile.workspaceId,
         createdAt: serverTimestamp(),
-        disabled: false, // Default to active
+        disabled: false,
       });
       
-      // Step 3: Show credentials to the admin
       setNewUserCredentials({ email: data.email, password });
       createForm.reset();
       setIsCreateDialogOpen(false);
@@ -368,7 +510,6 @@ export default function UsuariosPage() {
         description: errorMessage,
       });
     } finally {
-      // Step 4: Clean up the temporary app instance
       await deleteApp(tempApp);
       setIsCreateSubmitting(false);
     }
@@ -391,13 +532,6 @@ export default function UsuariosPage() {
     }
     setIsDeleting(null);
   }
-
-  const getInitials = (firstName?: string, lastName?: string) => {
-    if (!firstName) return 'U';
-    const firstInitial = firstName[0] || '';
-    const lastInitial = lastName ? lastName[0] : '';
-    return `${firstInitial}${lastInitial}`.toUpperCase();
-  };
 
   const currentUserIsAdmin =
     currentUserProfile?.role === 'administrador' ||
@@ -536,168 +670,69 @@ export default function UsuariosPage() {
         </Card>
       )}
 
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Usuario</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Rol</TableHead>
-              <TableHead>Estado</TableHead>
-              {currentUserIsAdmin && (
-                <TableHead className="text-right">Acciones</TableHead>
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading &&
-              [...Array(5)].map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="h-10 w-10 rounded-full" />
-                      <div className="flex flex-col gap-1">
-                        <Skeleton className="h-4 w-24" />
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-40" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-6 w-24 rounded-full" />
-                  </TableCell>
-                   <TableCell>
-                    <Skeleton className="h-6 w-20 rounded-full" />
-                  </TableCell>
-                  {currentUserIsAdmin && (
-                    <TableCell className="text-right">
-                      <Skeleton className="h-10 w-48 ml-auto" />
-                    </TableCell>
-                  )}
-                </TableRow>
+      {isLoading && (
+          <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                  <Card key={i}>
+                      <CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader>
+                      <CardContent><Skeleton className="h-24 w-full" /></CardContent>
+                  </Card>
               ))}
-            {!isLoading && filteredUsers?.length === 0 && (
-                <TableRow>
-                    <TableCell colSpan={currentUserIsAdmin ? 5 : 4} className="h-24 text-center">
+          </div>
+      )}
+      
+      {!isLoading && !currentUserIsSuperAdmin && (
+          <UserTable
+              users={filteredUsers}
+              currentUser={currentUserProfile}
+              currentUserIsSuperAdmin={false}
+              handleEditUser={setEditingUser}
+              handleRoleChange={handleRoleChange}
+              handleStatusChange={handleStatusChange}
+              handleDeleteUser={handleDeleteUser}
+              isDeleting={isDeleting}
+          />
+      )}
+
+      {!isLoading && currentUserIsSuperAdmin && (
+          <Accordion type="multiple" className="w-full space-y-4">
+              {groupedUsers && sortedGroupKeys.length > 0 ? sortedGroupKeys.map(workspaceId => {
+                  const workspaceName = workspaceId === 'no-workspace' ? 'Usuarios sin Workspace' : workspaceMap.get(workspaceId) || `Workspace ID: ${workspaceId}`;
+                  const usersInGroup = groupedUsers[workspaceId];
+                  return (
+                      <AccordionItem value={workspaceId} key={workspaceId} className="border-none">
+                          <Card>
+                            <CardHeader className="p-4">
+                                <AccordionTrigger className="p-2 text-lg hover:no-underline">
+                                    {workspaceName} ({usersInGroup.length} usuarios)
+                                </AccordionTrigger>
+                            </CardHeader>
+                            <AccordionContent>
+                                <CardContent className="pt-0">
+                                    <UserTable
+                                        users={usersInGroup}
+                                        currentUser={currentUserProfile}
+                                        currentUserIsSuperAdmin={true}
+                                        handleEditUser={setEditingUser}
+                                        handleRoleChange={handleRoleChange}
+                                        handleStatusChange={handleStatusChange}
+                                        handleDeleteUser={handleDeleteUser}
+                                        isDeleting={isDeleting}
+                                    />
+                                </CardContent>
+                            </AccordionContent>
+                          </Card>
+                      </AccordionItem>
+                  )
+              }) : (
+                <Card>
+                    <CardContent className="p-6 text-center text-muted-foreground">
                         No se encontraron usuarios con los filtros aplicados.
-                    </TableCell>
-                </TableRow>
-            )}
-            {!isLoading &&
-              filteredUsers?.map((user) => (
-                <TableRow key={user.id} className={user.disabled ? 'opacity-50' : ''}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={user.photoURL} />
-                        <AvatarFallback>
-                          {getInitials(user.firstName, user.lastName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">
-                        {user.firstName || ''} {user.lastName || 'Sin Nombre'}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {user.email}
-                  </TableCell>
-                  <TableCell>
-                    {user.role ? (
-                      <Badge variant={roleColors[user.role] || 'default'}>
-                        {user.role}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">Sin rol</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                     <Badge variant={user.disabled ? 'destructive' : 'default'} className={user.disabled ? '' : 'bg-green-500 hover:bg-green-500/80'}>
-                        {user.disabled ? 'Inactivo' : 'Activo'}
-                      </Badge>
-                  </TableCell>
-                  {currentUserIsAdmin && (
-                    <TableCell className="text-right space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingUser(user)}
-                        >
-                          <Edit className="h-4 w-4" />
-                          <span className="sr-only">Editar</span>
-                        </Button>
-                        <Select
-                          defaultValue={user.role}
-                          onValueChange={(value) =>
-                            handleRoleChange(user.id, value)
-                          }
-                          disabled={
-                            user.id === currentUser?.uid ||
-                            (user.role === 'super-admin' &&
-                              !currentUserIsSuperAdmin)
-                          }
-                        >
-                          <SelectTrigger className="w-40 ml-auto inline-flex">
-                            <SelectValue placeholder="Seleccionar rol" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {currentUserIsSuperAdmin && (
-                              <SelectItem value="super-admin">
-                                Super Admin
-                              </SelectItem>
-                            )}
-                            <SelectItem value="administrador">
-                              Administrador
-                            </SelectItem>
-                            <SelectItem value="editor">Editor</SelectItem>
-                            <SelectItem value="visualizador">
-                              Visualizador
-                            </SelectItem>
-                            <SelectItem value="jefe_deposito">
-                              Jefe de Depósito
-                            </SelectItem>
-                            <SelectItem value="solicitante">
-                              Solicitante
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Switch
-                            checked={!user.disabled}
-                            onCheckedChange={(checked) => handleStatusChange(user.id, !checked)}
-                            aria-label="Activar o desactivar usuario"
-                            disabled={user.id === currentUser?.uid || (user.role === 'super-admin' && !currentUserIsSuperAdmin)}
-                        />
-                        {currentUserIsSuperAdmin && user.id !== currentUser?.uid && (
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" disabled={isDeleting === user.id}>
-                                        {isDeleting === user.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-destructive" />}
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            Esta acción es irreversible. Se eliminará permanentemente al usuario de Firebase Authentication y su documento de Firestore.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">
-                                            Sí, eliminar usuario
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        )}
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </div>
+                    </CardContent>
+                </Card>
+              )}
+          </Accordion>
+      )}
 
       {/* Edit User Dialog */}
       <Dialog
