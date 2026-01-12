@@ -418,7 +418,7 @@ export default function ProductosPage() {
     ];
     const categoriesData = categories?.map(c => ({ ID: c.id, Nombre: c.name })) || [];
     const suppliersData = suppliers?.map(s => ({ ID: s.id, Nombre: s.name })) || [];
-    const depositsData = deposits?.map(d => ({ ID: d.id, Nombre: d.name })) || [];
+    const depositsData = deposits?.map(d => ({ ID: s.id, Nombre: d.name })) || [];
 
     const wb = XLSX.utils.book_new();
     const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
@@ -574,7 +574,7 @@ export default function ProductosPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Productos</h1>
         <p className="text-muted-foreground">
-          Administra los productos del inventario.
+          Aquí puedes dar de alta los artículos de tu inventario. Cada producto se asocia a una categoría y un proveedor.
         </p>
       </div>
 
@@ -583,6 +583,9 @@ export default function ProductosPage() {
           <Card>
             <CardHeader>
               <CardTitle>Agregar Nuevo Producto</CardTitle>
+              <CardDescription>
+                Rellena los campos para añadir un nuevo artículo a tu inventario. Se generará un código único automáticamente.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {atLimit && (
@@ -732,7 +735,7 @@ export default function ProductosPage() {
                       name="price"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Precio</FormLabel>
+                          <FormLabel>Precio (por unidad)</FormLabel>
                           <FormControl>
                             <Input type="number" placeholder="Ej: 1500.50" {...field} disabled={atLimit}/>
                           </FormControl>
@@ -745,7 +748,7 @@ export default function ProductosPage() {
                       name="minStock"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Stock Mínimo</FormLabel>
+                          <FormLabel>Stock Mínimo (Alerta)</FormLabel>
                           <FormControl>
                             <Input type="number" placeholder="Ej: 10" {...field} disabled={atLimit}/>
                           </FormControl>
@@ -926,8 +929,11 @@ export default function ProductosPage() {
                       ))}
                     {!isLoading && filteredProducts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={canManageProducts ? 10 : 9} className="text-center">
-                          No hay productos que coincidan con los filtros aplicados.
+                        <TableCell colSpan={canManageProducts ? 10 : 9} className="h-24 text-center text-muted-foreground">
+                          {products && products.length > 0 
+                            ? "No se encontraron productos que coincidan con tus filtros."
+                            : `Aún no has creado ningún producto. ${canManageProducts ? "Usa el formulario de arriba para empezar." : "Pide a un administrador que agregue productos."}`
+                          }
                         </TableCell>
                       </TableRow>
                     )}

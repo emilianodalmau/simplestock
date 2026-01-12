@@ -231,7 +231,7 @@ export default function ProveedoresPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Proveedores</h1>
         <p className="text-muted-foreground">
-          Administra los proveedores de productos y servicios.
+          Registra a las empresas o personas que te abastecen de productos. Necesitarás al menos un proveedor para crear productos.
         </p>
       </div>
 
@@ -241,7 +241,7 @@ export default function ProveedoresPage() {
             <CardHeader>
               <CardTitle>Agregar Nuevo Proveedor</CardTitle>
               <CardDescription>
-                Completa el formulario para añadir un proveedor.
+                Completa los datos para registrar a un nuevo proveedor en tu lista.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -269,7 +269,7 @@ export default function ProveedoresPage() {
                       name="contact"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Contacto</FormLabel>
+                          <FormLabel>Contacto (Opcional)</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="Nombre de la persona de contacto"
@@ -285,7 +285,7 @@ export default function ProveedoresPage() {
                       name="phone"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Teléfono</FormLabel>
+                          <FormLabel>Teléfono (Opcional)</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="Número de teléfono"
@@ -351,9 +351,10 @@ export default function ProveedoresPage() {
                       <TableRow>
                         <TableCell
                           colSpan={canManageSuppliers ? 4 : 3}
-                          className="text-center"
+                          className="h-24 text-center text-muted-foreground"
                         >
-                          No hay proveedores creados.
+                          No has registrado ningún proveedor.
+                          {canManageSuppliers && " Utiliza el formulario de arriba para empezar."}
                         </TableCell>
                       </TableRow>
                     )}

@@ -168,6 +168,14 @@ function UserTable({
 
     const currentUserIsAdmin = currentUser?.role === 'administrador' || currentUserIsSuperAdmin;
   
+    if (users.length === 0) {
+        return (
+            <div className="px-6 py-10 text-center text-muted-foreground">
+                No hay usuarios en este grupo.
+            </div>
+        );
+    }
+  
     return (
       <div className="rounded-lg border">
         <Table>
@@ -546,8 +554,8 @@ export default function UsuariosPage() {
             <h1 className="text-3xl font-bold tracking-tight font-headline">Usuarios</h1>
             <p className="text-muted-foreground">
             {currentUserIsSuperAdmin
-                ? 'Administra todos los usuarios del sistema.'
-                : 'Administra los usuarios de tu workspace.'}
+                ? 'Gestiona todos los usuarios del sistema, asigna roles y monitoriza su actividad.'
+                : 'Invita y administra los miembros de tu equipo, asignándoles roles según sus funciones.'}
             </p>
         </div>
         {currentUserProfile?.role === 'administrador' && (
@@ -555,14 +563,14 @@ export default function UsuariosPage() {
                 <DialogTrigger asChild>
                     <Button>
                         <PlusCircle className="mr-2 h-4 w-4" />
-                        Crear Usuario
+                        Invitar Usuario
                     </Button>
                 </DialogTrigger>
                 <DialogContent>
                      <DialogHeader>
-                        <DialogTitle>Crear Nuevo Usuario Solicitante</DialogTitle>
+                        <DialogTitle>Invitar Nuevo Usuario</DialogTitle>
                         <DialogDescription>
-                            Completa los datos para crear un nuevo usuario con rol 'solicitante'. Se generará una contraseña aleatoria.
+                            Crea una cuenta para un nuevo miembro de tu equipo. Se le asignará el rol de "Solicitante" por defecto y se generará una contraseña temporal que deberás compartirle.
                         </DialogDescription>
                     </DialogHeader>
                     <Form {...createForm}>
@@ -608,7 +616,7 @@ export default function UsuariosPage() {
                                 <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
                                 <Button type="submit" disabled={isCreateSubmitting}>
                                     {isCreateSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Crear Usuario
+                                    Crear e Invitar
                                 </Button>
                             </DialogFooter>
                         </form>

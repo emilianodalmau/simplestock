@@ -228,7 +228,7 @@ export default function CategoriasPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Categorías</h1>
         <p className="text-muted-foreground">
-          Administra las categorías de los productos.
+          Agrupa tus productos en categorías para mantener tu inventario organizado y facilitar la búsqueda.
         </p>
       </div>
 
@@ -238,7 +238,7 @@ export default function CategoriasPage() {
             <CardHeader>
               <CardTitle>Agregar Nueva Categoría</CardTitle>
               <CardDescription>
-                Completa el formulario para añadir una categoría.
+                Las categorías te ayudan a clasificar tus productos. Ejemplos: "Herramientas", "Limpieza", "Oficina".
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -254,7 +254,7 @@ export default function CategoriasPage() {
                       <FormItem>
                         <FormLabel>Nombre</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ej: Electrónica" {...field} />
+                          <Input placeholder="Ej: Herramientas Manuales" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -326,9 +326,10 @@ export default function CategoriasPage() {
                       <TableRow>
                         <TableCell
                           colSpan={canManageCategories ? 3 : 2}
-                          className="text-center"
+                          className="h-24 text-center text-muted-foreground"
                         >
-                          No hay categorías creadas.
+                          Aún no has creado ninguna categoría.
+                          {canManageCategories && " ¡Usa el formulario de arriba para agregar la primera!"}
                         </TableCell>
                       </TableRow>
                     )}

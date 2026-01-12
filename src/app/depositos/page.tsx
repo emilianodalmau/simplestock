@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -328,7 +329,7 @@ export default function DepositosPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Depósitos</h1>
         <p className="text-muted-foreground">
-          Administra los depósitos o almacenes donde se guarda el inventario.
+          Crea y administra los lugares físicos (almacenes, bodegas, locales) donde se guardan tus productos.
         </p>
       </div>
 
@@ -337,6 +338,9 @@ export default function DepositosPage() {
           <Card>
             <CardHeader>
               <CardTitle>Agregar Nuevo Depósito</CardTitle>
+              <CardDescription>
+                Cada depósito funciona como un inventario separado. Podrás ver el stock de tus productos en cada uno de ellos.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {atLimit && (
@@ -370,10 +374,10 @@ export default function DepositosPage() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Descripción</FormLabel>
+                        <FormLabel>Descripción (Opcional)</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Una breve descripción del depósito (opcional)"
+                            placeholder="Ej: Ubicado en el subsuelo, sector A."
                             {...field}
                             disabled={atLimit}
                           />
@@ -438,9 +442,10 @@ export default function DepositosPage() {
                       <TableRow>
                         <TableCell
                           colSpan={canAssignJefe ? 4 : (canManageDeposits ? 3 : 2)}
-                          className="text-center"
+                          className="h-24 text-center text-muted-foreground"
                         >
-                          No hay depósitos creados.
+                          No has creado ningún depósito todavía.
+                          {canManageDeposits && " Empieza agregando uno con el formulario de arriba."}
                         </TableCell>
                       </TableRow>
                     )}
