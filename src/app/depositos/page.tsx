@@ -136,7 +136,6 @@ export default function DepositosPage() {
   const canAssignJefe =
     currentUserProfile?.role === 'administrador';
 
-  // SOLUCIÓN: La consulta de usuarios solo se ejecuta si el rol es 'administrador'
   const usersCollectionQuery = useMemoFirebase(() => {
     if (firestore && currentUserProfile?.workspaceId && currentUserProfile.role === 'administrador') {
         return query(collection(firestore, 'users'), where('workspaceId', '==', currentUserProfile.workspaceId));
