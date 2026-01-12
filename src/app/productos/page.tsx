@@ -22,6 +22,12 @@ import {
   where,
   writeBatch,
   orderBy,
+  limit,
+  getDocs,
+  startAfter,
+  endBefore,
+  limitToLast,
+  DocumentSnapshot,
 } from 'firebase/firestore';
 import {
   Card,
@@ -29,6 +35,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter
 } from '@/components/ui/card';
 import {
   Table,
@@ -78,7 +85,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2, FileUp, FileDown, Info } from 'lucide-react';
+import { Loader2, Edit, Trash2, FileUp, FileDown, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
@@ -154,6 +161,8 @@ type UserProfile = {
   workspaceId?: string;
 };
 
+const PRODUCTS_PER_PAGE = 10;
+
 const generateProductCode = (name: string): string => {
   const namePrefix = name.substring(0, 3).toUpperCase();
   const randomNumber = Math.floor(1000 + Math.random() * 9000);
@@ -168,6 +177,15 @@ export default function ProductosPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   
+  // Pagination state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [lastVisible, setLastVisible] = useState<DocumentSnapshot | null>(null);
+  const [firstVisible, setFirstVisible] = useState<DocumentSnapshot | null>(null);
+  const [pageCursors, setPageCursors] = useState<(DocumentSnapshot | null)[]>([null]);
+
+
   // State for filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -222,27 +240,65 @@ export default function ProductosPage() {
     return deposits?.map(d => ({ value: d.id, label: d.name })) || [];
   }, [deposits]);
 
-  const productsCollection = useMemoFirebase(
-    () =>
-      firestore && collectionPrefix
-        ? query(
-            collection(firestore, `${collectionPrefix}/products`),
-            where('isArchived', '!=', true)
-          )
-        : null,
-    [firestore, collectionPrefix]
-  );
-  const { data: products, isLoading: isLoadingProducts } =
-    useCollection<Product>(productsCollection);
+  const fetchProducts = async (direction: 'next' | 'prev' | 'first' = 'first') => {
+    if (!collectionPrefix) return;
+    setIsLoadingProducts(true);
 
-  const productsLimit = workspaceData?.subscription?.limits?.maxProducts ?? 0;
+    const productsRef = collection(firestore, `${collectionPrefix}/products`);
+    let q;
+
+    if (direction === 'next') {
+        q = query(productsRef, where('isArchived', '!=', true), orderBy('createdAt', 'desc'), startAfter(lastVisible), limit(PRODUCTS_PER_PAGE));
+    } else if (direction === 'prev') {
+        const prevCursor = pageCursors[currentPage - 2];
+        q = query(productsRef, where('isArchived', '!=', true), orderBy('createdAt', 'desc'), startAfter(prevCursor), limit(PRODUCTS_PER_PAGE));
+    } else { // first
+        q = query(productsRef, where('isArchived', '!=', true), orderBy('createdAt', 'desc'), limit(PRODUCTS_PER_PAGE));
+    }
+
+    try {
+        const documentSnapshots = await getDocs(q);
+        const newProducts = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        setProducts(newProducts);
+        
+        const newLastVisible = documentSnapshots.docs[documentSnapshots.docs.length-1];
+        setLastVisible(newLastVisible);
+        const newFirstVisible = documentSnapshots.docs[0];
+        setFirstVisible(newFirstVisible);
+
+        if (direction === 'next') {
+            setPageCursors(prev => [...prev, newFirstVisible]);
+            setCurrentPage(prev => prev + 1);
+        } else if (direction === 'prev') {
+            setPageCursors(prev => prev.slice(0, -1));
+            setCurrentPage(prev => prev - 1);
+        } else { // first
+            setCurrentPage(1);
+            setPageCursors([null, newFirstVisible]);
+        }
+    } catch (error) {
+        console.error("Error fetching products:", error);
+        toast({
+            variant: "destructive",
+            title: "Error al cargar productos",
+            description: "No se pudieron obtener los datos de los productos."
+        });
+    } finally {
+        setIsLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, [collectionPrefix]); // Refetch when collectionPrefix changes
+
   const productCount = products?.length ?? 0;
-  const atLimit = productCount >= productsLimit;
+  const atLimit = (workspaceData?.subscription?.limits?.maxProducts ?? 0) <= productCount;
 
   const filteredProducts = useMemo(() => {
     if (!products) return [];
     
-    const filtered = products.filter((product) => {
+    return products.filter((product) => {
         const matchesSearch = searchTerm === '' ||
             product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             product.code.toLowerCase().includes(searchTerm.toLowerCase());
@@ -253,13 +309,6 @@ export default function ProductosPage() {
         const matchesUnit = selectedUnit === 'all' || product.unit === selectedUnit;
 
         return matchesSearch && matchesCategory && matchesSupplier && matchesDeposit && matchesUnit;
-    });
-
-    // Sort by creation date on the client side
-    return filtered.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-        return dateB - dateA;
     });
 
   }, [products, searchTerm, selectedCategory, selectedSupplier, selectedDeposit, selectedUnit]);
@@ -319,6 +368,7 @@ export default function ProductosPage() {
         minStock: 0, // Reset minStock
         depositIds: [],
       });
+      fetchProducts();
     } catch (error) {
       console.error('Error creating product:', error);
       toast({
@@ -346,6 +396,7 @@ export default function ProductosPage() {
         description: `El producto "${data.name}" ha sido actualizado.`,
       });
       setEditingProduct(null);
+      fetchProducts();
     } catch (error) {
       console.error('Error updating product:', error);
       toast({
@@ -368,6 +419,7 @@ export default function ProductosPage() {
         title: 'Producto Archivado',
         description: 'El producto ha sido archivado y no aparecerá en nuevas transacciones.',
       });
+      fetchProducts();
     } catch (error) {
       console.error('Error archiving product:', error);
       toast({
@@ -394,6 +446,7 @@ export default function ProductosPage() {
             description: `${selectedProducts.length} productos han sido archivados.`
         });
         setSelectedProducts([]); // Clear selection
+        fetchProducts();
     } catch(error) {
         console.error('Error during bulk archive:', error);
         toast({
@@ -418,7 +471,7 @@ export default function ProductosPage() {
     ];
     const categoriesData = categories?.map(c => ({ ID: c.id, Nombre: c.name })) || [];
     const suppliersData = suppliers?.map(s => ({ ID: s.id, Nombre: s.name })) || [];
-    const depositsData = deposits?.map(d => ({ ID: s.id, Nombre: d.name })) || [];
+    const depositsData = deposits?.map(d => ({ ID: d.id, Nombre: d.name })) || [];
 
     const wb = XLSX.utils.book_new();
     const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
@@ -512,6 +565,7 @@ export default function ProductosPage() {
           title: 'Importación Completa',
           description: `Se han creado ${productsCreated} productos nuevos.`,
         });
+        fetchProducts();
 
       } catch (error: any) {
         toast({
@@ -592,7 +646,7 @@ export default function ProductosPage() {
                 <Alert className="mb-4">
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    Has alcanzado el límite de {productsLimit} productos para tu plan actual. Para agregar más, considera actualizar tu plan.
+                    Has alcanzado el límite de {workspaceData?.subscription?.limits?.maxProducts} productos para tu plan actual. Para agregar más, considera actualizar tu plan.
                   </AlertDescription>
                 </Alert>
               )}
@@ -910,7 +964,7 @@ export default function ProductosPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoading &&
+                    {isLoadingProducts &&
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><Skeleton className="h-5 w-5"/></TableCell>
@@ -927,7 +981,7 @@ export default function ProductosPage() {
                           )}
                         </TableRow>
                       ))}
-                    {!isLoading && filteredProducts.length === 0 && (
+                    {!isLoadingProducts && filteredProducts.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={canManageProducts ? 10 : 9} className="h-24 text-center text-muted-foreground">
                           {products && products.length > 0 
@@ -937,7 +991,7 @@ export default function ProductosPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isLoading &&
+                    {!isLoadingProducts &&
                       filteredProducts.map((product) => (
                         <TableRow key={product.id} data-state={selectedProducts.includes(product.id) ? "selected" : ""}>
                           <TableCell>
@@ -1009,6 +1063,27 @@ export default function ProductosPage() {
                   </TableBody>
                 </Table>
               </div>
+              <CardFooter className="justify-end space-x-2 pt-6">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchProducts('prev')}
+                    disabled={currentPage <= 1 || isLoadingProducts}
+                >
+                    <ChevronLeft className="mr-2 h-4 w-4" />
+                    Anterior
+                </Button>
+                 <span className="text-sm font-medium">Página {currentPage}</span>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchProducts('next')}
+                    disabled={products.length < PRODUCTS_PER_PAGE || isLoadingProducts}
+                >
+                    Siguiente
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+             </CardFooter>
             </CardContent>
           </Card>
         </div>
