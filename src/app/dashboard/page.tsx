@@ -7,9 +7,13 @@ import {
   useUser,
   useDoc,
   useMemoFirebase,
+  useCollection,
 } from '@/firebase';
 import {
   doc,
+  collection,
+  query,
+  limit
 } from 'firebase/firestore';
 import {
   Card,
@@ -20,11 +24,18 @@ import {
 import { Loader2 } from 'lucide-react';
 import { CreateWorkspaceForm } from '@/components/auth/create-workspace-form';
 import { useSearchParams } from 'next/navigation';
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist';
 
 type UserProfile = {
   role?: 'administrador' | 'super-admin';
   workspaceId?: string | null;
 };
+
+// Simplified types for checking existence
+type Supplier = { id: string };
+type Category = { id: string };
+type Deposit = { id: string };
+type Product = { id: string };
 
 
 // Contenido principal del Dashboard
@@ -33,21 +44,6 @@ function MainDashboard() {
         <div className="space-y-4">
             <h1 className="text-3xl font-bold tracking-tight font-headline">Panel de Control</h1>
             <p className="text-muted-foreground">Bienvenido a tu panel de control. Desde aquí puedes navegar a las distintas secciones de la aplicación.</p>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Primeros Pasos</CardTitle>
-                    <CardDescription>
-                        Te recomendamos comenzar por configurar los datos básicos de tu inventario en el siguiente orden:
-                        <ol className="list-decimal list-inside mt-2 space-y-1">
-                            <li>Crea tus <b>Proveedores</b>.</li>
-                            <li>Define tus <b>Categorías</b> de productos.</li>
-                            <li>Configura los <b>Depósitos</b> o almacenes.</li>
-                            <li>Da de alta tus <b>Productos</b>.</li>
-                        </ol>
-                    </CardDescription>
-                </CardHeader>
-            </Card>
         </div>
     );
 }
@@ -64,14 +60,65 @@ export default function DashboardPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
 
-  const isLoading = isUserLoading || isLoadingProfile;
+  const workspaceId = currentUserProfile?.workspaceId;
+  const collectionPrefix = useMemo(() => (workspaceId ? `workspaces/${workspaceId}` : null), [workspaceId]);
+
+  // --- Onboarding Data Queries ---
+  const suppliersQuery = useMemoFirebase(() => collectionPrefix ? query(collection(firestore, `${collectionPrefix}/suppliers`), limit(1)) : null, [collectionPrefix, firestore]);
+  const categoriesQuery = useMemoFirebase(() => collectionPrefix ? query(collection(firestore, `${collectionPrefix}/categories`), limit(1)) : null, [collectionPrefix, firestore]);
+  const depositsQuery = useMemoFirebase(() => collectionPrefix ? query(collection(firestore, `${collectionPrefix}/deposits`), limit(1)) : null, [collectionPrefix, firestore]);
+  const productsQuery = useMemoFirebase(() => collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), limit(1)) : null, [collectionPrefix, firestore]);
+
+  const { data: suppliers, isLoading: isLoadingSuppliers } = useCollection<Supplier>(suppliersQuery);
+  const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(categoriesQuery);
+  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsQuery);
+  const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(productsQuery);
+
+  const isLoading = isUserLoading || isLoadingProfile || isLoadingSuppliers || isLoadingCategories || isLoadingDeposits || isLoadingProducts;
   
   const needsToCreateWorkspace = useMemo(() => {
-    if (!isLoading && currentUserProfile) {
+    if (!isLoadingProfile && currentUserProfile) {
         return currentUserProfile.role === 'administrador' && !currentUserProfile.workspaceId;
     }
     return false;
-  }, [isLoading, currentUserProfile]);
+  }, [isLoadingProfile, currentUserProfile]);
+
+  const checklistSteps = useMemo(() => ([
+    {
+      id: 'suppliers',
+      title: 'Crea tu primer Proveedor',
+      description: 'Registra las empresas o personas que te abastecen de productos.',
+      isCompleted: (suppliers?.length ?? 0) > 0,
+      href: '/proveedores',
+      ctaText: 'Ir a Proveedores',
+    },
+    {
+      id: 'categories',
+      title: 'Define una Categoría',
+      description: 'Agrupa tus productos para mantener tu inventario organizado.',
+      isCompleted: (categories?.length ?? 0) > 0,
+      href: '/categorias',
+      ctaText: 'Ir a Categorías',
+    },
+    {
+      id: 'deposits',
+      title: 'Configura un Depósito',
+      description: 'Crea los lugares físicos donde guardas tu mercadería.',
+      isCompleted: (deposits?.length ?? 0) > 0,
+      href: '/depositos',
+      ctaText: 'Ir a Depósitos',
+    },
+    {
+      id: 'products',
+      title: 'Da de alta tu primer Producto',
+      description: 'Con todo lo anterior configurado, ya puedes crear un producto.',
+      isCompleted: (products?.length ?? 0) > 0,
+      href: '/productos',
+      ctaText: 'Ir a Productos',
+    },
+  ]), [suppliers, categories, deposits, products]);
+  
+  const allStepsCompleted = checklistSteps.every(step => step.isCompleted);
 
   if (isLoading) {
     return (
@@ -90,10 +137,20 @@ export default function DashboardPage() {
     );
   }
 
-  // Si pasa todas las validaciones anteriores, muestra el dashboard principal.
+  // Si es un super-admin, no necesita el onboarding checklist.
+  if (currentUserProfile?.role === 'super-admin') {
+      return (
+          <div className="container mx-auto p-4 sm:p-6 md:p-8">
+              <MainDashboard />
+          </div>
+      );
+  }
+
+  // Si pasa todas las validaciones anteriores, muestra el dashboard con el checklist.
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <MainDashboard />
+      <OnboardingChecklist steps={checklistSteps} allCompleted={allStepsCompleted} />
     </div>
   );
 }
