@@ -39,9 +39,9 @@
     FileCode,
     FileCheck,
     Calculator,
-    ListChecks,
     CreditCard,
     Loader2,
+    HelpCircle,
   } from 'lucide-react';
   import Link from 'next/link';
   import { usePathname, useRouter } from 'next/navigation';
@@ -123,7 +123,7 @@
       return allMenuItems.filter(item => item.roles.includes(userRole));
     }, [currentUserProfile?.role]);
 
-    const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios';
+    const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios' || pathname === '/faq';
     
     if (isLoading) {
       return (
@@ -184,6 +184,14 @@
           </SidebarContent>
           <SidebarFooter>
             <SidebarMenu>
+              <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname.startsWith('/faq')}>
+                      <Link href="/faq">
+                          <HelpCircle />
+                          <span>Ayuda y FAQ</span>
+                      </Link>
+                  </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={handleLogout}>
                   <LogOut />
