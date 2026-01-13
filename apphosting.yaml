@@ -17,3 +17,10 @@ runConfig:
   # Increase this value to automatically spin up more instances
   # in response to increased traffic.
   maxInstances: 1
+
+# Allow redirects from Mercado Pago with many query params.
+headers:
+  - path: /suscripcion
+    headers:
+      - key: Content-Security-Policy
+        value: "frame-ancestors 'self' https://*.mercadopago.com"
