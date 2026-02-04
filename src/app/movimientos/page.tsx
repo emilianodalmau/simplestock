@@ -820,12 +820,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     </div>
                   </CardContent>
                   <CardFooter className="flex items-center gap-4">
-                    <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      )}
-                      Registrar Remito
-                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -834,6 +828,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     >
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Agregar Producto
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      Registrar Remito
                     </Button>
                   </CardFooter>
                 </form>
