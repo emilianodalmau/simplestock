@@ -68,7 +68,6 @@ import {
 } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ProductComboBox } from '@/components/ui/product-combobox';
 import { RemitoActions } from '@/components/remito-actions';
 import type { AppSettings } from '@/types/settings';
 import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock } from '@/types/inventory';
@@ -98,7 +97,6 @@ const movementFormSchema = z.object({
 });
 
 type MovementFormValues = z.infer<typeof movementFormSchema>;
-type MovementItemValues = z.infer<typeof movementItemSchema>;
 
 
 type Workspace = {
@@ -126,7 +124,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  
+  // --- Start: State for the new Add Product Dialog ---
   const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
+  const [dialogSearchTerm, setDialogSearchTerm] = useState('');
+  const [dialogQuantities, setDialogQuantities] = useState<Record<string, number>>({});
+  // --- End: State for the new Add Product Dialog ---
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -325,20 +328,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
   
-  const addProductForm = useForm<MovementItemValues>({
-    resolver: zodResolver(movementItemSchema),
-    defaultValues: {
-      productId: '',
-      quantity: 1,
-    }
-  });
-
-  const onAddProductSubmit: SubmitHandler<MovementItemValues> = (data) => {
-    append({ productId: data.productId, quantity: data.quantity });
-    addProductForm.reset({ productId: '', quantity: 1 });
-    setIsAddProductDialogOpen(false);
-  };
-
 
   useEffect(() => {
     if (isJefeDeposito && deposits?.length === 1) {
@@ -395,6 +384,28 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     
     return [];
   }, [movementType, selectedDepositId, products, inventory]);
+
+  // --- Start: Logic for the new Add Product Dialog ---
+  const dialogFilteredProducts = useMemo(() => {
+    if (!availableProductsForMovement) return [];
+    if (!dialogSearchTerm) return availableProductsForMovement;
+    return availableProductsForMovement.filter(p => 
+        p.name.toLowerCase().includes(dialogSearchTerm.toLowerCase()) ||
+        p.code.toLowerCase().includes(dialogSearchTerm.toLowerCase())
+    );
+  }, [availableProductsForMovement, dialogSearchTerm]);
+
+  const handleAddProductFromDialog = (product: Product) => {
+    const quantity = dialogQuantities[product.id];
+    if (quantity > 0) {
+        append({ productId: product.id, quantity: quantity });
+        toast({ title: "Producto Agregado", description: `${product.name} ha sido agregado al remito.` });
+        setDialogQuantities(prev => ({...prev, [product.id]: 0}));
+    } else {
+        toast({ variant: 'destructive', title: "Cantidad no válida", description: "Por favor, ingresa una cantidad mayor a 0." });
+    }
+  };
+  // --- End: Logic for the new Add Product Dialog ---
 
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
@@ -1046,57 +1057,67 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         </TabsContent>
       </Tabs>
       <Dialog open={isAddProductDialogOpen} onOpenChange={setIsAddProductDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-3xl">
             <DialogHeader>
-                <DialogTitle>Agregar Producto al Remito</DialogTitle>
+                <DialogTitle>Agregar Productos al Remito</DialogTitle>
                 <DialogDescription>
-                    Busca un producto y especifica la cantidad a agregar.
+                    Busca productos y añade la cantidad que necesites. Puedes agregar varios productos antes de cerrar.
                 </DialogDescription>
             </DialogHeader>
-            <Form {...addProductForm}>
-                <form onSubmit={addProductForm.handleSubmit(onAddProductSubmit)} className="space-y-4">
-                    <FormField
-                        control={addProductForm.control}
-                        name="productId"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Producto</FormLabel>
-                                <ProductComboBox
-                                    products={availableProductsForMovement}
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                    disabled={!selectedDepositId}
-                                    noStockMessage={
-                                        !selectedDepositId
-                                        ? 'Selecciona un depósito primero'
-                                        : 'Selecciona un producto'
-                                    }
-                                />
-                                <FormMessage />
-                            </FormItem>
+            
+            <div className="flex items-center py-4">
+                <Input 
+                    placeholder="Buscar por nombre o código..."
+                    value={dialogSearchTerm}
+                    onChange={(e) => setDialogSearchTerm(e.target.value)}
+                />
+            </div>
+            
+            <div className="max-h-[50vh] overflow-y-auto border rounded-md">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Producto</TableHead>
+                            <TableHead className="w-[220px]">Cantidad a Agregar</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {dialogFilteredProducts.length > 0 ? dialogFilteredProducts.map(product => (
+                             <TableRow key={product.id}>
+                                <TableCell>
+                                    <div className="font-medium">{product.name}</div>
+                                    <div className="text-sm text-muted-foreground">{product.code}</div>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex items-center gap-2">
+                                        <Input 
+                                            type="number" 
+                                            min="1"
+                                            value={dialogQuantities[product.id] || ''}
+                                            onChange={(e) => setDialogQuantities(prev => ({...prev, [product.id]: Number(e.target.value)}))}
+                                            className="w-20"
+                                        />
+                                        <span>{product.unit}</span>
+                                        <Button size="sm" onClick={() => handleAddProductFromDialog(product)}>Añadir</Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        )) : (
+                            <TableRow>
+                                <TableCell colSpan={2} className="text-center h-24">
+                                  {availableProductsForMovement.length === 0 ? "No hay productos disponibles para este depósito y tipo de movimiento." : "No se encontraron productos."}
+                                </TableCell>
+                            </TableRow>
                         )}
-                    />
-                    <FormField
-                        control={addProductForm.control}
-                        name="quantity"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Cantidad</FormLabel>
-                                <FormControl>
-                                    <Input type="number" placeholder="Cantidad" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setIsAddProductDialogOpen(false)}>Cancelar</Button>
-                        <Button type="submit">Agregar al Remito</Button>
-                    </DialogFooter>
-                </form>
-            </Form>
+                    </TableBody>
+                </Table>
+            </div>
+
+            <DialogFooter>
+                <Button variant="outline" onClick={() => { setIsAddProductDialogOpen(false); setDialogSearchTerm(''); setDialogQuantities({}); } }>Cerrar</Button>
+            </DialogFooter>
         </DialogContent>
-    </Dialog>
+      </Dialog>
     </div>
   );
 }
@@ -1138,7 +1159,3 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
-
-    
-
-    
