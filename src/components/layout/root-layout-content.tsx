@@ -69,6 +69,17 @@
     jefeId?: string;
   };
 
+  type ProductForStockAlert = {
+    id: string;
+    minStock: number;
+  };
+
+  type InventoryForStockAlert = {
+    productId: string;
+    quantity: number;
+  };
+
+
   function AppLayout({
     children,
     globalSettings,
@@ -150,7 +161,40 @@
     // --- Fin de la lógica del badge ---
 
 
-    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace || (isJefeDeposito && isLoadingDeposits);
+    // --- Lógica para el badge de alerta de inventario ---
+    const productsQuery = useMemoFirebase(() =>
+        collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true)) : null,
+    [collectionPrefix, firestore]
+    );
+    const { data: allProducts, isLoading: isLoadingProductsForAlert } = useCollection<ProductForStockAlert>(productsQuery);
+
+    const inventoryQuery = useMemoFirebase(() =>
+        collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null,
+    [collectionPrefix, firestore]
+    );
+    const { data: allInventory, isLoading: isLoadingInventoryForAlert } = useCollection<InventoryForStockAlert>(inventoryQuery);
+
+    const lowStockCount = useMemo(() => {
+        if (!allProducts || !allInventory) return 0;
+
+        const stockMap = new Map<string, number>();
+        for (const stockItem of allInventory) {
+            stockMap.set(stockItem.productId, (stockMap.get(stockItem.productId) || 0) + stockItem.quantity);
+        }
+
+        let count = 0;
+        for (const product of allProducts) {
+            const totalStock = stockMap.get(product.id) || 0;
+            if (totalStock <= product.minStock) {
+                count++;
+            }
+        }
+        return count;
+    }, [allProducts, allInventory]);
+    // --- Fin de la lógica del badge de inventario ---
+
+
+    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;
     
     const handleLogout = async () => {
       if (auth) {
@@ -239,8 +283,13 @@
                     </Link>
                   </SidebarMenuButton>
                    {item.href === '/pedidos' && pendingRequestsCount > 0 && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white group-data-[collapsible=icon]:hidden">
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
                           {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+                      </div>
+                  )}
+                   {item.href === '/inventario' && lowStockCount > 0 && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
+                          {lowStockCount > 9 ? '9+' : lowStockCount}
                       </div>
                   )}
                 </SidebarMenuItem>
@@ -299,3 +348,4 @@
       </FirebaseClientProvider>
     );
   }
+
