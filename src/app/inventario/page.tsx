@@ -49,6 +49,7 @@ type Product = {
   minStock: number;
   unit: string;
   price: number;
+  depositIds?: string[];
 };
 
 type Category = {
@@ -206,7 +207,12 @@ export default function InventarioPage() {
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
     }
 
-    const combinedData: InventoryItem[] = products.map((product) => {
+    // If a deposit is selected, only show products assigned to that deposit.
+    const productsInScope = selectedDeposit === 'all'
+      ? products
+      : products.filter(p => p.depositIds?.includes(selectedDeposit));
+
+    const combinedData: InventoryItem[] = productsInScope.map((product) => {
       const totalStock = stockMap.get(product.id) || 0;
       const minStock = product.minStock;
       const totalValue = (product.price || 0) * totalStock;
@@ -229,10 +235,6 @@ export default function InventarioPage() {
         unit: product.unit,
         status: status,
       };
-    }).filter(item => {
-        // Only show products that have a stock entry in the relevant inventory
-        // This is important for when a deposit filter is active.
-        return stockMap.has(item.productId);
     });
 
     // Apply other filters and search
