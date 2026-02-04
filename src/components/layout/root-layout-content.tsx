@@ -239,7 +239,7 @@
                     </Link>
                   </SidebarMenuButton>
                    {item.href === '/pedidos' && pendingRequestsCount > 0 && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-xs font-bold text-white group-data-[collapsible=icon]:hidden">
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white group-data-[collapsible=icon]:hidden">
                           {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
                       </div>
                   )}
