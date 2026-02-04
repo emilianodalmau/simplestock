@@ -844,12 +844,12 @@ export default function UsuariosPage() {
           <div className="space-y-4 py-4">
              <div className="space-y-1">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" readOnly value={newUserCredentials?.email} />
+                <Input id="email" readOnly value={newUserCredentials?.email || ''} />
              </div>
               <div className="space-y-1">
                 <Label htmlFor="password">Contraseña Generada</Label>
                 <div className="flex items-center gap-2">
-                    <Input id="password" readOnly value={newUserCredentials?.password} />
+                    <Input id="password" readOnly value={newUserCredentials?.password || ''} />
                     <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(newUserCredentials?.password || '')}>
                         <Copy className="h-4 w-4" />
                     </Button>
