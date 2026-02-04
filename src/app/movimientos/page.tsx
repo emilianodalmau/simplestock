@@ -46,6 +46,14 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -90,6 +98,8 @@ const movementFormSchema = z.object({
 });
 
 type MovementFormValues = z.infer<typeof movementFormSchema>;
+type MovementItemValues = z.infer<typeof movementItemSchema>;
+
 
 type Workspace = {
     name?: string;
@@ -116,6 +126,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -303,7 +314,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       depositId: '',
       remitoNumber: '',
       actorId: '',
-      items: [{ productId: '', quantity: 1 }],
+      items: [],
     },
   });
 
@@ -314,6 +325,21 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
   
+  const addProductForm = useForm<MovementItemValues>({
+    resolver: zodResolver(movementItemSchema),
+    defaultValues: {
+      productId: '',
+      quantity: 1,
+    }
+  });
+
+  const onAddProductSubmit: SubmitHandler<MovementItemValues> = (data) => {
+    append({ productId: data.productId, quantity: data.quantity });
+    addProductForm.reset({ productId: '', quantity: 1 });
+    setIsAddProductDialogOpen(false);
+  };
+
+
   useEffect(() => {
     if (isJefeDeposito && deposits?.length === 1) {
         form.setValue('depositId', deposits[0].id);
@@ -321,11 +347,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   }, [isJefeDeposito, deposits, form]);
 
   useEffect(() => {
-    replace([{ productId: '', quantity: 1 }]);
+    replace([]);
   }, [selectedDepositId, replace]);
 
   useEffect(() => {
-    replace([{ productId: '', quantity: 1 }]);
+    replace([]);
     form.setValue('actorId', '');
   }, [movementType, replace, form]);
 
@@ -491,7 +517,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         depositId: isJefeDeposito && deposits?.length === 1 ? deposits[0].id : '',
         remitoNumber: '',
         actorId: '',
-        items: [{ productId: '', quantity: 1 }],
+        items: [],
       });
     } catch(error: any) {
         const permissionError = new FirestorePermissionError({
@@ -740,90 +766,67 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     </div>
                     <Separator />
                     <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-medium">
-                          Productos del Remito
-                        </h3>
-                      </div>
-                      <div className="space-y-4">
-                        {fields.map((field, index) => (
-                          <div
-                            key={field.id}
-                            className="grid grid-cols-[1fr_120px_auto] sm:grid-cols-[1fr_150px_150px_auto] gap-2 items-start p-4 border rounded-md"
-                          >
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.productId`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel className="sr-only">
-                                    Producto
-                                  </FormLabel>
-                                  <ProductComboBox
-                                    products={availableProductsForMovement}
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                    disabled={!selectedDepositId}
-                                    noStockMessage={
-                                      !selectedDepositId
-                                        ? 'Selecciona un depósito primero'
-                                        : 'Selecciona un producto'
-                                    }
-                                  />
-                                  <FormMessage />
-                                </FormItem>
+                      <h3 className="text-lg font-medium mb-4">
+                        Productos del Remito
+                      </h3>
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Producto</TableHead>
+                                <TableHead className="w-[100px]">Cantidad</TableHead>
+                                <TableHead className="w-[100px]">Unidad</TableHead>
+                                <TableHead className="w-[50px] text-right">Acción</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {fields.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                                    Aún no has agregado productos.
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                fields.map((item, index) => {
+                                  const product = productsMap.get(item.productId);
+                                  return (
+                                    <TableRow key={item.id}>
+                                      <TableCell className="font-medium">
+                                        {product?.name || 'Producto no encontrado'}
+                                      </TableCell>
+                                      <TableCell>{item.quantity}</TableCell>
+                                      <TableCell>{product?.unit}</TableCell>
+                                      <TableCell className="text-right">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => remove(index)}
+                                        >
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })
                               )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.quantity`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel className="sr-only">
-                                    Cantidad
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      placeholder="Cantidad"
-                                      {...field}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <div className="hidden sm:flex items-center justify-center h-10 px-3 text-sm text-muted-foreground font-medium bg-muted rounded-md">
-                              {productsMap.get(
-                                form.watch(`items.${index}.productId`)
-                              )?.unit || '-'}
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => remove(index)}
-                              className="text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                        {form.formState.errors.items && (
+                            </TableBody>
+                          </Table>
+                        </div>
+                      {form.formState.errors.items && (
                           <p className="text-sm font-medium text-destructive mt-2">
                             {typeof form.formState.errors.items === 'string'
                               ? form.formState.errors.items
                               : (form.formState.errors.items as any).root?.message}
                           </p>
                         )}
-                      </div>
                     </div>
                   </CardContent>
                   <CardFooter className="flex items-center gap-4">
-                    <Button
+                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => append({ productId: '', quantity: 1 })}
+                      onClick={() => setIsAddProductDialogOpen(true)}
                       disabled={!selectedDepositId && !isJefeDeposito}
                     >
                       <PlusCircle className="mr-2 h-4 w-4" />
@@ -1042,6 +1045,58 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           </Card>
         </TabsContent>
       </Tabs>
+      <Dialog open={isAddProductDialogOpen} onOpenChange={setIsAddProductDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Agregar Producto al Remito</DialogTitle>
+                <DialogDescription>
+                    Busca un producto y especifica la cantidad a agregar.
+                </DialogDescription>
+            </DialogHeader>
+            <Form {...addProductForm}>
+                <form onSubmit={addProductForm.handleSubmit(onAddProductSubmit)} className="space-y-4">
+                    <FormField
+                        control={addProductForm.control}
+                        name="productId"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Producto</FormLabel>
+                                <ProductComboBox
+                                    products={availableProductsForMovement}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    disabled={!selectedDepositId}
+                                    noStockMessage={
+                                        !selectedDepositId
+                                        ? 'Selecciona un depósito primero'
+                                        : 'Selecciona un producto'
+                                    }
+                                />
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={addProductForm.control}
+                        name="quantity"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Cantidad</FormLabel>
+                                <FormControl>
+                                    <Input type="number" placeholder="Cantidad" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsAddProductDialogOpen(false)}>Cancelar</Button>
+                        <Button type="submit">Agregar al Remito</Button>
+                    </DialogFooter>
+                </form>
+            </Form>
+        </DialogContent>
+    </Dialog>
     </div>
   );
 }
@@ -1083,5 +1138,7 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
+
+    
 
     
