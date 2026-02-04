@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -491,13 +492,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
         if (data.type === 'salida') {
           actorType = 'user';
-          if (isJefeDeposito) {
-            finalActorId = user.uid;
-            actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim();
-          } else {
-             // Fallback
-             actorName = "Usuario (Salida)"; 
-          }
+          finalActorId = user.uid;
+          actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim() || user.email;
         } else {
           actorType = 'supplier';
           const actor = suppliers?.find((s) => s.id === data.actorId);
