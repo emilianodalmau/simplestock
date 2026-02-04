@@ -18,7 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import type { Product } from '@/app/movimientos/page';
+import type { Product } from '@/types/inventory';
 
 interface ProductComboBoxProps {
   products: Product[];
@@ -66,7 +66,7 @@ export function ProductComboBox({
               {products.map((product) => (
                 <CommandItem
                   key={product.id}
-                  value={`${product.name} ${product.code}`}
+                  value={`${product.name} (${product.code})`}
                   onSelect={() => {
                     onChange(product.id);
                     setOpen(false);
