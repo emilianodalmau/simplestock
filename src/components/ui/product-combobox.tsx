@@ -58,7 +58,14 @@ export function ProductComboBox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command>
+        <Command
+          filter={(value, search) => {
+            // value is the CommandItem's value prop
+            // search is the CommandInput's value
+            if (value.toLowerCase().includes(search.toLowerCase())) return 1;
+            return 0;
+          }}
+        >
           <CommandInput placeholder="Buscar producto por nombre o código..." />
           <CommandList>
             <CommandEmpty>No se encontraron productos.</CommandEmpty>
@@ -66,7 +73,7 @@ export function ProductComboBox({
               {products.map((product) => (
                 <CommandItem
                   key={product.id}
-                  value={`${product.name} (${product.code})`}
+                  value={`${product.name} ${product.code}`}
                   onSelect={() => {
                     onChange(product.id);
                     setOpen(false);
