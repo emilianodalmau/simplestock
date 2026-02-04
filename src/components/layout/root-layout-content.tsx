@@ -283,13 +283,13 @@
                     </Link>
                   </SidebarMenuButton>
                    {item.href === '/pedidos' && pendingRequestsCount > 0 && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
-                          {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white group-data-[collapsible=icon]:hidden">
+                          {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
                       </div>
                   )}
                    {item.href === '/inventario' && lowStockCount > 0 && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
-                          {lowStockCount > 9 ? '9+' : lowStockCount}
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white group-data-[collapsible=icon]:hidden">
+                          {lowStockCount > 99 ? '99+' : lowStockCount}
                       </div>
                   )}
                 </SidebarMenuItem>
