@@ -329,7 +329,18 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const movementType = form.watch('type');
   const selectedDepositId = form.watch('depositId');
   
+  const stockForSelectedDeposit = useMemo(() => {
+    const stockMap = new Map<string, number>();
+    if (!inventory || !selectedDepositId) return stockMap;
 
+    inventory.forEach(stockItem => {
+        if (stockItem.depositId === selectedDepositId) {
+            stockMap.set(stockItem.productId, (stockMap.get(stockItem.productId) || 0) + stockItem.quantity);
+        }
+    });
+    return stockMap;
+  }, [inventory, selectedDepositId]);
+  
   useEffect(() => {
     if (isJefeDeposito && deposits?.length === 1) {
         form.setValue('depositId', deposits[0].id);
@@ -398,13 +409,27 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const handleAddProductFromDialog = (product: Product) => {
     const quantity = dialogQuantities[product.id];
-    if (quantity > 0) {
-        append({ productId: product.id, quantity: quantity });
-        toast({ title: "Producto Agregado", description: `${product.name} ha sido agregado al remito.` });
-        setDialogQuantities(prev => ({...prev, [product.id]: 0}));
-    } else {
+    
+    if (!quantity || quantity <= 0) {
         toast({ variant: 'destructive', title: "Cantidad no válida", description: "Por favor, ingresa una cantidad mayor a 0." });
+        return;
     }
+
+    if (movementType === 'salida') {
+        const availableStock = stockForSelectedDeposit.get(product.id) || 0;
+        if (quantity > availableStock) {
+            toast({
+                variant: 'destructive',
+                title: "Stock Insuficiente",
+                description: `No puedes agregar ${quantity} ${product.unit}. Solo hay ${availableStock} disponibles.`,
+            });
+            return;
+        }
+    }
+    
+    append({ productId: product.id, quantity: quantity });
+    toast({ title: "Producto Agregado", description: `${product.name} ha sido agregado al remito.` });
+    setDialogQuantities(prev => ({...prev, [product.id]: 0}));
   };
   // --- End: Logic for the new Add Product Dialog ---
 
@@ -492,9 +517,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
         if (data.type === 'salida') {
           actorType = 'user';
-          finalActorId = user.uid;
+          finalActorId = user.uid; // Always the current user
           actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim() || user.email;
-        } else {
+        } else { // entrada
           actorType = 'supplier';
           const actor = suppliers?.find((s) => s.id === data.actorId);
           actorName = actor ? actor.name : null;
@@ -835,11 +860,12 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                       variant="outline"
                       onClick={() => setIsAddProductDialogOpen(true)}
                       disabled={!selectedDepositId && !isJefeDeposito}
+                      className="w-auto"
                     >
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Agregar Producto
                     </Button>
-                    <Button type="submit" disabled={isSubmitting}>
+                    <Button type="submit" disabled={isSubmitting} className="w-auto">
                       {isSubmitting && (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       )}
@@ -1083,6 +1109,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                 <TableCell>
                                     <div className="font-medium">{product.name}</div>
                                     <div className="text-sm text-muted-foreground">{product.code}</div>
+                                    {movementType === 'salida' && (
+                                      <div className="text-xs text-green-600 font-medium">
+                                          Disponible: {stockForSelectedDeposit.get(product.id) || 0} {product.unit}
+                                      </div>
+                                    )}
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex items-center gap-2">
