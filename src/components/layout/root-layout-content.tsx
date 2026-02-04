@@ -9,6 +9,7 @@
     useDoc,
     useMemoFirebase,
     useAuth,
+    useCollection,
   } from '@/firebase';
   import {
     Sidebar,
@@ -49,7 +50,7 @@
   import type { AppSettings } from '@/types/settings';
   import { useEffect, useMemo } from 'react';
   import Image from 'next/image';
-  import { doc } from 'firebase/firestore'; 
+  import { collection, doc, endAt, orderBy, query, startAt, where } from 'firebase/firestore'; 
   import { Badge } from '@/components/ui/badge';
 
   type UserProfile = {
@@ -62,6 +63,11 @@
       appName?: string;
       logoUrl?: string;
   }
+  
+  type Deposit = {
+    id: string;
+    jefeId?: string;
+  };
 
   function AppLayout({
     children,
@@ -90,7 +96,61 @@
     );
     const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
-    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace;
+    // --- Lógica para el badge de notificaciones de pedidos ---
+    const userRole = currentUserProfile?.role;
+    const isJefeDeposito = userRole === 'jefe_deposito';
+    const isAdmin = userRole === 'administrador';
+    const workspaceId = currentUserProfile?.workspaceId;
+    const collectionPrefix = useMemo(() => (workspaceId ? `workspaces/${workspaceId}` : null), [workspaceId]);
+
+    const depositsQueryForJefe = useMemoFirebase(() => {
+        if (!firestore || !collectionPrefix || !isJefeDeposito || !user) return null;
+        return query(collection(firestore, `${collectionPrefix}/deposits`), where('jefeId', '==', user.uid));
+    }, [firestore, collectionPrefix, isJefeDeposito, user]);
+
+    const { data: assignedDeposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsQueryForJefe);
+
+    const assignedDepositIds = useMemo(() => {
+        if (!isJefeDeposito || !assignedDeposits) return null;
+        if (assignedDeposits.length === 0) return [];
+        return assignedDeposits.map(d => d.id);
+    }, [isJefeDeposito, assignedDeposits]);
+
+    const pendingRequestsQuery = useMemoFirebase(() => {
+        if (!firestore || !collectionPrefix) return null;
+        if (!isAdmin && !isJefeDeposito) return null;
+
+        const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+        
+        const baseQuery = [
+          orderBy('remitoNumber'),
+          startAt('S-'),
+          endAt('S-\uf8ff')
+        ];
+
+        if (isJefeDeposito) {
+            if (assignedDepositIds === null) return null; 
+            if (assignedDepositIds.length === 0) return null; 
+            return query(
+                movementsCollectionRef,
+                where('depositId', 'in', assignedDepositIds.slice(0, 30)),
+                ...baseQuery
+            );
+        }
+        
+        if (isAdmin) {
+            return query(movementsCollectionRef, ...baseQuery);
+        }
+        
+        return null;
+    }, [firestore, collectionPrefix, isAdmin, isJefeDeposito, assignedDepositIds]);
+
+    const { data: pendingRequests } = useCollection(pendingRequestsQuery);
+    const pendingRequestsCount = pendingRequests?.length ?? 0;
+    // --- Fin de la lógica del badge ---
+
+
+    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace || (isJefeDeposito && isLoadingDeposits);
     
     const handleLogout = async () => {
       if (auth) {
@@ -178,6 +238,11 @@
                       <span>{item.label}</span>
                     </Link>
                   </SidebarMenuButton>
+                   {item.href === '/pedidos' && pendingRequestsCount > 0 && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-xs font-bold text-white group-data-[collapsible=icon]:hidden">
+                          {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+                      </div>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
