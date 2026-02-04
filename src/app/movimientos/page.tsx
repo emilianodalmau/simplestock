@@ -744,16 +744,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                         <h3 className="text-lg font-medium">
                           Productos del Remito
                         </h3>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => append({ productId: '', quantity: 1 })}
-                          disabled={!selectedDepositId && !isJefeDeposito}
-                        >
-                          <PlusCircle className="mr-2 h-4 w-4" />
-                          Agregar Producto
-                        </Button>
                       </div>
                       <div className="space-y-4">
                         {fields.map((field, index) => (
@@ -829,12 +819,21 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex items-center gap-4">
                     <Button type="submit" disabled={isSubmitting}>
                       {isSubmitting && (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       )}
                       Registrar Remito
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => append({ productId: '', quantity: 1 })}
+                      disabled={!selectedDepositId && !isJefeDeposito}
+                    >
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Agregar Producto
                     </Button>
                   </CardFooter>
                 </form>
@@ -1084,3 +1083,5 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
+
+    
