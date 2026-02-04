@@ -33,13 +33,11 @@ export function ProductComboBox({
   value,
   onChange,
   disabled,
-  noStockMessage
+  noStockMessage,
 }: ProductComboBoxProps) {
   const [open, setOpen] = React.useState(false);
 
-  const selectedProduct = products.find(
-    (product) => product.id.toLowerCase() === value?.toLowerCase()
-  );
+  const selectedProduct = products.find((product) => product.id === value);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -58,14 +56,7 @@ export function ProductComboBox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command
-          filter={(value, search) => {
-            // value is the CommandItem's value prop
-            // search is the CommandInput's value
-            if (value.toLowerCase().includes(search.toLowerCase())) return 1;
-            return 0;
-          }}
-        >
+        <Command>
           <CommandInput placeholder="Buscar producto por nombre o código..." />
           <CommandList>
             <CommandEmpty>No se encontraron productos.</CommandEmpty>
@@ -73,9 +64,9 @@ export function ProductComboBox({
               {products.map((product) => (
                 <CommandItem
                   key={product.id}
-                  value={`${product.name} ${product.code}`}
-                  onSelect={() => {
-                    onChange(product.id);
+                  value={product.id}
+                  onSelect={(currentValue) => {
+                    onChange(currentValue);
                     setOpen(false);
                   }}
                 >
