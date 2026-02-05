@@ -162,7 +162,7 @@ export async function getProductInfoFromBarcode(barcode: string) {
         VALUES ?property { ${properties} }
         ?item ?property ?gtin.
         OPTIONAL { ?item wdt:P18 ?image. }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
       }
       LIMIT 1
     `;
@@ -171,7 +171,8 @@ export async function getProductInfoFromBarcode(barcode: string) {
 
     const wikidataResponse = await fetch(wikidataUrl, {
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'User-Agent': 'SimpleStockApp/1.0 (Firebase Studio Project; mailto:support@example.com)'
       }
     });
 
@@ -199,5 +200,5 @@ export async function getProductInfoFromBarcode(barcode: string) {
 
   // --- 3. If both fail ---
   console.log(`Producto ${barcode} no encontrado en ninguna fuente.`);
-  return { error: 'Product not found in any database.' };
+  return { success: false, error: 'Product not found in any database.' };
 }
