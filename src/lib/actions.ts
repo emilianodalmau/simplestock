@@ -148,23 +148,23 @@ export async function getProductInfoFromBarcode(barcode: string): Promise<{ succ
 
   // --- 2. Fallback a Wikidata (Versión corregida y robusta) ---
   try {
-    const searchValues = new Set([`"${cleanBarcode}"`]);
-
+    const searchValues = new Set([cleanBarcode]);
     if (cleanBarcode.length === 12) {
-        searchValues.add(`"0${cleanBarcode}"`);
+        searchValues.add(`0${cleanBarcode}`);
     } else if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
-        searchValues.add(`"${cleanBarcode.substring(1)}"`);
+        searchValues.add(cleanBarcode.substring(1));
     }
 
     const properties = ['P296', 'P212', 'P238', 'P240'];
-    const orConditions = properties.flatMap(p => 
-        Array.from(searchValues).map(v => `{ ?item wdt:${p} ${v} }`)
+    
+    const orConditions = Array.from(searchValues).flatMap(value => 
+        properties.map(p => `{ ?item wdt:${p} "${value}" }`)
     ).join(' UNION ');
     
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
         { ${orConditions} }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
         OPTIONAL { ?item wdt:P18 ?image. }
       }
       LIMIT 1
