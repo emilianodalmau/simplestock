@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -82,6 +81,9 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { BarcodeScanner } from '@/components/barcode-scanner';
 
 // --- Zod Schemas ---
 const movementItemSchema = z.object({
@@ -131,6 +133,14 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const [dialogSearchTerm, setDialogSearchTerm] = useState('');
   const [dialogQuantities, setDialogQuantities] = useState<Record<string, number>>({});
   // --- End: State for the new Add Product Dialog ---
+  
+  // --- Barcode Scanner States ---
+  const [scanMode, setScanMode] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
+  const [scannedQuantity, setScannedQuantity] = useState<number>(1);
+  // --- End Barcode Scanner States ---
+
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -432,6 +442,79 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     setDialogQuantities(prev => ({...prev, [product.id]: 0}));
   };
   // --- End: Logic for the new Add Product Dialog ---
+  
+  // --- Start: Logic for Barcode Scanner ---
+  const handleScanSuccess = (barcode: string) => {
+    setIsScannerOpen(false);
+    
+    const product = availableProductsForMovement.find(p => p.barcode === barcode);
+
+    if (product) {
+        setScannedProduct(product);
+        setScannedQuantity(1); // Reset quantity for new scan
+    } else {
+        toast({
+            variant: "destructive",
+            title: "Producto no encontrado",
+            description: "El código de barras no corresponde a un producto disponible para este depósito y tipo de movimiento.",
+        });
+    }
+  };
+  
+  const handleAddScannedProduct = () => {
+    if (!scannedProduct || scannedQuantity <= 0) {
+        toast({
+            variant: 'destructive',
+            title: 'Cantidad no válida',
+            description: 'Por favor, ingresa una cantidad mayor a 0.',
+        });
+        return;
+    }
+
+    const currentItems = form.getValues('items');
+    const existingItemIndex = currentItems.findIndex(item => item.productId === scannedProduct.id);
+
+    if (existingItemIndex > -1) {
+        const newQuantity = currentItems[existingItemIndex].quantity + scannedQuantity;
+        if (movementType === 'salida') {
+            const availableStock = stockForSelectedDeposit.get(scannedProduct.id) || 0;
+            if (newQuantity > availableStock) {
+                 toast({
+                    variant: 'destructive',
+                    title: 'Stock Insuficiente',
+                    description: `No se puede agregar. Solicitados: ${newQuantity}, Disponibles: ${availableStock}.`,
+                });
+                return;
+            }
+        }
+        form.setValue(`items.${existingItemIndex}.quantity`, newQuantity, { shouldValidate: true });
+        toast({
+            title: 'Cantidad Actualizada',
+            description: `Se actualizó la cantidad de ${scannedProduct.name}.`,
+        });
+
+    } else {
+        if (movementType === 'salida') {
+            const availableStock = stockForSelectedDeposit.get(scannedProduct.id) || 0;
+            if (scannedQuantity > availableStock) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Stock Insuficiente',
+                    description: `No puedes agregar ${scannedQuantity} ${scannedProduct.unit}. Solo hay ${availableStock} disponibles.`,
+                });
+                return;
+            }
+        }
+        append({ productId: scannedProduct.id, quantity: scannedQuantity });
+        toast({
+            title: 'Producto Agregado',
+            description: `${scannedQuantity} x ${scannedProduct.name} agregado al remito.`,
+        });
+    }
+    
+    setScannedProduct(null);
+  };
+  // --- End: Logic for Barcode Scanner ---
 
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
@@ -854,16 +937,26 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                         )}
                     </div>
                   </CardContent>
-                  <CardFooter className="flex items-center gap-4">
+                  <CardFooter className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center space-x-2">
+                        <Switch id="scan-mode" checked={scanMode} onCheckedChange={setScanMode} disabled={!selectedDepositId}/>
+                        <Label htmlFor="scan-mode">Agregar por Cámara</Label>
+                    </div>
                      <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsAddProductDialogOpen(true)}
+                      onClick={() => {
+                          if (scanMode) {
+                              setIsScannerOpen(true);
+                          } else {
+                              setIsAddProductDialogOpen(true);
+                          }
+                      }}
                       disabled={!selectedDepositId && !isJefeDeposito}
                       className="w-auto"
                     >
                       <PlusCircle className="mr-2 h-4 w-4" />
-                      Agregar Producto
+                      {scanMode ? 'Escanear Producto' : 'Buscar Producto'}
                     </Button>
                     <Button type="submit" disabled={isSubmitting} className="w-auto">
                       {isSubmitting && (
@@ -1145,6 +1238,49 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      <BarcodeScanner 
+        isOpen={isScannerOpen} 
+        onClose={() => setIsScannerOpen(false)} 
+        onScanSuccess={handleScanSuccess}
+      />
+
+      <Dialog open={!!scannedProduct} onOpenChange={(open) => !open && setScannedProduct(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Agregar Cantidad</DialogTitle>
+                <DialogDescription>
+                    Producto: <span className="font-bold">{scannedProduct?.name}</span>
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <div className="flex items-center gap-4">
+                    <Label htmlFor="quantity" className="text-right">
+                        Cantidad
+                    </Label>
+                    <Input
+                        id="quantity"
+                        type="number"
+                        value={scannedQuantity}
+                        onChange={(e) => setScannedQuantity(Number(e.target.value))}
+                        className="col-span-3"
+                        min="1"
+                        autoFocus
+                    />
+                    <span className="text-muted-foreground">{scannedProduct?.unit}</span>
+                </div>
+                 {movementType === 'salida' && (
+                    <p className="text-sm text-green-600 mt-2">
+                        Stock disponible: {stockForSelectedDeposit.get(scannedProduct?.id || '') || 0} {scannedProduct?.unit}
+                    </p>
+                )}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setScannedProduct(null)}>Cancelar</Button>
+                <Button onClick={handleAddScannedProduct}>Añadir al Remito</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1186,3 +1322,5 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile!} />;
 }
+
+    
