@@ -6,10 +6,14 @@ export type Product = {
   unit: string;
   code: string;
   barcode?: string;
+  imageUrl?: string;
   price: number;
   isArchived?: boolean;
   depositIds?: string[];
   createdAt: any; // Allow both Timestamp and string for flexibility
+  categoryId: string;
+  supplierId: string;
+  minStock: number;
 };
 
 export type Deposit = {
@@ -81,3 +85,5 @@ export type Workspace = {
     id: string;
     name: string;
 }
+
+    

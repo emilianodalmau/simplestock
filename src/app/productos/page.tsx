@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import Image from 'next/image';
 import {
   useFirestore,
   useCollection,
@@ -85,7 +86,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2, FileUp, FileDown, Info, ChevronLeft, ChevronRight, ScanLine } from 'lucide-react';
+import { Loader2, Edit, Trash2, FileUp, FileDown, Info, ChevronLeft, ChevronRight, ScanLine, Box } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
@@ -107,6 +108,7 @@ const formSchema = z.object({
     .string()
     .min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   barcode: z.string().optional(),
+  imageUrl: z.string().url({ message: "Por favor, ingresa una URL válida." }).optional().or(z.literal('')),
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
   supplierId: z.string().min(1, { message: 'El proveedor es requerido.' }),
   price: z.coerce.number().min(0, { message: 'El precio no puede ser negativo.'}),
@@ -141,6 +143,7 @@ type Product = {
   code: string;
   name: string;
   barcode?: string;
+  imageUrl?: string;
   categoryId: string;
   supplierId: string;
   price: number;
@@ -327,6 +330,7 @@ export default function ProductosPage() {
     defaultValues: {
       name: '',
       barcode: '',
+      imageUrl: '',
       categoryId: '',
       supplierId: '',
       price: 0,
@@ -345,6 +349,7 @@ export default function ProductosPage() {
       editForm.reset({
         name: editingProduct.name,
         barcode: editingProduct.barcode || '',
+        imageUrl: editingProduct.imageUrl || '',
         categoryId: editingProduct.categoryId,
         supplierId: editingProduct.supplierId,
         price: editingProduct.price || 0,
@@ -364,9 +369,21 @@ export default function ProductosPage() {
     
     const result = await getProductInfoFromBarcode(barcode);
 
-    if (result.success && result.product?.name) {
+    if (result.success && result.product) {
+      let message = "";
+      if (result.product.name) {
         createForm.setValue('name', result.product.name);
-        toast({ title: "¡Producto Encontrado!", description: `Se autocompletó el nombre: "${result.product.name}".` });
+        message += `Nombre: "${result.product.name}". `;
+      }
+      if (result.product.imageUrl) {
+        createForm.setValue('imageUrl', result.product.imageUrl);
+        message += `Imagen encontrada.`;
+      }
+      if(message){
+        toast({ title: "¡Información Encontrada!", description: message.trim() });
+      } else {
+        toast({ variant: "default", title: "Producto no encontrado", description: "No se encontró información para este código. Por favor, completa los datos manualmente." });
+      }
     } else {
         toast({ variant: "default", title: "Producto no encontrado", description: "No se encontró información para este código. Por favor, completa los datos manualmente." });
     }
@@ -393,6 +410,7 @@ export default function ProductosPage() {
         ...data, // Keep previous data
         name: '', // Clear only name
         barcode: '',
+        imageUrl: '',
         price: 0,
         minStock: 0, // Reset minStock
         depositIds: [],
@@ -491,6 +509,7 @@ export default function ProductosPage() {
       {
         nombre: 'Ejemplo: Martillo de Goma',
         codigo_de_barras: '7790010123456',
+        imagen_url: 'https://example.com/imagen.jpg',
         categoria_nombre: 'Electrónica',
         proveedor_nombre: 'Proveedor de Ejemplo',
         precio: 1500.50,
@@ -504,7 +523,7 @@ export default function ProductosPage() {
     const depositsData = deposits?.map(d => ({ ID: d.id, Nombre: d.name })) || [];
 
     const wb = XLSX.utils.book_new();
-    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'codigo_de_barras', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
+    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'codigo_de_barras', 'imagen_url', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
     const wsCategories = XLSX.utils.json_to_sheet(categoriesData);
     const wsSuppliers = XLSX.utils.json_to_sheet(suppliersData);
     const wsDeposits = XLSX.utils.json_to_sheet(depositsData);
@@ -577,6 +596,7 @@ export default function ProductosPage() {
           batch.set(newProductRef, {
             name: row.nombre,
             barcode: row.codigo_de_barras || '',
+            imageUrl: row.imagen_url || '',
             categoryId: categoryId,
             supplierId: supplierId,
             price: Number(row.precio),
@@ -721,6 +741,23 @@ export default function ProductosPage() {
                                 <FormMessage />
                             </FormItem>
                         )}
+                    />
+                    <FormField
+                      control={createForm.control}
+                      name="imageUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>URL de Imagen (Opcional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="https://ejemplo.com/imagen.jpg"
+                              {...field}
+                              disabled={atLimit}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                     <FormField
                       control={createForm.control}
@@ -999,8 +1036,8 @@ export default function ProductosPage() {
                             aria-label="Seleccionar todo"
                          />
                       </TableHead>
+                      <TableHead>Imagen</TableHead>
                       <TableHead className="hidden md:table-cell">Código</TableHead>
-                      <TableHead className="hidden lg:table-cell">Código de Barras</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Categoría</TableHead>
                       <TableHead>Depósitos</TableHead>
@@ -1018,8 +1055,8 @@ export default function ProductosPage() {
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><Skeleton className="h-5 w-5"/></TableCell>
+                          <TableCell><Skeleton className="h-10 w-10 rounded-md"/></TableCell>
                           <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
-                          <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-28" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-48" /></TableCell>
@@ -1052,8 +1089,16 @@ export default function ProductosPage() {
                                 aria-label={`Seleccionar producto ${product.name}`}
                             />
                           </TableCell>
+                           <TableCell>
+                            {product.imageUrl ? (
+                              <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover" />
+                            ) : (
+                              <div className="h-10 w-10 bg-muted rounded-md flex items-center justify-center">
+                                  <Box className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="font-mono hidden md:table-cell">{product.code}</TableCell>
-                          <TableCell className="font-mono hidden lg:table-cell">{product.barcode || '-'}</TableCell>
                           <TableCell className="font-medium">{product.name}</TableCell>
                           <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
                           <TableCell>
@@ -1191,6 +1236,19 @@ export default function ProductosPage() {
                   </FormItem>
                 )}
               />
+               <FormField
+                  control={editForm.control}
+                  name="imageUrl"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>URL de Imagen</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               <FormField
                 control={editForm.control}
                 name="categoryId"
@@ -1332,3 +1390,5 @@ export default function ProductosPage() {
     </div>
   );
 }
+
+    
