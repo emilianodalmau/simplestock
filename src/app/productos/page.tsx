@@ -999,15 +999,15 @@ export default function ProductosPage() {
                             aria-label="Seleccionar todo"
                          />
                       </TableHead>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Código de Barras</TableHead>
+                      <TableHead className="hidden md:table-cell">Código</TableHead>
+                      <TableHead className="hidden lg:table-cell">Código de Barras</TableHead>
                       <TableHead>Nombre</TableHead>
                       <TableHead>Categoría</TableHead>
                       <TableHead>Depósitos</TableHead>
-                      <TableHead>Proveedor</TableHead>
-                      <TableHead>Unidad</TableHead>
-                      <TableHead>Precio</TableHead>
-                      <TableHead>Stock Mínimo</TableHead>
+                      <TableHead className="hidden lg:table-cell">Proveedor</TableHead>
+                      <TableHead className="hidden md:table-cell">Unidad</TableHead>
+                      <TableHead className="hidden md:table-cell">Precio</TableHead>
+                      <TableHead className="hidden lg:table-cell">Stock Mínimo</TableHead>
                       {canManageProducts && (
                         <TableHead className="text-right">Acciones</TableHead>
                       )}
@@ -1018,17 +1018,17 @@ export default function ProductosPage() {
                       [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><Skeleton className="h-5 w-5"/></TableCell>
-                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                          <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-28" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                           {canManageProducts && (
-                            <TableCell><Skeleton className="ml-auto h-8 w-20" /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="ml-auto h-8 w-20" /></TableCell>
                           )}
                         </TableRow>
                       ))}
@@ -1052,8 +1052,8 @@ export default function ProductosPage() {
                                 aria-label={`Seleccionar producto ${product.name}`}
                             />
                           </TableCell>
-                          <TableCell className="font-mono">{product.code}</TableCell>
-                          <TableCell className="font-mono">{product.barcode || '-'}</TableCell>
+                          <TableCell className="font-mono hidden md:table-cell">{product.code}</TableCell>
+                          <TableCell className="font-mono hidden lg:table-cell">{product.barcode || '-'}</TableCell>
                           <TableCell className="font-medium">{product.name}</TableCell>
                           <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
                           <TableCell>
@@ -1063,10 +1063,10 @@ export default function ProductosPage() {
                                 )) || '-'}
                             </div>
                           </TableCell>
-                          <TableCell className="text-muted-foreground">{getSupplierName(product.supplierId)}</TableCell>
-                          <TableCell className="text-muted-foreground">{product.unit}</TableCell>
-                          <TableCell className="text-muted-foreground font-medium">{formatPrice(product.price)}</TableCell>
-                          <TableCell className="text-muted-foreground">{product.minStock}</TableCell>
+                          <TableCell className="text-muted-foreground hidden lg:table-cell">{getSupplierName(product.supplierId)}</TableCell>
+                          <TableCell className="text-muted-foreground hidden md:table-cell">{product.unit}</TableCell>
+                          <TableCell className="text-muted-foreground font-medium hidden md:table-cell">{formatPrice(product.price)}</TableCell>
+                          <TableCell className="text-muted-foreground hidden lg:table-cell">{product.minStock}</TableCell>
                           {canManageProducts && (
                             <TableCell className="text-right">
                               <Button
