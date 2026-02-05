@@ -22,13 +22,15 @@ export function BarcodeScanner({ isOpen, onClose, onScanSuccess }: BarcodeScanne
       return;
     }
 
-    const html5QrCode = new Html5Qrcode(qrcodeRegionId);
-    let scannerIsRunning = false;
+    // The instance is now scoped to the effect
+    let html5QrCode: Html5Qrcode;
 
-    const startScanner = async () => {
+    // A timeout is a simple and effective way to wait for the dialog animation
+    // and DOM attachment to complete before initializing the scanner.
+    const scannerTimeout = setTimeout(() => {
       try {
-        await Html5Qrcode.getCameras();
-        scannerIsRunning = true;
+        html5QrCode = new Html5Qrcode(qrcodeRegionId);
+        
         html5QrCode.start(
           { facingMode: "environment" },
           {
@@ -41,7 +43,6 @@ export function BarcodeScanner({ isOpen, onClose, onScanSuccess }: BarcodeScanne
           },
           (decodedText, _decodedResult) => {
             onScanSuccess(decodedText);
-            stopScanner(); // Stop after a successful scan
           },
           (_errorMessage) => {
             // handle scan failure, usually better to ignore and keep scanning.
@@ -50,28 +51,22 @@ export function BarcodeScanner({ isOpen, onClose, onScanSuccess }: BarcodeScanne
             console.error("Error starting scanner:", err);
             setError("No se pudo iniciar la cámara. Asegúrate de haber otorgado los permisos necesarios. " + err.message);
         });
+
       } catch (err: any) {
-        console.error("Camera permission error:", err);
-        setError("No se encontraron cámaras o no se otorgaron los permisos. " + err.message);
+        console.error("Initialization/Camera permission error:", err);
+        setError("No se encontraron cámaras, no se otorgaron los permisos o el elemento del escáner no se encontró. " + (err.message || err));
       }
-    };
-
-    const stopScanner = () => {
-      // Check if the scanner is in a state where it can be stopped.
-      if (scannerIsRunning && html5QrCode.getState() === 2) { // 2 is SCANNING state
-        html5QrCode.stop().then(() => {
-          scannerIsRunning = false;
-        }).catch((err) => {
-          console.error("Error stopping scanner:", err);
-        });
-      }
-    };
-
-    startScanner();
+    }, 300); // 300ms delay to ensure DOM element is available.
 
     // Cleanup function
     return () => {
-      stopScanner();
+      clearTimeout(scannerTimeout);
+      // Use the 'isScanning' property to safely stop the scanner.
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(err => {
+            console.error("Error al detener el escáner:", err);
+        });
+      }
     };
   }, [isOpen, onScanSuccess]);
 
