@@ -35,10 +35,16 @@ export function BarcodeScanner({ isOpen, onClose, onScanSuccess }: BarcodeScanne
           { facingMode: "environment" },
           {
             fps: 10,
-            qrbox: (viewfinderWidth, viewfinderHeight) => ({
-                width: Math.min(viewfinderWidth, viewfinderHeight) * 0.7,
-                height: Math.min(viewfinderWidth, viewfinderHeight) * 0.3,
-            }),
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              // Ensure the box dimensions are at least 50px, which is the minimum required by the library.
+              const boxWidth = Math.max(50, minEdge * 0.7);
+              const boxHeight = Math.max(50, minEdge * 0.3);
+              return {
+                width: boxWidth,
+                height: boxHeight,
+              };
+            },
             aspectRatio: 1.7777778,
           },
           (decodedText, _decodedResult) => {
