@@ -120,93 +120,86 @@ export async function deleteUser(userId: string) {
 }
 
 export async function getProductInfoFromBarcode(barcode: string) {
-  // --- 1. Try Open Food Facts first ---
+  const cleanBarcode = barcode.trim();
+
+  // --- 1. Intento con Open Food Facts ---
   try {
-    const openFoodFactsResponse = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
-    if (openFoodFactsResponse.ok) {
-      const openFoodFactsData = await openFoodFactsResponse.json();
-      if (openFoodFactsData.status !== 0 && openFoodFactsData.product) {
-        const product = openFoodFactsData.product;
-        // If we found a product with a name, we consider it a success.
-        if (product.product_name || product.product_name_es) {
-            console.log(`Producto ${barcode} encontrado en Open Food Facts.`);
-            return {
-              success: true,
-              product: {
-                name: product.product_name_es || product.product_name || '',
-                brand: product.brands || '',
-                imageUrl: product.image_url || '',
-              }
-            };
-        }
+    const offResponse = await fetch(`https://world.openfoodfacts.org/api/v2/product/${cleanBarcode}.json`, {
+      headers: { 'User-Agent': 'SimpleStockApp - Web - Version 1.0' }
+    });
+    
+    if (offResponse.ok) {
+      const data = await offResponse.json();
+      if (data.status === 1 && data.product) {
+        return {
+          success: true,
+          product: {
+            name: data.product.product_name_es || data.product.product_name || '',
+            brand: data.product.brands || '',
+            imageUrl: data.product.image_url || '',
+          }
+        };
       }
     }
-  } catch (error: any) {
-    console.error('Error fetching from Open Food Facts:', error.message);
-    // Don't return, just log and fall through to Wikidata
+  } catch (error) {
+    console.error('Error OFF:', error);
   }
 
-  // --- 2. If Open Food Facts fails, try Wikidata (Corrected Implementation) ---
+  // --- 2. Fallback a Wikidata (Versión corregida) ---
   try {
-    const cleanBarcode = barcode.trim();
+    // Definimos las propiedades de Wikidata donde puede estar el código
+    // P296: GTIN, P212: ISBN-13, P238: GTIN-12, P240: GTIN-8
+    const properties = ['P296', 'P212', 'P238', 'P240'];
     
-    // Handle 12-digit UPC-A by checking both original and zero-padded GTIN-13
-    const gtinValues = cleanBarcode.length === 12
-        ? `"${cleanBarcode}" "0${cleanBarcode}"`
-        : `"${cleanBarcode}"`;
+    // Construimos una query más directa sin VALUES para evitar bloqueos de ejecución
+    const orConditions = properties.map(p => `{ ?item wdt:${p} "${cleanBarcode}" }`).join(' UNION ');
+    
+    // Si es UPC-A (12 dígitos), también probamos con el cero adelante
+    let upcCondition = '';
+    if (cleanBarcode.length === 12) {
+      upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "0${cleanBarcode}" }`).join(' UNION ');
+    }
 
-    // Correct query using wdt:P296 for GTIN and expanded properties
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
-        VALUES ?gtin { ${gtinValues} }
-        { ?item wdt:P296 ?gtin. } # Correct property for GTIN-12/13
-        UNION
-        { ?item wdt:P212 ?gtin. } # ISBN-13
-        UNION
-        { ?item wdt:P238 ?gtin. } # GTIN-12
-        UNION
-        { ?item wdt:P240 ?gtin. } # GTIN-8
-
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
+        { ${orConditions} ${upcCondition} }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
         OPTIONAL { ?item wdt:P18 ?image. }
       }
       LIMIT 1
     `;
-    
+
     const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparqlQuery)}&format=json`;
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/sparql-results+json',
-        // CRITICAL: Identify your application clearly to avoid error 403
-        'User-Agent': 'SimpleStockApp/1.0 (https://simpletask.com.ar; info@simpletask.com.ar) NextJs/15'
+        // Cambiamos a un User-Agent más estándar de navegador para evitar bloqueos
+        'User-Agent': 'Mozilla/5.0 (compatible; SimpleStockBot/1.0; +https://simpletask.com.ar)'
       },
-      next: { revalidate: 3600 } // Optional Next.js caching
+      cache: 'no-store' // Evitamos problemas de caché durante el debug
     });
 
-    if (!response.ok) {
-        throw new Error(`Wikidata error: ${response.status} ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
 
     const data = await response.json();
-    const results = data.results?.bindings;
+    const result = data.results?.bindings?.[0];
 
-    if (results && results.length > 0) {
-      console.log(`Producto ${barcode} encontrado en Wikidata.`);
-      const product = {
-        name: results[0].itemLabel.value,
-        imageUrl: results[0].image ? results[0].image.value : '',
-        barcode: cleanBarcode
+    if (result) {
+      return {
+        success: true,
+        product: {
+          name: result.itemLabel.value,
+          brand: '', // Wikidata no siempre separa marca del nombre
+          imageUrl: result.image ? result.image.value : '',
+          barcode: cleanBarcode
+        }
       };
-      return { success: true, product };
     }
   } catch (error) {
-    console.error("Error en fallback de Wikidata:", error);
+    console.error("Error Wikidata Fallback:", error);
   }
 
-
-  // --- 3. If both fail ---
-  console.log(`Producto ${barcode} no encontrado en ninguna fuente.`);
-  return { success: false, error: 'Product not found in any database.' };
+  return { success: false, error: 'Producto no encontrado.' };
 }
