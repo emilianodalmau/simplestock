@@ -168,6 +168,10 @@
           "type": "string",
           "description": "A unique, auto-generated code for the product."
         },
+        "barcode": {
+          "type": "string",
+          "description": "The GTIN or EAN barcode of the product."
+        },
         "name": {
           "type": "string",
           "description": "The name of the product."

@@ -5,6 +5,7 @@ export type Product = {
   name: string;
   unit: string;
   code: string;
+  barcode?: string;
   price: number;
   isArchived?: boolean;
   depositIds?: string[];

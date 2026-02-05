@@ -118,3 +118,37 @@ export async function deleteUser(userId: string) {
     return { success: false, error: error.message };
   }
 }
+
+export async function getProductInfoFromBarcode(barcode: string) {
+  try {
+    const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    if (!response.ok) {
+      if (response.status === 404) {
+          console.log(`Product with barcode ${barcode} not found in Open Food Facts.`);
+          return { error: 'Product not found.' };
+      }
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.status === 0 || !data.product) {
+      return { error: 'Product not found in Open Food Facts database.' };
+    }
+
+    const product = data.product;
+
+    return {
+      success: true,
+      product: {
+        name: product.product_name || product.product_name_es || '',
+        brand: product.brands || '',
+        imageUrl: product.image_url || '',
+      }
+    };
+
+  } catch (error: any) {
+    console.error('Error fetching from Open Food Facts:', error);
+    return { error: error.message || 'Failed to fetch product data.' };
+  }
+}
