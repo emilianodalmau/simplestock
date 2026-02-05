@@ -148,15 +148,15 @@ export async function getProductInfoFromBarcode(barcode: string): Promise<{ succ
 
   // --- 2. Fallback a Wikidata (Versión corregida y robusta) ---
   try {
-    const properties = ['P296', 'P212', 'P238', 'P240'];
     const searchValues = new Set([`"${cleanBarcode}"`]);
 
     if (cleanBarcode.length === 12) {
-      searchValues.add(`"0${cleanBarcode}"`);
+        searchValues.add(`"0${cleanBarcode}"`);
     } else if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
-      searchValues.add(`"${cleanBarcode.substring(1)}"`);
+        searchValues.add(`"${cleanBarcode.substring(1)}"`);
     }
 
+    const properties = ['P296', 'P212', 'P238', 'P240'];
     const orConditions = properties.flatMap(p => 
         Array.from(searchValues).map(v => `{ ?item wdt:${p} ${v} }`)
     ).join(' UNION ');
@@ -182,7 +182,7 @@ export async function getProductInfoFromBarcode(barcode: string): Promise<{ succ
     });
 
     if (!response.ok) {
-      throw new Error(`Error de API (Wikidata): ${response.status} ${response.statusText}`);
+      return { success: false, error: `Error de API (Wikidata): ${response.status} ${response.statusText}` };
     }
 
     const data = await response.json();
@@ -198,12 +198,12 @@ export async function getProductInfoFromBarcode(barcode: string): Promise<{ succ
           barcode: cleanBarcode
         }
       };
-    } else {
-      return { success: false, error: 'Conexión exitosa, pero Wikidata no devolvió datos para este código.' };
     }
+    
   } catch (error: any) {
-    console.error("Error en fallback de Wikidata:", error);
-    // Atrapa tanto errores de conexión de 'fetch' como errores lanzados por '!response.ok'
-    return { success: false, error: `Error durante la consulta a Wikidata: ${error.message}` };
+    return { success: false, error: `Error de conexión con la API de Wikidata: ${error.message}` };
   }
+  
+  // Si ninguna de las APIs anteriores devolvió un producto, retornamos un mensaje claro.
+  return { success: false, error: 'Conexión exitosa, pero el producto no fue encontrado en ninguna base de datos.' };
 }
