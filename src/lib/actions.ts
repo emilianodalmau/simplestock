@@ -153,10 +153,14 @@ export async function getProductInfoFromBarcode(barcode: string) {
         ? `"${barcode}" "0${barcode}"` 
         : `"${barcode}"`;
 
+    // The properties to search for GTIN codes. P239=GTIN-13, P212=ISBN-13, P238=GTIN-12
+    const properties = "wdt:P239 wdt:P212 wdt:P238";
+
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
         VALUES ?gtin { ${gtinValues} }
-        ?item wdt:P239 ?gtin.
+        VALUES ?property { ${properties} }
+        ?item ?property ?gtin.
         OPTIONAL { ?item wdt:P18 ?image. }
         SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
       }
