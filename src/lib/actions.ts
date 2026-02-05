@@ -148,9 +148,15 @@ export async function getProductInfoFromBarcode(barcode: string) {
 
   // --- 2. If Open Food Facts fails, try Wikidata ---
   try {
+    // Build a list of possible GTINs to check (original and zero-padded for UPC-A)
+    const gtinValues = barcode.length === 12 
+        ? `"${barcode}" "0${barcode}"` 
+        : `"${barcode}"`;
+
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
-        ?item wdt:P239 "${barcode}".
+        VALUES ?gtin { ${gtinValues} }
+        ?item wdt:P239 ?gtin.
         OPTIONAL { ?item wdt:P18 ?image. }
         SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
       }
