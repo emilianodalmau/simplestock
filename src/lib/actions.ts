@@ -120,35 +120,74 @@ export async function deleteUser(userId: string) {
 }
 
 export async function getProductInfoFromBarcode(barcode: string) {
+  // --- 1. Try Open Food Facts first ---
   try {
-    const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
-    if (!response.ok) {
-      if (response.status === 404) {
-          console.log(`Product with barcode ${barcode} not found in Open Food Facts.`);
-          return { error: 'Product not found.' };
+    const openFoodFactsResponse = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    if (openFoodFactsResponse.ok) {
+      const openFoodFactsData = await openFoodFactsResponse.json();
+      if (openFoodFactsData.status !== 0 && openFoodFactsData.product) {
+        const product = openFoodFactsData.product;
+        // If we found a product with a name, we consider it a success.
+        if (product.product_name || product.product_name_es) {
+            console.log(`Producto ${barcode} encontrado en Open Food Facts.`);
+            return {
+              success: true,
+              product: {
+                name: product.product_name_es || product.product_name || '',
+                brand: product.brands || '',
+                imageUrl: product.image_url || '',
+              }
+            };
+        }
       }
-      throw new Error(`API request failed with status ${response.status}`);
     }
-
-    const data = await response.json();
-    
-    if (data.status === 0 || !data.product) {
-      return { error: 'Product not found in Open Food Facts database.' };
-    }
-
-    const product = data.product;
-
-    return {
-      success: true,
-      product: {
-        name: product.product_name || product.product_name_es || '',
-        brand: product.brands || '',
-        imageUrl: product.image_url || '',
-      }
-    };
-
   } catch (error: any) {
-    console.error('Error fetching from Open Food Facts:', error);
-    return { error: error.message || 'Failed to fetch product data.' };
+    console.error('Error fetching from Open Food Facts:', error.message);
+    // Don't return, just log and fall through to Wikidata
   }
+
+  // --- 2. If Open Food Facts fails, try Wikidata ---
+  try {
+    const sparqlQuery = `
+      SELECT ?item ?itemLabel ?image WHERE {
+        ?item wdt:P239 "${barcode}".
+        OPTIONAL { ?item wdt:P18 ?image. }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
+      }
+      LIMIT 1
+    `;
+    
+    const wikidataUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparqlQuery)}&format=json`;
+
+    const wikidataResponse = await fetch(wikidataUrl, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (wikidataResponse.ok) {
+      const wikidataData = await wikidataResponse.json();
+      const bindings = wikidataData.results?.bindings;
+      if (bindings && bindings.length > 0) {
+        const result = bindings[0];
+        console.log(`Producto ${barcode} encontrado en Wikidata.`);
+        return {
+          success: true,
+          product: {
+            name: result.itemLabel?.value || '',
+            brand: '', // Wikidata doesn't have a standard "brand" field like OFF
+            imageUrl: result.image?.value || '',
+          }
+        };
+      }
+    }
+  } catch (error: any) {
+    console.error('Error fetching from Wikidata:', error.message);
+    // Don't return, just log and fall through to final error
+  }
+
+
+  // --- 3. If both fail ---
+  console.log(`Producto ${barcode} no encontrado en ninguna fuente.`);
+  return { error: 'Product not found in any database.' };
 }
