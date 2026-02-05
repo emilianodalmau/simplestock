@@ -12,6 +12,7 @@ import {
   useMemoFirebase,
   useUser,
   useDoc,
+  useStorage,
 } from '@/firebase';
 import {
   collection,
@@ -30,6 +31,7 @@ import {
   limitToLast,
   DocumentSnapshot,
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
   Card,
   CardHeader,
@@ -192,6 +194,11 @@ export default function ProductosPage() {
   const [firstVisible, setFirstVisible] = useState<DocumentSnapshot | null>(null);
   const [pageCursors, setPageCursors] = useState<(DocumentSnapshot | null)[]>([null]);
 
+  // Image Upload State
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
 
   // State for filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -206,6 +213,7 @@ export default function ProductosPage() {
   
   const { toast } = useToast();
   const firestore = useFirestore();
+  const storage = useStorage();
   const { user: currentUser } = useUser();
 
   const userDocRef = useMemoFirebase(
@@ -357,6 +365,8 @@ export default function ProductosPage() {
         unit: editingProduct.unit,
         depositIds: editingProduct.depositIds || [],
       });
+      setEditImagePreview(editingProduct.imageUrl || null);
+      setEditImageFile(null);
     }
   }, [editingProduct, editForm]);
 
@@ -377,6 +387,8 @@ export default function ProductosPage() {
       }
       if (result.product.imageUrl) {
         createForm.setValue('imageUrl', result.product.imageUrl);
+        setImagePreview(result.product.imageUrl);
+        setImageFile(null);
         message += `Imagen encontrada.`;
       }
       if(message){
@@ -391,12 +403,21 @@ export default function ProductosPage() {
   };
 
   const onCreateSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !collectionPrefix) return;
+    if (!firestore || !collectionPrefix || !workspaceId) return;
     setIsSubmitting(true);
     try {
+      let finalImageUrl = data.imageUrl || '';
+
+      if (imageFile) {
+        const storageRef = ref(storage, `workspaces/${workspaceId}/product_images/${Date.now()}_${imageFile.name}`);
+        await uploadBytes(storageRef, imageFile);
+        finalImageUrl = await getDownloadURL(storageRef);
+      }
+
       const productCode = generateProductCode(data.name);
       await addDoc(collection(firestore, `${collectionPrefix}/products`), {
         ...data,
+        imageUrl: finalImageUrl,
         code: productCode,
         isArchived: false,
         createdAt: serverTimestamp(),
@@ -415,6 +436,8 @@ export default function ProductosPage() {
         minStock: 0, // Reset minStock
         depositIds: [],
       });
+      setImageFile(null);
+      setImagePreview(null);
       fetchProducts();
     } catch (error) {
       console.error('Error creating product:', error);
@@ -430,12 +453,21 @@ export default function ProductosPage() {
   };
 
   const onEditSubmit: SubmitHandler<FormValues> = async (data) => {
-    if (!firestore || !editingProduct || !collectionPrefix) return;
+    if (!firestore || !editingProduct || !collectionPrefix || !workspaceId) return;
     setIsEditSubmitting(true);
     try {
+      let finalImageUrl = data.imageUrl || '';
+
+      if (editImageFile) {
+        const storageRef = ref(storage, `workspaces/${workspaceId}/product_images/${Date.now()}_${editImageFile.name}`);
+        await uploadBytes(storageRef, editImageFile);
+        finalImageUrl = await getDownloadURL(storageRef);
+      }
+
       const productRef = doc(firestore, `${collectionPrefix}/products`, editingProduct.id);
       await updateDoc(productRef, {
         ...data,
+        imageUrl: finalImageUrl,
         updatedAt: serverTimestamp(),
       });
       toast({
@@ -742,23 +774,61 @@ export default function ProductosPage() {
                             </FormItem>
                         )}
                     />
-                    <FormField
-                      control={createForm.control}
-                      name="imageUrl"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>URL de Imagen (Opcional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="https://ejemplo.com/imagen.jpg"
-                              {...field}
-                              disabled={atLimit}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <div className="lg:col-span-3">
+                        <FormLabel>Imagen del Producto</FormLabel>
+                        <div className="flex items-center gap-4 mt-2">
+                            <div className="w-24 h-24 rounded-md border flex items-center justify-center bg-muted flex-shrink-0">
+                                {imagePreview ? (
+                                    <Image src={imagePreview} alt="Vista previa" width={96} height={96} className="rounded-md object-cover w-full h-full" />
+                                ) : (
+                                    <Box className="h-10 w-10 text-muted-foreground" />
+                                )}
+                            </div>
+                            <div className="w-full space-y-2">
+                                <p className="text-sm text-muted-foreground">Sube un archivo o pega una URL a continuación.</p>
+                                <Input
+                                    type="file"
+                                    accept="image/png, image/jpeg, image/gif"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+                                            toast({ variant: 'destructive', title: 'Archivo demasiado grande', description: 'Por favor, selecciona una imagen de menos de 2MB.' });
+                                            return;
+                                        }
+                                        setImageFile(file);
+                                        setImagePreview(URL.createObjectURL(file));
+                                        createForm.setValue('imageUrl', ''); // Clear URL if a file is chosen
+                                        }
+                                    }}
+                                    disabled={atLimit || isSubmitting}
+                                />
+                                <FormField
+                                    control={createForm.control}
+                                    name="imageUrl"
+                                    render={({ field }) => (
+                                        <FormItem className="!mt-0">
+                                        <FormControl>
+                                            <Input
+                                                placeholder="https://ejemplo.com/imagen.jpg"
+                                                {...field}
+                                                onChange={(e) => {
+                                                    field.onChange(e);
+                                                    if (e.target.value) {
+                                                        setImagePreview(e.target.value);
+                                                        setImageFile(null);
+                                                    }
+                                                }}
+                                                disabled={atLimit || isSubmitting}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        </div>
+                    </div>
                     <FormField
                       control={createForm.control}
                       name="categoryId"
@@ -1210,38 +1280,12 @@ export default function ProductosPage() {
               className="space-y-6"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={editForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre del Producto</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="barcode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Código de Barras (GTIN)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Ingresar código manualmente..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
+                <FormField
                   control={editForm.control}
-                  name="imageUrl"
+                  name="name"
                   render={({ field }) => (
-                    <FormItem className="md:col-span-2">
-                      <FormLabel>URL de Imagen</FormLabel>
+                    <FormItem>
+                      <FormLabel>Nombre del Producto</FormLabel>
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
@@ -1249,6 +1293,76 @@ export default function ProductosPage() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={editForm.control}
+                  name="barcode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Código de Barras (GTIN)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ingresar código manualmente..." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="md:col-span-2">
+                    <FormLabel>Imagen del Producto</FormLabel>
+                    <div className="flex items-center gap-4 mt-2">
+                        <div className="w-24 h-24 rounded-md border flex items-center justify-center bg-muted flex-shrink-0">
+                            {editImagePreview ? (
+                                <Image src={editImagePreview} alt="Vista previa" width={96} height={96} className="rounded-md object-cover w-full h-full" />
+                            ) : (
+                                <Box className="h-10 w-10 text-muted-foreground" />
+                            )}
+                        </div>
+                        <div className="w-full space-y-2">
+                            <p className="text-sm text-muted-foreground">Sube un archivo nuevo para reemplazarla, o edita la URL.</p>
+                            <Input
+                                type="file"
+                                accept="image/png, image/jpeg, image/gif"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+                                            toast({ variant: 'destructive', title: 'Archivo demasiado grande', description: 'Por favor, selecciona una imagen de menos de 2MB.' });
+                                            return;
+                                        }
+                                        setEditImageFile(file);
+                                        setEditImagePreview(URL.createObjectURL(file));
+                                        editForm.setValue('imageUrl', ''); // Clear URL if file is chosen
+                                    }
+                                }}
+                                disabled={isEditSubmitting}
+                            />
+                            <FormField
+                                control={editForm.control}
+                                name="imageUrl"
+                                render={({ field }) => (
+                                    <FormItem className="!mt-0">
+                                    <FormControl>
+                                        <Input
+                                            placeholder="https://ejemplo.com/imagen.jpg"
+                                            {...field}
+                                            onChange={(e) => {
+                                                field.onChange(e);
+                                                if (e.target.value) {
+                                                    setEditImagePreview(e.target.value);
+                                                    setEditImageFile(null);
+                                                } else if (!editImageFile) {
+                                                    setEditImagePreview(null);
+                                                }
+                                            }}
+                                            disabled={isEditSubmitting}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                    </div>
+                </div>
               <FormField
                 control={editForm.control}
                 name="categoryId"
@@ -1390,5 +1504,3 @@ export default function ProductosPage() {
     </div>
   );
 }
-
-    
