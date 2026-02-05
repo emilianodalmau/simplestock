@@ -130,7 +130,7 @@ export async function getProductInfoFromBarcode(barcode: string) {
     
     if (offResponse.ok) {
       const data = await offResponse.json();
-      if (data.status === 1 && data.product) {
+      if (data.status === 1 && data.product && (data.product.product_name_es || data.product.product_name)) {
         return {
           success: true,
           product: {
@@ -140,26 +140,22 @@ export async function getProductInfoFromBarcode(barcode: string) {
           }
         };
       }
+    } else {
+        console.warn(`API de Open Food Facts respondió con: ${offResponse.status} ${offResponse.statusText}`);
     }
-  } catch (error) {
-    console.error('Error OFF:', error);
+  } catch (error: any) {
+    console.error('Error de conexión con Open Food Facts:', error);
   }
 
   // --- 2. Fallback a Wikidata (Versión corregida) ---
   try {
-    // Definimos las propiedades de Wikidata donde puede estar el código
-    // P296: GTIN, P212: ISBN-13, P238: GTIN-12, P240: GTIN-8
     const properties = ['P296', 'P212', 'P238', 'P240'];
-    
-    // Construimos una query más directa sin VALUES para evitar bloqueos de ejecución
     const orConditions = properties.map(p => `{ ?item wdt:${p} "${cleanBarcode}" }`).join(' UNION ');
     
-    // Si es UPC-A (12 dígitos), también probamos con el cero adelante
     let upcCondition = '';
     if (cleanBarcode.length === 12) {
       upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "0${cleanBarcode}" }`).join(' UNION ');
-    }
-     if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
+    } else if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
       const twelveDigitCode = cleanBarcode.substring(1);
       upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "${twelveDigitCode}" }`).join(' UNION ');
     }
@@ -179,31 +175,33 @@ export async function getProductInfoFromBarcode(barcode: string) {
       method: 'GET',
       headers: {
         'Accept': 'application/sparql-results+json',
-        // Cambiamos a un User-Agent más estándar de navegador para evitar bloqueos
         'User-Agent': 'Mozilla/5.0 (compatible; SimpleStockBot/1.0; +https://simpletask.com.ar)'
       },
-      cache: 'no-store' // Evitamos problemas de caché durante el debug
+      cache: 'no-store'
     });
 
-    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+    if (!response.ok) {
+        return { success: false, error: `Error en API (Wikidata): ${response.status} ${response.statusText}` };
+    }
 
     const data = await response.json();
     const result = data.results?.bindings?.[0];
 
-    if (result) {
+    if (result && result.itemLabel) {
       return {
         success: true,
         product: {
           name: result.itemLabel.value,
-          brand: '', // Wikidata no siempre separa marca del nombre
+          brand: '',
           imageUrl: result.image ? result.image.value : '',
           barcode: cleanBarcode
         }
       };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error Wikidata Fallback:", error);
+    return { success: false, error: `Error de conexión (Wikidata): ${error.message}` };
   }
 
-  return { success: false, error: 'Producto no encontrado.' };
+  return { success: false, error: 'Producto no encontrado en las bases de datos externas.' };
 }
