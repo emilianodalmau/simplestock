@@ -153,8 +153,8 @@ export async function getProductInfoFromBarcode(barcode: string) {
         ? `"${barcode}" "0${barcode}"` 
         : `"${barcode}"`;
 
-    // The properties to search for GTIN codes. P239=GTIN-13, P212=ISBN-13, P238=GTIN-12
-    const properties = "wdt:P239 wdt:P212 wdt:P238";
+    // The properties to search for GTIN codes. Added GTIN-8 for more coverage.
+    const properties = "wdt:P239 wdt:P212 wdt:P238 wdt:P240";
 
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
@@ -162,7 +162,8 @@ export async function getProductInfoFromBarcode(barcode: string) {
         VALUES ?property { ${properties} }
         ?item ?property ?gtin.
         OPTIONAL { ?item wdt:P18 ?image. }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
+        # More robust language fallback per Wikidata documentation.
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
       }
       LIMIT 1
     `;
