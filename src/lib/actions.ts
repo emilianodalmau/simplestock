@@ -119,7 +119,7 @@ export async function deleteUser(userId: string) {
   }
 }
 
-export async function getProductInfoFromBarcode(barcode: string) {
+export async function getProductInfoFromBarcode(barcode: string): Promise<{ success: boolean; product?: any; error?: string; }> {
   const cleanBarcode = barcode.trim();
 
   // --- 1. Intento con Open Food Facts ---
@@ -143,26 +143,28 @@ export async function getProductInfoFromBarcode(barcode: string) {
     }
   } catch (error) {
     console.error('Error de conexión con Open Food Facts:', error);
+    // No retorna error, simplemente pasa al siguiente proveedor.
   }
 
   // --- 2. Fallback a Wikidata (Versión corregida y robusta) ---
   try {
-    // Propiedades de Wikidata para códigos de producto
     const properties = ['P296', 'P212', 'P238', 'P240'];
-    
-    // Construimos una query directa con UNION para evitar bloqueos
-    const orConditions = properties.map(p => `{ ?item wdt:${p} "${cleanBarcode}" }`).join(' UNION ');
-    
-    // Si es UPC-A (12 dígitos), también probamos con el cero adelante
-    let upcCondition = '';
+    const searchValues = new Set([`"${cleanBarcode}"`]);
+
     if (cleanBarcode.length === 12) {
-      upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "0${cleanBarcode}" }`).join(' UNION ');
+      searchValues.add(`"0${cleanBarcode}"`);
+    } else if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
+      searchValues.add(`"${cleanBarcode.substring(1)}"`);
     }
 
+    const orConditions = properties.flatMap(p => 
+        Array.from(searchValues).map(v => `{ ?item wdt:${p} ${v} }`)
+    ).join(' UNION ');
+    
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
-        { ${orConditions} ${upcCondition} }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
+        { ${orConditions} }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
         OPTIONAL { ?item wdt:P18 ?image. }
       }
       LIMIT 1
@@ -174,10 +176,9 @@ export async function getProductInfoFromBarcode(barcode: string) {
       method: 'GET',
       headers: {
         'Accept': 'application/sparql-results+json',
-        // User-Agent específico y descriptivo para evitar bloqueos
-        'User-Agent': 'SimpleStockApp/1.0 (https://simpletask.com.ar; info@simpletask.com.ar) NextJs/15'
+        'User-Agent': 'Mozilla/5.0 (compatible; SimpleStockBot/1.0; +https://simpletask.com.ar)'
       },
-      cache: 'no-store' // Evitar problemas de caché durante el debug
+      cache: 'no-store'
     });
 
     if (!response.ok) {
@@ -197,11 +198,12 @@ export async function getProductInfoFromBarcode(barcode: string) {
           barcode: cleanBarcode
         }
       };
+    } else {
+      return { success: false, error: 'Conexión exitosa, pero Wikidata no devolvió datos para este código.' };
     }
   } catch (error: any) {
     console.error("Error en fallback de Wikidata:", error);
-    return { success: false, error: `Error de conexión o de API: ${error.message}` };
+    // Atrapa tanto errores de conexión de 'fetch' como errores lanzados por '!response.ok'
+    return { success: false, error: `Error durante la consulta a Wikidata: ${error.message}` };
   }
-
-  return { success: false, error: 'Producto no encontrado en las bases de datos externas.' };
 }

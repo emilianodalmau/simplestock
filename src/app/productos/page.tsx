@@ -400,7 +400,7 @@ export default function ProductosPage() {
         toast({ 
             variant: "destructive", 
             title: "Búsqueda de Producto Fallida", 
-            description: result.error || "No se encontró información para este código."
+            description: result.error || "No se encontró información para este código en las bases de datos externas."
         });
     }
     setIsFetchingBarcode(false);
