@@ -146,56 +146,63 @@ export async function getProductInfoFromBarcode(barcode: string) {
     // Don't return, just log and fall through to Wikidata
   }
 
-  // --- 2. If Open Food Facts fails, try Wikidata ---
+  // --- 2. If Open Food Facts fails, try Wikidata (Corrected Implementation) ---
   try {
-    // Build a list of possible GTINs to check (original and zero-padded for UPC-A)
-    const gtinValues = barcode.length === 12 
-        ? `"${barcode}" "0${barcode}"` 
-        : `"${barcode}"`;
+    const cleanBarcode = barcode.trim();
+    
+    // Handle 12-digit UPC-A by checking both original and zero-padded GTIN-13
+    const gtinValues = cleanBarcode.length === 12
+        ? `"${cleanBarcode}" "0${cleanBarcode}"`
+        : `"${cleanBarcode}"`;
 
-    // The properties to search for GTIN codes. Added GTIN-8 for more coverage.
-    const properties = "wdt:P239 wdt:P212 wdt:P238 wdt:P240";
-
+    // Correct query using wdt:P296 for GTIN and expanded properties
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
         VALUES ?gtin { ${gtinValues} }
-        VALUES ?property { ${properties} }
-        ?item ?property ?gtin.
-        OPTIONAL { ?item wdt:P18 ?image. }
-        # More robust language fallback per Wikidata documentation.
+        { ?item wdt:P296 ?gtin. } # Correct property for GTIN-12/13
+        UNION
+        { ?item wdt:P212 ?gtin. } # ISBN-13
+        UNION
+        { ?item wdt:P238 ?gtin. } # GTIN-12
+        UNION
+        { ?item wdt:P240 ?gtin. } # GTIN-8
+
         SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
+        OPTIONAL { ?item wdt:P18 ?image. }
       }
       LIMIT 1
     `;
     
-    const wikidataUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparqlQuery)}&format=json`;
+    const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparqlQuery)}&format=json`;
 
-    const wikidataResponse = await fetch(wikidataUrl, {
+    const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'SimpleStockApp/1.0 (Firebase Studio Project; mailto:support@example.com)'
-      }
+        'Accept': 'application/sparql-results+json',
+        // CRITICAL: Identify your application clearly to avoid error 403
+        'User-Agent': 'SimpleStockApp/1.0 (https://simpletask.com.ar; info@simpletask.com.ar) NextJs/15'
+      },
+      next: { revalidate: 3600 } // Optional Next.js caching
     });
 
-    if (wikidataResponse.ok) {
-      const wikidataData = await wikidataResponse.json();
-      const bindings = wikidataData.results?.bindings;
-      if (bindings && bindings.length > 0) {
-        const result = bindings[0];
-        console.log(`Producto ${barcode} encontrado en Wikidata.`);
-        return {
-          success: true,
-          product: {
-            name: result.itemLabel?.value || '',
-            brand: '', // Wikidata doesn't have a standard "brand" field like OFF
-            imageUrl: result.image?.value || '',
-          }
-        };
-      }
+    if (!response.ok) {
+        throw new Error(`Wikidata error: ${response.status} ${response.statusText}`);
     }
-  } catch (error: any) {
-    console.error('Error fetching from Wikidata:', error.message);
-    // Don't return, just log and fall through to final error
+
+    const data = await response.json();
+    const results = data.results?.bindings;
+
+    if (results && results.length > 0) {
+      console.log(`Producto ${barcode} encontrado en Wikidata.`);
+      const product = {
+        name: results[0].itemLabel.value,
+        imageUrl: results[0].image ? results[0].image.value : '',
+        barcode: cleanBarcode
+      };
+      return { success: true, product };
+    }
+  } catch (error) {
+    console.error("Error en fallback de Wikidata:", error);
   }
 
 
