@@ -145,30 +145,29 @@ export async function getProductInfoFromBarcode(barcode: string) {
     console.error('Error OFF:', error);
   }
 
-  // --- 2. Fallback a Wikidata (Versión corregida y robusta) ---
+  // --- 2. Fallback a Wikidata (Versión corregida) ---
   try {
-    // Lista de posibles códigos a buscar (original, y sus variantes de 12/13 dígitos)
-    const searchCodes: string[] = [cleanBarcode];
-    if (cleanBarcode.length === 12) {
-      searchCodes.push(`0${cleanBarcode}`); // Añadir versión GTIN-13
-    }
-    if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
-      searchCodes.push(cleanBarcode.substring(1)); // Añadir versión GTIN-12
-    }
-    const uniqueSearchCodes = [...new Set(searchCodes)];
-
-    // Propiedades de Wikidata a consultar
+    // Definimos las propiedades de Wikidata donde puede estar el código
+    // P296: GTIN, P212: ISBN-13, P238: GTIN-12, P240: GTIN-8
     const properties = ['P296', 'P212', 'P238', 'P240'];
     
-    // Construir la cláusula UNION para buscar en todas las propiedades y todos los códigos variantes
-    const valueClauses = uniqueSearchCodes.flatMap(code => 
-        properties.map(prop => `{ ?item wdt:${prop} "${code}" }`)
-    ).join(' UNION ');
+    // Construimos una query más directa sin VALUES para evitar bloqueos de ejecución
+    const orConditions = properties.map(p => `{ ?item wdt:${p} "${cleanBarcode}" }`).join(' UNION ');
+    
+    // Si es UPC-A (12 dígitos), también probamos con el cero adelante
+    let upcCondition = '';
+    if (cleanBarcode.length === 12) {
+      upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "0${cleanBarcode}" }`).join(' UNION ');
+    }
+     if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
+      const twelveDigitCode = cleanBarcode.substring(1);
+      upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "${twelveDigitCode}" }`).join(' UNION ');
+    }
 
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
-        { ${valueClauses} }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],es,en". }
+        { ${orConditions} ${upcCondition} }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
         OPTIONAL { ?item wdt:P18 ?image. }
       }
       LIMIT 1
@@ -180,9 +179,10 @@ export async function getProductInfoFromBarcode(barcode: string) {
       method: 'GET',
       headers: {
         'Accept': 'application/sparql-results+json',
+        // Cambiamos a un User-Agent más estándar de navegador para evitar bloqueos
         'User-Agent': 'Mozilla/5.0 (compatible; SimpleStockBot/1.0; +https://simpletask.com.ar)'
       },
-      cache: 'no-store'
+      cache: 'no-store' // Evitamos problemas de caché durante el debug
     });
 
     if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
@@ -195,7 +195,7 @@ export async function getProductInfoFromBarcode(barcode: string) {
         success: true,
         product: {
           name: result.itemLabel.value,
-          brand: '',
+          brand: '', // Wikidata no siempre separa marca del nombre
           imageUrl: result.image ? result.image.value : '',
           barcode: cleanBarcode
         }

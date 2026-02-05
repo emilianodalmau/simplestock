@@ -394,10 +394,10 @@ export default function ProductosPage() {
       if(message){
         toast({ title: "¡Información Encontrada!", description: message.trim() });
       } else {
-        toast({ variant: "default", title: "Producto no encontrado", description: "No se encontró información para este código. Por favor, completa los datos manualmente." });
+        toast({ variant: "default", title: "Producto no encontrado", description: result.error || "No se encontró información para este código. Por favor, completa los datos manualmente." });
       }
     } else {
-        toast({ variant: "default", title: "Producto no encontrado", description: "No se encontró información para este código. Por favor, completa los datos manualmente." });
+        toast({ variant: "default", title: "Producto no encontrado", description: result.error || "No se encontró información para este código. Por favor, completa los datos manualmente." });
     }
     setIsFetchingBarcode(false);
   };
