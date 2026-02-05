@@ -766,8 +766,9 @@ export default function ProductosPage() {
                                     <FormControl>
                                         <Input placeholder="Escanear o ingresar código..." {...field} disabled={atLimit || isFetchingBarcode} />
                                     </FormControl>
-                                    <Button type="button" variant="outline" size="icon" onClick={() => setIsScannerOpen(true)} disabled={atLimit || isFetchingBarcode}>
-                                        {isFetchingBarcode ? <Loader2 className="animate-spin" /> : <ScanLine />}
+                                    <Button type="button" variant="outline" onClick={() => setIsScannerOpen(true)} disabled={atLimit || isFetchingBarcode}>
+                                        {isFetchingBarcode ? <Loader2 className="mr-2 animate-spin" /> : <ScanLine className="mr-2" />}
+                                        Escanear código
                                     </Button>
                                 </div>
                                 <FormMessage />
