@@ -125,7 +125,7 @@ export async function getProductInfoFromBarcode(barcode: string) {
   // --- 1. Intento con Open Food Facts ---
   try {
     const offResponse = await fetch(`https://world.openfoodfacts.org/api/v2/product/${cleanBarcode}.json`, {
-      headers: { 'User-Agent': 'SimpleStockApp - Web - Version 1.0' }
+      headers: { 'User-Agent': 'SimpleStockApp/1.0 - Web' }
     });
     
     if (offResponse.ok) {
@@ -140,30 +140,34 @@ export async function getProductInfoFromBarcode(barcode: string) {
           }
         };
       }
-    } else {
-        console.warn(`API de Open Food Facts respondió con: ${offResponse.status} ${offResponse.statusText}`);
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error de conexión con Open Food Facts:', error);
+    // No retorna error, simplemente sigue al siguiente proveedor de datos.
   }
 
-  // --- 2. Fallback a Wikidata (Versión corregida) ---
+  // --- 2. Fallback a Wikidata (Versión robusta final) ---
   try {
-    const properties = ['P296', 'P212', 'P238', 'P240'];
-    const orConditions = properties.map(p => `{ ?item wdt:${p} "${cleanBarcode}" }`).join(' UNION ');
+    // Propiedades de Wikidata para códigos de producto (GTIN, ISBN)
+    const properties = ['P296', 'P212'];
     
-    let upcCondition = '';
+    // Lista de posibles códigos a buscar (original, y variantes de 12/13 dígitos)
+    const possibleCodes = [cleanBarcode];
     if (cleanBarcode.length === 12) {
-      upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "0${cleanBarcode}" }`).join(' UNION ');
+        possibleCodes.push(`0${cleanBarcode}`); // Añade versión GTIN-13
     } else if (cleanBarcode.length === 13 && cleanBarcode.startsWith('0')) {
-      const twelveDigitCode = cleanBarcode.substring(1);
-      upcCondition = ' UNION ' + properties.map(p => `{ ?item wdt:${p} "${twelveDigitCode}" }`).join(' UNION ');
+        possibleCodes.push(cleanBarcode.substring(1)); // Añade versión UPC-A
     }
 
+    // Construye la parte 'UNION' de la consulta para buscar en todas las propiedades y códigos
+    const orConditions = possibleCodes.flatMap(code => 
+        properties.map(p => `{ ?item wdt:${p} "${code}" }`)
+    ).join(' UNION ');
+    
     const sparqlQuery = `
       SELECT ?item ?itemLabel ?image WHERE {
-        { ${orConditions} ${upcCondition} }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en". }
+        { ${orConditions} }
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "es,en,[AUTO_LANGUAGE]". }
         OPTIONAL { ?item wdt:P18 ?image. }
       }
       LIMIT 1
@@ -175,13 +179,16 @@ export async function getProductInfoFromBarcode(barcode: string) {
       method: 'GET',
       headers: {
         'Accept': 'application/sparql-results+json',
-        'User-Agent': 'Mozilla/5.0 (compatible; SimpleStockBot/1.0; +https://simpletask.com.ar)'
+        // User-Agent estándar de navegador para máxima compatibilidad
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       },
       cache: 'no-store'
     });
 
     if (!response.ok) {
-        return { success: false, error: `Error en API (Wikidata): ${response.status} ${response.statusText}` };
+      // Si la API de Wikidata falla, devuelve un error específico
+      console.error(`Error en la API de Wikidata: ${response.status} ${response.statusText}`);
+      return { success: false, error: `Error de API (Wikidata): ${response.status}` };
     }
 
     const data = await response.json();
@@ -199,9 +206,11 @@ export async function getProductInfoFromBarcode(barcode: string) {
       };
     }
   } catch (error: any) {
-    console.error("Error Wikidata Fallback:", error);
+    // Captura errores de red o de construcción de la petición
+    console.error("Error en el fallback de Wikidata:", error);
     return { success: false, error: `Error de conexión (Wikidata): ${error.message}` };
   }
 
+  // Si ninguna API devolvió resultados
   return { success: false, error: 'Producto no encontrado en las bases de datos externas.' };
 }
