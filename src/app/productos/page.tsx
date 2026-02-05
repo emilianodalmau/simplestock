@@ -785,7 +785,7 @@ export default function ProductosPage() {
                                     <Box className="h-10 w-10 text-muted-foreground" />
                                 )}
                             </div>
-                            <div className="w-full space-y-2">
+                            <div className="w-1/2 space-y-2">
                                 <p className="text-sm text-muted-foreground">Sube un archivo o pega una URL a continuación.</p>
                                 <Input
                                     type="file"
@@ -1317,7 +1317,7 @@ export default function ProductosPage() {
                                 <Box className="h-10 w-10 text-muted-foreground" />
                             )}
                         </div>
-                        <div className="w-full space-y-2">
+                        <div className="w-1/2 space-y-2">
                             <p className="text-sm text-muted-foreground">Sube un archivo nuevo para reemplazarla, o edita la URL.</p>
                             <Input
                                 type="file"
