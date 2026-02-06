@@ -41,11 +41,6 @@ service cloud.firestore {
       );
     }
     
-    // Efficient read rule for collection queries (lists)
-    function canReadSubcollection(workspaceId) {
-      return isSuperAdmin() || (isSignedIn() && getMyData().get('workspaceId', '') == workspaceId);
-    }
-
     function isOrphanAdmin() {
       let userData = getMyData();
       return isSignedIn()
@@ -104,45 +99,37 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId}/categories/{docId} { 
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/suppliers/{docId} { 
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/clients/{docId} { 
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'vendedor');
     }
     match /workspaces/{workspaceId}/quotes/{docId} { 
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'vendedor');
     }
     match /workspaces/{workspaceId}/counters/{docId} { 
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow write: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
     }
     
     match /workspaces/{workspaceId}/products/{productId} {
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
-        allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-        allow list: if canReadSubcollection(workspaceId);
+        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow write: if
             (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
             ||
@@ -153,8 +140,7 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         allow get: if isSuperAdmin() || isInWorkspace(workspaceId);
-         allow list: if canReadSubcollection(workspaceId);
+         allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
          allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
          allow delete: if 
