@@ -40,7 +40,7 @@ service cloud.firestore {
         (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
       );
     }
-    
+
     function isOrphanAdmin() {
       let userData = getMyData();
       return isSignedIn()
@@ -70,6 +70,7 @@ service cloud.firestore {
                       request.query.get('where', [['']])[0][2] == getMyData().workspaceId
                   );
 
+      // Un usuario puede crear su propio perfil, o un admin puede crear un usuario para su workspace.
       allow create: if (isOwner(userId))
                       || isSuperAdmin() 
                       || isWorkspaceAdmin(request.resource.data.workspaceId);
@@ -99,37 +100,35 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     
     match /workspaces/{workspaceId}/categories/{docId} { 
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/suppliers/{docId} { 
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/clients/{docId} { 
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'vendedor');
     }
     match /workspaces/{workspaceId}/quotes/{docId} { 
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'vendedor');
     }
-    match /workspaces/{workspaceId}/counters/{docId} { 
-        allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId);
-    }
+    match /workspaces/{workspaceId}/counters/{docId} { allow read, write: if isSuperAdmin() || isInWorkspace(workspaceId); }
     
     match /workspaces/{workspaceId}/products/{productId} {
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read: if isSignedIn();
         allow write: if
             (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
             ||
@@ -140,7 +139,8 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+         allow read: if isSignedIn();
+         
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
          allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
          allow delete: if 
