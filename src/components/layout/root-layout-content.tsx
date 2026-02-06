@@ -44,6 +44,7 @@
     Loader2,
     HelpCircle,
     Briefcase,
+    FileText,
   } from 'lucide-react';
   import Link from 'next/link';
   import { usePathname, useRouter } from 'next/navigation';
@@ -217,6 +218,7 @@
       { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/clients', label: 'Clientes', icon: Briefcase, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/presupuestos', label: 'Presupuestos', icon: FileText, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
       { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador']},
@@ -350,4 +352,3 @@
       </FirebaseClientProvider>
     );
   }
-
