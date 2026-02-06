@@ -18,6 +18,9 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  query,
+  where,
+  orderBy,
 } from 'firebase/firestore';
 import {
   Card,
@@ -66,11 +69,15 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2 } from 'lucide-react';
+import { Loader2, Edit, Trash2, History } from 'lucide-react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import type { Client, UserProfile } from '@/types/inventory';
-
+import type { Client, UserProfile, Quote } from '@/types/inventory';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -82,11 +89,102 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
+};
+
+const quoteStatusConfig = {
+    borrador: { label: 'Borrador', color: 'bg-gray-500' },
+    enviado: { label: 'Enviado', color: 'bg-blue-500' },
+    aprobado: { label: 'Aprobado', color: 'bg-green-500' },
+    rechazado: { label: 'Rechazado', color: 'bg-red-500' },
+};
+
+
+function ClientHistoryDialog({ client, workspaceId, isOpen, onClose }: { client: Client; workspaceId: string, isOpen: boolean; onClose: () => void; }) {
+    const firestore = useFirestore();
+    const collectionPrefix = `workspaces/${workspaceId}`;
+
+    const quotesQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(
+            collection(firestore, `${collectionPrefix}/quotes`),
+            where('clientId', '==', client.id),
+            orderBy('createdAt', 'desc')
+        );
+    }, [firestore, collectionPrefix, client.id]);
+    const { data: quotes, isLoading: isLoadingQuotes } = useCollection<Quote>(quotesQuery);
+    
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-4xl">
+                <DialogHeader>
+                    <DialogTitle>Historial de {client.name}</DialogTitle>
+                    <DialogDescription>
+                        Presupuestos y remitos de salida asociados a este cliente.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[70vh] overflow-y-auto pr-4">
+                    <Tabs defaultValue="quotes">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="quotes">Presupuestos ({quotes?.length ?? 0})</TabsTrigger>
+                            <TabsTrigger value="movements">Remitos de Salida</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="quotes" className="mt-4">
+                            <Card>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Nº</TableHead>
+                                                <TableHead>Fecha</TableHead>
+                                                <TableHead>Estado</TableHead>
+                                                <TableHead className="text-right">Total</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {isLoadingQuotes && [...Array(3)].map((_, i) => (
+                                                <TableRow key={i}><TableCell colSpan={4}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
+                                            ))}
+                                            {!isLoadingQuotes && quotes?.length === 0 && (
+                                                <TableRow><TableCell colSpan={4} className="h-24 text-center">No hay presupuestos para este cliente.</TableCell></TableRow>
+                                            )}
+                                            {!isLoadingQuotes && quotes?.map(q => {
+                                                const config = quoteStatusConfig[q.status] || { label: 'Desconocido', color: 'bg-gray-400' };
+                                                return (
+                                                    <TableRow key={q.id}>
+                                                        <TableCell className="font-mono">{q.quoteNumber}</TableCell>
+                                                        <TableCell>{format(q.createdAt.toDate(), 'dd/MM/yyyy')}</TableCell>
+                                                        <TableCell><Badge className={cn("text-white", config.color)}>{config.label}</Badge></TableCell>
+                                                        <TableCell className="text-right font-medium">{formatPrice(q.totalValue)}</TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                        <TabsContent value="movements" className="mt-4">
+                           <Card>
+                                <CardContent className="p-6 text-center text-muted-foreground">
+                                    <p>Funcionalidad en desarrollo.</p>
+                                    <p className="text-sm">Actualmente, los remitos de salida no están vinculados directamente a los clientes.</p>
+                                </CardContent>
+                           </Card>
+                        </TabsContent>
+                    </Tabs>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 export default function ClientsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [viewingClient, setViewingClient] = useState<Client | null>(null);
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
@@ -404,10 +502,20 @@ export default function ClientsPage() {
                           </TableCell>
                           {canManageClients && (
                             <TableCell className="text-right">
+                               <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setViewingClient(client)}
+                                title="Ver Historial"
+                              >
+                                <History className="h-4 w-4" />
+                                <span className="sr-only">Historial</span>
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => setEditingClient(client)}
+                                title="Editar Cliente"
                               >
                                 <Edit className="h-4 w-4" />
                                 <span className="sr-only">Editar</span>
@@ -415,7 +523,7 @@ export default function ClientsPage() {
 
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon">
+                                  <Button variant="ghost" size="icon" title="Eliminar Cliente">
                                     <Trash2 className="h-4 w-4 text-destructive" />
                                     <span className="sr-only">Eliminar</span>
                                   </Button>
@@ -457,7 +565,6 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {/* Edit Client Dialog */}
       <Dialog
         open={!!editingClient}
         onOpenChange={(isOpen) => !isOpen && setEditingClient(null)}
@@ -554,6 +661,15 @@ export default function ClientsPage() {
           </Form>
         </DialogContent>
       </Dialog>
+      
+    {viewingClient && currentUserProfile?.workspaceId && (
+        <ClientHistoryDialog
+            client={viewingClient}
+            workspaceId={currentUserProfile.workspaceId}
+            isOpen={!!viewingClient}
+            onClose={() => setViewingClient(null)}
+        />
+    )}
     </div>
   );
 }
