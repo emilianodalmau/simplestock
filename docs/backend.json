@@ -48,6 +48,7 @@
             "administrador",
             "editor",
             "visualizador",
+            "vendedor",
             "jefe_deposito",
             "solicitante"
           ]
@@ -552,5 +553,3 @@
     }
   }
 }
-
-    

@@ -110,7 +110,7 @@ type UserProfile = {
   firstName?: string;
   lastName?: string;
   workspaceId?: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito';
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'vendedor';
 };
 
 export default function DepositosPage() {
@@ -307,7 +307,7 @@ export default function DepositosPage() {
     )
   }
   
-  const hasAccess = currentUserProfile?.role && ['administrador', 'editor', 'visualizador'].includes(currentUserProfile.role);
+  const hasAccess = currentUserProfile?.role && ['administrador', 'editor', 'visualizador', 'vendedor'].includes(currentUserProfile.role);
 
   if (!isLoadingProfile && !hasAccess) {
     return (

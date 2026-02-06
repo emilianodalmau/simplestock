@@ -56,7 +56,7 @@
   import { Badge } from '@/components/ui/badge';
 
   type UserProfile = {
-    role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante';
+    role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'vendedor';
     workspaceId?: string | null;
   };
 
@@ -210,16 +210,16 @@
       { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
       { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
       { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
-      { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito'] },
+      { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor'] },
       { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
       { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
       { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['solicitante'] },
-      { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
-      { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
-      { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
-      { href: '/clients', label: 'Clientes', icon: Briefcase, roles: ['administrador', 'editor', 'visualizador'] },
-      { href: '/presupuestos', label: 'Presupuestos', icon: FileText, roles: ['administrador', 'editor', 'visualizador'] },
-      { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/clients', label: 'Clientes', icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/presupuestos', label: 'Presupuestos', icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
       { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador']},
       { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },

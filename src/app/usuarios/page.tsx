@@ -127,6 +127,7 @@ const roleColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
   visualizador: 'secondary',
   jefe_deposito: 'secondary',
   solicitante: 'secondary',
+  vendedor: 'secondary',
 };
 
 // Generates a random, secure password.
@@ -226,6 +227,7 @@ function UserTable({
                         <SelectItem value="administrador">Administrador</SelectItem>
                         <SelectItem value="editor">Editor</SelectItem>
                         <SelectItem value="visualizador">Visualizador</SelectItem>
+                        <SelectItem value="vendedor">Vendedor</SelectItem>
                         <SelectItem value="jefe_deposito">Jefe de Depósito</SelectItem>
                         <SelectItem value="solicitante">Solicitante</SelectItem>
                       </SelectContent>
@@ -648,6 +650,7 @@ export default function UsuariosPage() {
                         <SelectItem value="administrador">Administrador</SelectItem>
                         <SelectItem value="editor">Editor</SelectItem>
                         <SelectItem value="visualizador">Visualizador</SelectItem>
+                        <SelectItem value="vendedor">Vendedor</SelectItem>
                         <SelectItem value="jefe_deposito">Jefe de Depósito</SelectItem>
                         <SelectItem value="solicitante">Solicitante</SelectItem>
                     </SelectContent>

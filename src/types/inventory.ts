@@ -32,7 +32,7 @@ export type UserProfile = {
   firstName?: string;
   lastName?: string;
   email: string;
-  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'super-admin';
+  role?: 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'super-admin' | 'vendedor';
   workspaceId?: string;
   photoURL?: string;
   phone?: string;

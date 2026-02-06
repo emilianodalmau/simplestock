@@ -473,7 +473,7 @@ export default function PresupuestosPage() {
       
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    return ['administrador', 'editor', 'visualizador'].includes(currentUserProfile.role);
+    return ['administrador', 'editor', 'visualizador', 'vendedor'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
   const isLoading = isUserLoading || isLoadingProfile;
@@ -492,7 +492,7 @@ export default function PresupuestosPage() {
     );
   }
   
-  const canCreate = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor';
+  const canCreate = currentUserProfile?.role === 'administrador' || currentUserProfile?.role === 'editor' || currentUserProfile?.role === 'vendedor';
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
