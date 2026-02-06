@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -20,6 +19,7 @@ import {
   query,
   orderBy,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import {
   Card,
@@ -393,4 +393,3 @@ export default function PresupuestosPage() {
     </div>
   );
 }
-
