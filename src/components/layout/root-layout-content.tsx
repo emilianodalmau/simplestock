@@ -43,6 +43,7 @@
     CreditCard,
     Loader2,
     HelpCircle,
+    Briefcase,
   } from 'lucide-react';
   import Link from 'next/link';
   import { usePathname, useRouter } from 'next/navigation';
@@ -215,6 +216,7 @@
       { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador'] },
+      { href: '/clients', label: 'Clientes', icon: Briefcase, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador'] },
       { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
       { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador']},
