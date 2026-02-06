@@ -323,36 +323,53 @@ function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile 
     const finalIsLoading = isLoading || isLoadingWorkspace;
 
     return (
-        <Card><CardHeader><CardTitle>Listado de Presupuestos</CardTitle><CardDescription>Historial de todas las cotizaciones generadas.</CardDescription></CardHeader>
-        <CardContent><div className="rounded-lg border">
-            <Table><TableHeader><TableRow>
-                <TableHead>Nº</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha</TableHead><TableHead>Validez</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Acciones</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-                {finalIsLoading && [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>)}
-                {!finalIsLoading && quotes?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center h-24">No se han creado presupuestos.</TableCell></TableRow>}
-                {!finalIsLoading && quotes?.map(q => {
-                    const config = quoteStatusConfig[q.status] || { label: 'Desconocido', color: 'bg-gray-400' };
-                    return (
-                        <TableRow key={q.id}>
-                            <TableCell className="font-mono">{q.quoteNumber}</TableCell>
-                            <TableCell>{q.clientName}</TableCell>
-                            <TableCell>{format(q.createdAt.toDate(), 'dd/MM/yyyy')}</TableCell>
-                            <TableCell>{format(q.validUntil.toDate(), 'dd/MM/yyyy')}</TableCell>
-                            <TableCell><Badge className={cn("text-white", config.color)}>{config.label}</Badge></TableCell>
-                            <TableCell className="text-right font-medium">{formatPrice(q.totalValue)}</TableCell>
-                            <TableCell className="text-right">
-                                <QuoteActions
-                                    quote={q}
-                                    settings={pdfSettings}
-                                    onStatusChange={handleChangeStatus}
-                                />
-                            </TableCell>
-                        </TableRow>
-                    );
-                })}
-            </TableBody></Table>
-        </CardContent></Card>
+        <Card>
+            <CardHeader>
+                <CardTitle>Listado de Presupuestos</CardTitle>
+                <CardDescription>Historial de todas las cotizaciones generadas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="rounded-lg border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Nº</TableHead>
+                                <TableHead>Cliente</TableHead>
+                                <TableHead>Fecha</TableHead>
+                                <TableHead>Validez</TableHead>
+                                <TableHead>Estado</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                                <TableHead className="text-right">Acciones</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {finalIsLoading && [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>)}
+                            {!finalIsLoading && quotes?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center h-24">No se han creado presupuestos.</TableCell></TableRow>}
+                            {!finalIsLoading && quotes?.map(q => {
+                                const config = quoteStatusConfig[q.status] || { label: 'Desconocido', color: 'bg-gray-400' };
+                                return (
+                                    <TableRow key={q.id}>
+                                        <TableCell className="font-mono">{q.quoteNumber}</TableCell>
+                                        <TableCell>{q.clientName}</TableCell>
+                                        <TableCell>{format(q.createdAt.toDate(), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell>{format(q.validUntil.toDate(), 'dd/MM/yyyy')}</TableCell>
+                                        <TableCell><Badge className={cn("text-white", config.color)}>{config.label}</Badge></TableCell>
+                                        <TableCell className="text-right font-medium">{formatPrice(q.totalValue)}</TableCell>
+                                        <TableCell className="text-right">
+                                            <QuoteActions
+                                                quote={q}
+                                                settings={pdfSettings}
+                                                onStatusChange={handleChangeStatus}
+                                            />
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 
