@@ -49,7 +49,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, CalendarIcon } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, CalendarIcon, Edit } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -96,7 +96,15 @@ const quoteStatusConfig = {
 
 
 // --- Form Component ---
-function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile }) {
+function QuoteForm({ 
+    currentUserProfile,
+    editingQuote,
+    onFinish
+}: { 
+    currentUserProfile: UserProfile,
+    editingQuote: Quote | null,
+    onFinish: () => void;
+}) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { toast } = useToast();
     const firestore = useFirestore();
@@ -112,6 +120,8 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
     );
     const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
 
+    const isEditMode = !!editingQuote;
+
     const form = useForm<QuoteFormValues>({
         resolver: zodResolver(quoteFormSchema),
         defaultValues: {
@@ -120,6 +130,27 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
             items: [],
         },
     });
+
+    useEffect(() => {
+        if (editingQuote) {
+            form.reset({
+                clientId: editingQuote.clientId,
+                validUntil: editingQuote.validUntil.toDate(),
+                items: editingQuote.items.map(item => ({
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    price: item.price
+                }))
+            });
+        } else {
+            form.reset({
+                clientId: '',
+                validUntil: addDays(new Date(), 15),
+                items: [],
+            });
+        }
+    }, [editingQuote, form]);
+
 
     const { fields, append, remove, update } = useFieldArray({
         control: form.control,
@@ -144,16 +175,11 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
     const onSubmit: SubmitHandler<QuoteFormValues> = async (data) => {
         if (!firestore || !collectionPrefix || !clients || !user) return;
         setIsSubmitting(true);
-        let quoteDocRef: any;
 
-        try {
-            await runTransaction(firestore, async (transaction) => {
-                const counterRef = doc(firestore, `${collectionPrefix}/counters/quoteCounter`);
-                const counterSnap = await transaction.get(counterRef);
-                const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-                const newQuoteNumber = lastNumber + 1;
-                const formattedQuoteNumber = `P-${String(newQuoteNumber).padStart(5, '0')}`;
-                
+        if (isEditMode) {
+            // --- UPDATE LOGIC ---
+            const quoteRef = doc(firestore, `${collectionPrefix}/quotes/${editingQuote.id}`);
+            try {
                 const client = clients.find(c => c.id === data.clientId);
                 if (!client) throw new Error("Cliente no encontrado.");
 
@@ -172,34 +198,87 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
                 
                 const quoteTotalValue = finalItems.reduce((acc, item) => acc + item.total, 0);
 
-                quoteDocRef = doc(collection(firestore, `${collectionPrefix}/quotes`));
-                transaction.set(quoteDocRef, {
-                    id: quoteDocRef.id,
-                    quoteNumber: formattedQuoteNumber,
+                await updateDoc(quoteRef, {
                     clientId: data.clientId,
                     clientName: client.name,
-                    status: 'borrador',
-                    createdAt: serverTimestamp(),
                     validUntil: data.validUntil,
                     items: finalItems,
                     totalValue: quoteTotalValue,
-                    userId: user.uid,
+                    updatedAt: serverTimestamp(),
                 });
 
-                transaction.set(counterRef, { lastNumber: newQuoteNumber }, { merge: true });
-            });
+                toast({ title: 'Presupuesto Actualizado', description: 'Los cambios en el presupuesto se han guardado.' });
+                onFinish();
 
-            toast({ title: 'Presupuesto Creado', description: 'El presupuesto se guardó como borrador.' });
-            form.reset({ clientId: '', validUntil: addDays(new Date(), 15), items: [] });
-        } catch (error: any) {
-             const permissionError = new FirestorePermissionError({
-                path: quoteDocRef ? quoteDocRef.path : `${collectionPrefix}/quotes`,
-                operation: 'create',
-                requestResourceData: data,
-            });
-            errorEmitter.emit('permission-error', permissionError);
-        } finally {
-            setIsSubmitting(false);
+            } catch (error: any) {
+                const permissionError = new FirestorePermissionError({
+                    path: quoteRef.path,
+                    operation: 'update',
+                    requestResourceData: data,
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            } finally {
+                setIsSubmitting(false);
+            }
+
+        } else {
+            // --- CREATE LOGIC ---
+            let quoteDocRef: any;
+            try {
+                await runTransaction(firestore, async (transaction) => {
+                    const counterRef = doc(firestore, `${collectionPrefix}/counters/quoteCounter`);
+                    const counterSnap = await transaction.get(counterRef);
+                    const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+                    const newQuoteNumber = lastNumber + 1;
+                    const formattedQuoteNumber = `P-${String(newQuoteNumber).padStart(5, '0')}`;
+                    
+                    const client = clients.find(c => c.id === data.clientId);
+                    if (!client) throw new Error("Cliente no encontrado.");
+
+                    const finalItems: QuoteItem[] = data.items.map(item => {
+                        const product = productsMap.get(item.productId);
+                        if (!product) throw new Error("Producto no encontrado en el presupuesto.");
+                        return {
+                            productId: item.productId,
+                            productName: product.name,
+                            quantity: item.quantity,
+                            unit: product.unit,
+                            price: item.price,
+                            total: item.price * item.quantity,
+                        }
+                    });
+                    
+                    const quoteTotalValue = finalItems.reduce((acc, item) => acc + item.total, 0);
+
+                    quoteDocRef = doc(collection(firestore, `${collectionPrefix}/quotes`));
+                    transaction.set(quoteDocRef, {
+                        id: quoteDocRef.id,
+                        quoteNumber: formattedQuoteNumber,
+                        clientId: data.clientId,
+                        clientName: client.name,
+                        status: 'borrador',
+                        createdAt: serverTimestamp(),
+                        validUntil: data.validUntil,
+                        items: finalItems,
+                        totalValue: quoteTotalValue,
+                        userId: user.uid,
+                    });
+
+                    transaction.set(counterRef, { lastNumber: newQuoteNumber }, { merge: true });
+                });
+
+                toast({ title: 'Presupuesto Creado', description: 'El presupuesto se guardó como borrador.' });
+                onFinish();
+            } catch (error: any) {
+                 const permissionError = new FirestorePermissionError({
+                    path: quoteDocRef ? quoteDocRef.path : `${collectionPrefix}/quotes`,
+                    operation: 'create',
+                    requestResourceData: data,
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            } finally {
+                setIsSubmitting(false);
+            }
         }
     };
     
@@ -208,8 +287,8 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                     <CardHeader>
-                        <CardTitle>Nuevo Presupuesto</CardTitle>
-                        <CardDescription>Selecciona un cliente y añade los productos para generar una cotización.</CardDescription>
+                        <CardTitle>{isEditMode ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}</CardTitle>
+                        <CardDescription>{isEditMode ? `Modificando presupuesto Nº ${editingQuote.quoteNumber}` : 'Selecciona un cliente y añade los productos para generar una cotización.'}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -266,9 +345,13 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
                     </CardContent>
                     <CardFooter className="flex justify-between items-center bg-muted/50 p-6 rounded-b-lg">
                         <span className="text-2xl font-bold">Total: {formatPrice(totalValue)}</span>
-                        <Button type="submit" disabled={isSubmitting || isLoadingClients || isLoadingProducts}>
-                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar Presupuesto
-                        </Button>
+                        <div className="flex gap-2">
+                            {isEditMode && <Button type="button" variant="outline" onClick={onFinish}>Cancelar</Button>}
+                            <Button type="submit" disabled={isSubmitting || isLoadingClients || isLoadingProducts}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {isEditMode ? 'Guardar Cambios' : 'Guardar Presupuesto'}
+                            </Button>
+                        </div>
                     </CardFooter>
                 </form>
             </Form>
@@ -277,7 +360,7 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
 }
 
 // --- History Component ---
-function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile }) {
+function QuoteHistory({ currentUserProfile, onEdit }: { currentUserProfile: UserProfile, onEdit: (quote: Quote) => void }) {
     const firestore = useFirestore();
     const workspaceId = currentUserProfile.workspaceId;
     const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
@@ -360,6 +443,7 @@ function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile 
                                                 quote={q}
                                                 settings={pdfSettings}
                                                 onStatusChange={handleChangeStatus}
+                                                onEdit={() => onEdit(q)}
                                             />
                                         </TableCell>
                                     </TableRow>
@@ -377,6 +461,19 @@ function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile 
 export default function PresupuestosPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const [activeTab, setActiveTab] = useState("list");
+  const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+
+  const handleStartEdit = (quote: Quote) => {
+    setEditingQuote(quote);
+    setActiveTab("create");
+  };
+
+  const handleFinishEditing = () => {
+    setEditingQuote(null);
+    setActiveTab("list");
+    // forceRefetch on history component might be needed if useCollection doesn't update immediately
+  };
 
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
@@ -414,17 +511,22 @@ export default function PresupuestosPage() {
         <h1 className="text-3xl font-bold tracking-tight font-headline">Presupuestos</h1>
         <p className="text-muted-foreground">Crea y gestiona cotizaciones de productos para tus clientes.</p>
       </div>
-      <Tabs defaultValue="list">
+      <Tabs value={activeTab} onValueChange={(value) => {
+          if (value === 'list') {
+              setEditingQuote(null);
+          }
+          setActiveTab(value);
+      }}>
         <TabsList className="grid w-full grid-cols-2 max-w-md">
             <TabsTrigger value="list">Listado</TabsTrigger>
-            {canCreate && <TabsTrigger value="create">Nuevo Presupuesto</TabsTrigger>}
+            {canCreate && <TabsTrigger value="create" >{editingQuote ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}</TabsTrigger>}
         </TabsList>
         <TabsContent value="list" className="pt-6">
-            <QuoteHistory currentUserProfile={currentUserProfile!} />
+            <QuoteHistory currentUserProfile={currentUserProfile!} onEdit={handleStartEdit} />
         </TabsContent>
         {canCreate && 
             <TabsContent value="create" className="pt-6">
-                <NewQuoteForm currentUserProfile={currentUserProfile!} />
+                <QuoteForm currentUserProfile={currentUserProfile!} editingQuote={editingQuote} onFinish={handleFinishEditing} />
             </TabsContent>
         }
       </Tabs>

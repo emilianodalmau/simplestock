@@ -9,9 +9,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Download, Loader2 } from 'lucide-react';
+import { MoreVertical, Download, Loader2, Edit } from 'lucide-react';
 import type { Quote } from '@/types/inventory';
 import type { AppSettings } from '@/types/settings';
 import { QuotePDF } from '@/components/quote-pdf';
@@ -20,12 +21,14 @@ interface QuoteActionsProps {
   quote: Quote;
   settings: AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null;
   onStatusChange: (quoteId: string, newStatus: Quote['status']) => void;
+  onEdit: () => void;
 }
 
 export function QuoteActions({
   quote,
   settings,
   onStatusChange,
+  onEdit,
 }: QuoteActionsProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfComponentContainer, setPdfComponentContainer] = useState<HTMLDivElement | null>(null);
@@ -97,10 +100,15 @@ export function QuoteActions({
             </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onEdit}>
+                <Edit className="mr-2 h-4 w-4" />
+                <span>Editar</span>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleGeneratePdf} disabled={isGeneratingPdf}>
-                {isGeneratingPdf ? <Loader2 className="mr-2 animate-spin" /> : <Download className="mr-2" />}
+                {isGeneratingPdf ? <Loader2 className="mr-2 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Descargar PDF
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onStatusChange(quote.id, 'enviado')}>Marcar como Enviado</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onStatusChange(quote.id, 'aprobado')}>Marcar como Aprobado</DropdownMenuItem>
             <DropdownMenuItem onClick={() => onStatusChange(quote.id, 'rechazado')} className="text-red-500 focus:text-red-500">Marcar como Rechazado</DropdownMenuItem>
