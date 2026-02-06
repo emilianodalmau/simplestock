@@ -49,7 +49,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, CalendarIcon, Download, MoreVertical } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, CalendarIcon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -61,9 +61,10 @@ import { addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import type { Product, Client, Quote, QuoteItem, UserProfile } from '@/types/inventory';
+import type { Product, Client, Quote, QuoteItem, UserProfile, Workspace } from '@/types/inventory';
 import { ProductComboBox } from '@/components/ui/product-combobox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { QuoteActions } from '@/components/quote-actions';
+import type { AppSettings } from '@/types/settings';
 
 
 // --- Zod Schemas ---
@@ -278,10 +279,32 @@ function NewQuoteForm({ currentUserProfile }: { currentUserProfile: UserProfile 
 // --- History Component ---
 function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile }) {
     const firestore = useFirestore();
-    const collectionPrefix = useMemo(() => currentUserProfile.workspaceId ? `workspaces/${currentUserProfile.workspaceId}` : null, [currentUserProfile]);
+    const workspaceId = currentUserProfile.workspaceId;
+    const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
+    
+    const [pdfSettings, setPdfSettings] = useState<AppSettings & { workspaceAppName?: string; workspaceLogoUrl?: string } | null>(null);
+
     const { data: quotes, isLoading, forceRefetch } = useCollection<Quote>(
         useMemoFirebase(() => collectionPrefix ? query(collection(firestore, `${collectionPrefix}/quotes`), orderBy('createdAt', 'desc')) : null, [collectionPrefix, firestore])
     );
+    
+    const workspaceDocRef = useMemoFirebase(
+      () => (firestore && workspaceId ? doc(firestore, 'workspaces', workspaceId) : null),
+      [firestore, workspaceId]
+    );
+    const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
+
+    useEffect(() => {
+        if (!isLoadingWorkspace && workspaceData) {
+            setPdfSettings({
+                appName: workspaceData?.appName || 'Presupuesto',
+                logoUrl: workspaceData?.logoUrl || '',
+                workspaceAppName: workspaceData?.name, // Use workspace name for PDF title
+                workspaceLogoUrl: workspaceData?.logoUrl,
+            });
+        }
+    }, [workspaceData, isLoadingWorkspace]);
+
 
     const { toast } = useToast();
 
@@ -297,6 +320,8 @@ function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile 
         }
     };
     
+    const finalIsLoading = isLoading || isLoadingWorkspace;
+
     return (
         <Card><CardHeader><CardTitle>Listado de Presupuestos</CardTitle><CardDescription>Historial de todas las cotizaciones generadas.</CardDescription></CardHeader>
         <CardContent><div className="rounded-lg border">
@@ -304,9 +329,9 @@ function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile 
                 <TableHead>Nº</TableHead><TableHead>Cliente</TableHead><TableHead>Fecha</TableHead><TableHead>Validez</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Acciones</TableHead>
             </TableRow></TableHeader>
             <TableBody>
-                {isLoading && [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>)}
-                {!isLoading && quotes?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center h-24">No se han creado presupuestos.</TableCell></TableRow>}
-                {!isLoading && quotes?.map(q => {
+                {finalIsLoading && [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>)}
+                {!finalIsLoading && quotes?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center h-24">No se han creado presupuestos.</TableCell></TableRow>}
+                {!finalIsLoading && quotes?.map(q => {
                     const config = quoteStatusConfig[q.status] || { label: 'Desconocido', color: 'bg-gray-400' };
                     return (
                         <TableRow key={q.id}>
@@ -317,21 +342,17 @@ function QuoteHistory({ currentUserProfile }: { currentUserProfile: UserProfile 
                             <TableCell><Badge className={cn("text-white", config.color)}>{config.label}</Badge></TableCell>
                             <TableCell className="text-right font-medium">{formatPrice(q.totalValue)}</TableCell>
                             <TableCell className="text-right">
-                                 <DropdownMenu>
-                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                    <DropdownMenuContent>
-                                        <DropdownMenuItem disabled><Download className="mr-2" /> Descargar PDF</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleChangeStatus(q.id, 'enviado')}>Marcar como Enviado</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleChangeStatus(q.id, 'aprobado')}>Marcar como Aprobado</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleChangeStatus(q.id, 'rechazado')} className="text-red-500">Marcar como Rechazado</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                <QuoteActions
+                                    quote={q}
+                                    settings={pdfSettings}
+                                    onStatusChange={handleChangeStatus}
+                                />
                             </TableCell>
                         </TableRow>
                     );
                 })}
             </TableBody></Table>
-        </div></CardContent></Card>
+        </CardContent></Card>
     );
 }
 
