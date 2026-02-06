@@ -88,7 +88,7 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /workspaces/{workspaceId} {
-        allow read: if isSuperAdmin() || isInWorkspace(workspaceId);
+        allow read, list: if isSuperAdmin() || isInWorkspace(workspaceId);
         allow create: if isSuperAdmin() 
                         || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
