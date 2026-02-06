@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -124,32 +125,20 @@ function QuoteForm({
 
     const form = useForm<QuoteFormValues>({
         resolver: zodResolver(quoteFormSchema),
-        defaultValues: {
+        defaultValues: isEditMode ? {
+            clientId: editingQuote.clientId,
+            validUntil: editingQuote.validUntil.toDate(),
+            items: editingQuote.items.map(item => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                price: item.price
+            }))
+        } : {
             clientId: '',
             validUntil: addDays(new Date(), 15),
             items: [],
         },
     });
-
-    useEffect(() => {
-        if (editingQuote) {
-            form.reset({
-                clientId: editingQuote.clientId,
-                validUntil: editingQuote.validUntil.toDate(),
-                items: editingQuote.items.map(item => ({
-                    productId: item.productId,
-                    quantity: item.quantity,
-                    price: item.price
-                }))
-            });
-        } else {
-            form.reset({
-                clientId: '',
-                validUntil: addDays(new Date(), 15),
-                items: [],
-            });
-        }
-    }, [editingQuote, form]);
 
 
     const { fields, append, remove, update } = useFieldArray({
@@ -526,7 +515,12 @@ export default function PresupuestosPage() {
         </TabsContent>
         {canCreate && 
             <TabsContent value="create" className="pt-6">
-                <QuoteForm currentUserProfile={currentUserProfile!} editingQuote={editingQuote} onFinish={handleFinishEditing} />
+                <QuoteForm 
+                  key={editingQuote?.id || 'new'}
+                  currentUserProfile={currentUserProfile!} 
+                  editingQuote={editingQuote} 
+                  onFinish={handleFinishEditing} 
+                />
             </TabsContent>
         }
       </Tabs>
