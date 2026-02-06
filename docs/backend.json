@@ -288,6 +288,79 @@
         "name"
       ]
     },
+    "Client": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Client",
+      "type": "object",
+      "description": "Represents a client of the business.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Client entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name or business name of the client."
+        },
+        "taxId": {
+          "type": "string",
+          "description": "The tax identifier for the client (CUIT, DNI, etc.)."
+        },
+        "email": {
+          "type": "string",
+          "description": "Contact email of the client.",
+          "format": "email"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number of the client."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address of the client."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Quote": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Quote",
+        "type": "object",
+        "description": "Represents a sales quote or budget for a client.",
+        "properties": {
+            "id": { "type": "string" },
+            "quoteNumber": { "type": "string" },
+            "clientId": { "type": "string" },
+            "clientName": { "type": "string" },
+            "status": { "type": "string", "enum": ["borrador", "enviado", "aprobado", "rechazado"] },
+            "createdAt": { "type": "string", "format": "date-time" },
+            "validUntil": { "type": "string", "format": "date-time" },
+            "items": {
+                "type": "array",
+                "items": { "$ref": "#/entities/QuoteItem" }
+            },
+            "totalValue": { "type": "number" }
+        },
+        "required": ["id", "quoteNumber", "clientId", "clientName", "status", "createdAt", "validUntil", "items", "totalValue"]
+    },
+    "QuoteItem": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "QuoteItem",
+        "type": "object",
+        "description": "Represents a single product line within a Quote.",
+        "properties": {
+          "productId": { "type": "string" },
+          "productName": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit": { "type": "string" },
+          "price": { "type": "number" },
+          "total": { "type": "number" }
+        },
+        "required": ["productId", "productName", "quantity", "unit", "price", "total"]
+    },
     "InventoryStock": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "InventoryStock",
@@ -456,6 +529,14 @@
     "/workspaces/{workspaceId}/suppliers/{supplierId}": {
       "schema": { "$ref": "#/entities/Supplier" },
       "description": "Stores suppliers for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Stores clients for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/quotes/{quoteId}": {
+      "schema": { "$ref": "#/entities/Quote" },
+      "description": "Stores sales quotes for a specific workspace."
     },
     "/workspaces/{workspaceId}/inventory/{inventoryStockId}": {
       "schema": { "$ref": "#/entities/InventoryStock" },

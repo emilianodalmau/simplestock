@@ -81,6 +81,36 @@ export type RequestItem = {
     toDeliver: number;
 }
 
+export type Client = {
+  id: string;
+  name: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+};
+
+export type QuoteItem = {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  total: number;
+};
+
+export type Quote = {
+  id: string;
+  quoteNumber: string;
+  clientId: string;
+  clientName: string;
+  status: 'borrador' | 'enviado' | 'aprobado' | 'rechazado';
+  createdAt: any;
+  validUntil: any;
+  items: QuoteItem[];
+  totalValue: number;
+};
+
 export type Workspace = {
     id: string;
     name: string;
