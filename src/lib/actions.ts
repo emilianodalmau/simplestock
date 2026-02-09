@@ -145,8 +145,38 @@ export async function getProductInfoFromBarcode(barcode: string): Promise<{ succ
     console.error('Error de conexión con Open Food Facts:', error);
     // No retorna error, simplemente pasa al siguiente proveedor.
   }
+  
+  // --- 2. Intento con UPCitemdb ---
+  try {
+    const upcResponse = await fetch('https://api.upcitemdb.com/prod/trial/lookup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'user_key': 'only_for_dev_or_pro',
+        'key_type': '3scale',
+      },
+      body: JSON.stringify({ upc: cleanBarcode }),
+    });
 
-  // --- 2. Fallback a Wikidata (Versión corregida y robusta) ---
+    if (upcResponse.ok) {
+      const data = await upcResponse.json();
+      if (data.code === 'OK' && data.total > 0 && data.items && data.items.length > 0) {
+        const item = data.items[0];
+        return {
+          success: true,
+          product: {
+            name: item.title || '',
+            brand: item.brand || '',
+            imageUrl: item.images && item.images.length > 0 ? item.images[0] : '',
+          },
+        };
+      }
+    }
+  } catch (error) {
+    console.error('Error de conexión con UPCitemdb:', error);
+  }
+
+  // --- 3. Fallback a Wikidata ---
   try {
     const searchValues = new Set([cleanBarcode]);
     if (cleanBarcode.length === 12) {
