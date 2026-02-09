@@ -280,7 +280,7 @@ function QuoteForm({
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                     <CardHeader>
                         <CardTitle>{isEditMode ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}</CardTitle>
-                        <CardDescription>{isEditMode ? `Modificando presupuesto Nº ${editingQuote.quoteNumber}` : 'Selecciona un cliente y añade los productos para generar una cotización.'}</CardDescription>
+                        <CardDescription>{isEditMode ? `Modificando presupuesto Nº ${editingQuote.quoteNumber} (Creado por: ${editingQuote.userName || 'N/A'})` : 'Selecciona un cliente y añade los productos para generar una cotización.'}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -410,6 +410,7 @@ function QuoteHistory({ currentUserProfile, onEdit }: { currentUserProfile: User
                             <TableRow>
                                 <TableHead>Nº</TableHead>
                                 <TableHead>Cliente</TableHead>
+                                <TableHead>Creado por</TableHead>
                                 <TableHead>Fecha</TableHead>
                                 <TableHead>Validez</TableHead>
                                 <TableHead>Estado</TableHead>
@@ -418,14 +419,15 @@ function QuoteHistory({ currentUserProfile, onEdit }: { currentUserProfile: User
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {finalIsLoading && [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-5 w-full" /></TableCell></TableRow>)}
-                            {!finalIsLoading && quotes?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center h-24">No se han creado presupuestos.</TableCell></TableRow>}
+                            {finalIsLoading && [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={8}><Skeleton className="h-5 w-full" /></TableCell></TableRow>)}
+                            {!finalIsLoading && quotes?.length === 0 && <TableRow><TableCell colSpan={8} className="text-center h-24">No se han creado presupuestos.</TableCell></TableRow>}
                             {!finalIsLoading && quotes?.map(q => {
                                 const config = quoteStatusConfig[q.status] || { label: 'Desconocido', color: 'bg-gray-400' };
                                 return (
                                     <TableRow key={q.id}>
                                         <TableCell className="font-mono">{q.quoteNumber}</TableCell>
                                         <TableCell>{q.clientName}</TableCell>
+                                        <TableCell>{q.userName || 'N/A'}</TableCell>
                                         <TableCell>{format(q.createdAt.toDate(), 'dd/MM/yyyy')}</TableCell>
                                         <TableCell>{format(q.validUntil.toDate(), 'dd/MM/yyyy')}</TableCell>
                                         <TableCell><Badge className={cn("text-white", config.color)}>{config.label}</Badge></TableCell>

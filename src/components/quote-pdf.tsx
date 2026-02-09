@@ -127,7 +127,7 @@ export function QuotePDF({ quote, settings }: QuotePDFProps) {
       </section>
 
       {/* Footer */}
-      <footer className="mt-8 pt-4 border-t text-center text-xs text-gray-400 absolute bottom-10 left-0 right-0">
+      <footer className="mt-8 pt-4 border-t text-center text-xs text-gray-400">
         <p>Presupuesto generado por: {quote.userName || 'Usuario del Sistema'}.</p>
         <p>{appName}. Precios sujetos a cambios sin previo aviso.</p>
       </footer>
