@@ -336,6 +336,8 @@
             "quoteNumber": { "type": "string" },
             "clientId": { "type": "string" },
             "clientName": { "type": "string" },
+            "userId": { "type": "string", "description": "The ID of the user who created the quote." },
+            "userName": { "type": "string", "description": "The name of the user who created the quote." },
             "status": { "type": "string", "enum": ["borrador", "enviado", "aprobado", "rechazado"] },
             "createdAt": { "type": "string", "format": "date-time" },
             "validUntil": { "type": "string", "format": "date-time" },
@@ -345,7 +347,7 @@
             },
             "totalValue": { "type": "number" }
         },
-        "required": ["id", "quoteNumber", "clientId", "clientName", "status", "createdAt", "validUntil", "items", "totalValue"]
+        "required": ["id", "quoteNumber", "clientId", "clientName", "status", "createdAt", "validUntil", "items", "totalValue", "userId", "userName"]
     },
     "QuoteItem": {
         "$schema": "http://json-schema.org/draft-07/schema#",

@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -127,7 +128,8 @@ export function QuotePDF({ quote, settings }: QuotePDFProps) {
 
       {/* Footer */}
       <footer className="mt-8 pt-4 border-t text-center text-xs text-gray-400 absolute bottom-10 left-0 right-0">
-        <p>Presupuesto generado por {appName}. Precios sujetos a cambios sin previo aviso.</p>
+        <p>Presupuesto generado por: {quote.userName || 'Usuario del Sistema'}.</p>
+        <p>{appName}. Precios sujetos a cambios sin previo aviso.</p>
       </footer>
     </div>
   );

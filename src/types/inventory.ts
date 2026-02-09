@@ -104,6 +104,8 @@ export type Quote = {
   quoteNumber: string;
   clientId: string;
   clientName: string;
+  userId: string;
+  userName: string;
   status: 'borrador' | 'enviado' | 'aprobado' | 'rechazado';
   createdAt: any;
   validUntil: any;

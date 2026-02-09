@@ -239,6 +239,8 @@ function QuoteForm({
                     
                     const quoteTotalValue = finalItems.reduce((acc, item) => acc + item.total, 0);
 
+                    const userName = `${currentUserProfile.firstName || ''} ${currentUserProfile.lastName || ''}`.trim() || user.email || 'Usuario del Sistema';
+
                     quoteDocRef = doc(collection(firestore, `${collectionPrefix}/quotes`));
                     transaction.set(quoteDocRef, {
                         id: quoteDocRef.id,
@@ -251,6 +253,7 @@ function QuoteForm({
                         items: finalItems,
                         totalValue: quoteTotalValue,
                         userId: user.uid,
+                        userName: userName,
                     });
 
                     transaction.set(counterRef, { lastNumber: newQuoteNumber }, { merge: true });
