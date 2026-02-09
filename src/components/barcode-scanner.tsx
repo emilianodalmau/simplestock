@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -16,64 +16,58 @@ const qrcodeRegionId = "barcode-scanner-region";
 
 export function BarcodeScanner({ isOpen, onClose, onScanSuccess }: BarcodeScannerProps) {
   const [error, setError] = useState<string | null>(null);
+  // Using a ref to hold the scanner instance is crucial.
+  // It persists the instance across re-renders, preventing re-initialization
+  // and allowing us to correctly call .stop() on the active scanner.
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    // The instance is now scoped to the effect
-    let html5QrCode: Html5Qrcode;
-
-    // A timeout is a simple and effective way to wait for the dialog animation
-    // and DOM attachment to complete before initializing the scanner.
-    const scannerTimeout = setTimeout(() => {
-      try {
-        html5QrCode = new Html5Qrcode(qrcodeRegionId);
-        
-        html5QrCode.start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              // Ensure the box dimensions are at least 50px, which is the minimum required by the library.
-              const boxWidth = Math.max(50, minEdge * 0.7);
-              const boxHeight = Math.max(50, minEdge * 0.3);
-              return {
-                width: boxWidth,
-                height: boxHeight,
-              };
-            },
-            aspectRatio: 1.7777778,
-          },
-          (decodedText, _decodedResult) => {
-            onScanSuccess(decodedText);
-          },
-          (_errorMessage) => {
-            // handle scan failure, usually better to ignore and keep scanning.
-          }
-        ).catch(err => {
-            console.error("Error starting scanner:", err);
-            setError("No se pudo iniciar la cámara. Asegúrate de haber otorgado los permisos necesarios. " + err.message);
-        });
-
-      } catch (err: any) {
-        console.error("Initialization/Camera permission error:", err);
-        setError("No se encontraron cámaras, no se otorgaron los permisos o el elemento del escáner no se encontró. " + (err.message || err));
+    if (isOpen) {
+      // Lazily initialize the scanner instance on first open
+      if (!scannerRef.current) {
+          scannerRef.current = new Html5Qrcode(qrcodeRegionId);
       }
-    }, 300); // 300ms delay to ensure DOM element is available.
+      const html5QrCode = scannerRef.current;
 
-    // Cleanup function
-    return () => {
-      clearTimeout(scannerTimeout);
-      // Use the 'isScanning' property to safely stop the scanner.
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().catch(err => {
+      const scannerTimeout = setTimeout(() => {
+        if (html5QrCode && !html5QrCode.isScanning) {
+          html5QrCode.start(
+            { facingMode: "environment" },
+            {
+              fps: 10,
+              qrbox: (viewfinderWidth, viewfinderHeight) => {
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                const boxWidth = Math.max(50, minEdge * 0.7);
+                const boxHeight = Math.max(50, minEdge * 0.3);
+                return { width: boxWidth, height: boxHeight };
+              },
+              aspectRatio: 1.7777778,
+            },
+            (decodedText, _decodedResult) => {
+              onScanSuccess(decodedText);
+            },
+            (_errorMessage) => {
+              // handle scan failure, usually better to ignore and keep scanning.
+            }
+          ).catch(err => {
+              console.error("Error starting scanner:", err);
+              setError("No se pudo iniciar la cámara. Asegúrate de haber otorgado los permisos necesarios. " + err.message);
+          });
+        }
+      }, 300);
+
+      return () => {
+        clearTimeout(scannerTimeout);
+      };
+    } else {
+      // When the dialog is closed, stop the scanner if it's running.
+      // This is the key to releasing the camera.
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(err => {
             console.error("Error al detener el escáner:", err);
         });
       }
-    };
+    }
   }, [isOpen, onScanSuccess]);
 
   const handleClose = () => {
