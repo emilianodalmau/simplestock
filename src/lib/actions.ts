@@ -152,7 +152,6 @@ export async function getProductInfoFromBarcode(barcode: string): Promise<{ succ
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'user_key': 'only_for_dev_or_pro',
       },
       body: JSON.stringify({ upc: cleanBarcode }),
     });

@@ -557,12 +557,6 @@ export default function ProductosPage() {
     const categoriesData = categories?.map(c => ({ ID: c.id, Nombre: c.name })) || [];
     const suppliersData = suppliers?.map(s => ({ ID: s.id, Nombre: s.name })) || [];
     const depositsData = deposits?.map(d => ({ ID: d.id, Nombre: d.name })) || [];
-
-    const wb = XLSX.utils.book_new();
-    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'codigo_de_barras', 'imagen_url', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
-    const wsCategories = XLSX.utils.json_to_sheet(categoriesData);
-    const wsSuppliers = XLSX.utils.json_to_sheet(suppliersData);
-    const wsDeposits = XLSX.utils.json_to_sheet(depositsData);
     const wsHelp = XLSX.utils.json_to_sheet([
       { 'Instrucción': 'Complete la hoja "Modelo" con los datos de sus productos.'},
       { 'Instrucción': 'Utilice los NOMBRES de las otras hojas (Categorias, Proveedores, Depositos) para llenar las columnas correspondientes.' },
@@ -570,11 +564,22 @@ export default function ProductosPage() {
       { 'Instrucción': 'La columna "unidad" debe contener uno de los siguientes valores exactos: unidades, litros, kilos, metros, gramos, cajas.'}
     ]);
     
+    const wb = XLSX.utils.book_new();
+    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'codigo_de_barras', 'imagen_url', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
     XLSX.utils.book_append_sheet(wb, wsModel, 'Modelo');
     XLSX.utils.book_append_sheet(wb, wsHelp, 'Ayuda');
-    XLSX.utils.book_append_sheet(wb, wsCategories, 'Categorias');
-    XLSX.utils.book_append_sheet(wb, wsSuppliers, 'Proveedores');
-    XLSX.utils.book_append_sheet(wb, wsDeposits, 'Depositos');
+    if (categoriesData.length > 0) {
+        const wsCategories = XLSX.utils.json_to_sheet(categoriesData);
+        XLSX.utils.book_append_sheet(wb, wsCategories, 'Categorias');
+    }
+    if (suppliersData.length > 0) {
+        const wsSuppliers = XLSX.utils.json_to_sheet(suppliersData);
+        XLSX.utils.book_append_sheet(wb, wsSuppliers, 'Proveedores');
+    }
+    if (depositsData.length > 0) {
+        const wsDeposits = XLSX.utils.json_to_sheet(depositsData);
+        XLSX.utils.book_append_sheet(wb, wsDeposits, 'Depositos');
+    }
     
     XLSX.writeFile(wb, 'Modelo_Importacion_Productos.xlsx');
   };
@@ -601,7 +606,11 @@ export default function ProductosPage() {
 
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
+        const sheetName = workbook.SheetNames.find(name => name.toLowerCase() === 'modelo');
+        if (!sheetName) {
+            throw new Error('No se encontró la hoja "Modelo" en el archivo Excel. Asegúrate de usar la plantilla correcta.');
+        }
+
         const worksheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json(worksheet) as any[];
 
