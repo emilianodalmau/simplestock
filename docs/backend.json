@@ -261,6 +261,27 @@
         "name"
       ]
     },
+    "Location": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Location",
+        "type": "object",
+        "description": "Represents a specific storage location within a deposit (e.g., a shelf, bin, or pallet area).",
+        "properties": {
+            "id": {
+                "type": "string",
+                "description": "Unique identifier for the Location entity."
+            },
+            "code": {
+                "type": "string",
+                "description": "A unique, user-defined code for the location (e.g., A01-S03-B02)."
+            },
+            "name": {
+                "type": "string",
+                "description": "A descriptive name for the location (e.g., 'Pasillo 1, Estante 3, Caja 2')."
+            }
+        },
+        "required": ["id", "code", "name"]
+    },
     "Supplier": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Supplier",
@@ -528,6 +549,10 @@
     "/workspaces/{workspaceId}/deposits/{depositId}": {
       "schema": { "$ref": "#/entities/Deposit" },
       "description": "Stores inventory locations for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/deposits/{depositId}/locations/{locationId}": {
+      "schema": { "$ref": "#/entities/Location" },
+      "description": "Stores specific locations within a deposit."
     },
     "/workspaces/{workspaceId}/suppliers/{supplierId}": {
       "schema": { "$ref": "#/entities/Supplier" },

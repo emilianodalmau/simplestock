@@ -45,6 +45,7 @@
     HelpCircle,
     Briefcase,
     FileText,
+    MapPin,
   } from 'lucide-react';
   import Link from 'next/link';
   import { usePathname, useRouter } from 'next/navigation';
@@ -220,6 +221,7 @@
       { href: '/clients', label: 'Clientes', icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/presupuestos', label: 'Presupuestos', icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/ubicaciones', label: 'Ubicaciones', icon: MapPin, roles: ['administrador', 'editor', 'jefe_deposito'] },
       { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
       { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador']},
       { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },

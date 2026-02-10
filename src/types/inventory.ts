@@ -22,6 +22,12 @@ export type Deposit = {
   jefeId?: string;
 };
 
+export type Location = {
+  id: string;
+  code: string;
+  name: string;
+};
+
 export type Supplier = {
   id: string;
   name: string;
@@ -117,5 +123,3 @@ export type Workspace = {
     id: string;
     name: string;
 }
-
-    
