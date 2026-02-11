@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "superAdmin": "Super Admin",
+    "workspaces": "Workspaces",
+    "dashboard": "Dashboard",
+    "orders": "Orders",
+    "inventory": "Inventory",
+    "movements": "Movements",
+    "adjustments": "Adjustments",
+    "requests": "Requests",
+    "products": "Products",
+    "categories": "Categories",
+    "suppliers": "Suppliers",
+    "clients": "Clients",
+    "quotes": "Quotes",
+    "deposits": "Deposits",
+    "locations": "Locations",
+    "users": "Users",
+    "subscription": "Subscription",
+    "settings": "Settings",
+    "help": "Help & FAQ",
+    "logout": "Log Out"
+  },
+  "home": {
+    "welcome": "Welcome to SIMPLESTOCK",
+    "description": "Please, sign in or sign up to continue.",
+    "login": "Login",
+    "signup": "Sign Up",
+    "prices": "See Pricing"
+  }
+}

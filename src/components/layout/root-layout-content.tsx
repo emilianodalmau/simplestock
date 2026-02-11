@@ -1,4 +1,3 @@
-
   'use client';
 
   import { Toaster } from '@/components/ui/toaster';
@@ -55,6 +54,8 @@
   import Image from 'next/image';
   import { collection, doc, endAt, orderBy, query, startAt, where } from 'firebase/firestore'; 
   import { Badge } from '@/components/ui/badge';
+  import type { Locale } from '@/i18n/config';
+  import { I18nProvider, useI18n } from '@/i18n/i18n-provider';
 
   type UserProfile = {
     role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'vendedor';
@@ -82,7 +83,6 @@
     quantity: number;
   };
 
-
   function AppLayout({
     children,
     globalSettings,
@@ -95,6 +95,7 @@
     const firestore = useFirestore();
     const auth = useAuth();
     const router = useRouter();
+    const { dictionary, lang } = useI18n();
 
     // 1. Cargar Perfil de Usuario
     const userDocRef = useMemoFirebase(
@@ -202,38 +203,39 @@
     const handleLogout = async () => {
       if (auth) {
         await signOut(auth);
-        router.push('/login');
+        router.push(`/${lang}/login`);
       }
     };
-
-    const allMenuItems = [
-      { href: '/super-admin', label: 'Admin General', icon: Shield, roles: ['super-admin'] },
-      { href: '/workspaces', label: 'Workspaces', icon: Building2, roles: ['super-admin'] },
-      { href: '/dashboard', label: 'Panel de Control', icon: Home, roles: ['administrador'] },
-      { href: '/pedidos', label: 'Pedidos', icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
-      { href: '/inventario', label: 'Inventario', icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor'] },
-      { href: '/movimientos', label: 'Movimientos', icon: Replace, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
-      { href: '/ajustes', label: 'Ajustes', icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
-      { href: '/solicitudes', label: 'Solicitudes', icon: ClipboardList, roles: ['solicitante'] },
-      { href: '/productos', label: 'Productos', icon: Box, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/categorias', label: 'Categorías', icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/proveedores', label: 'Proveedores', icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/clients', label: 'Clientes', icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/presupuestos', label: 'Presupuestos', icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/depositos', label: 'Depósitos', icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/ubicaciones', label: 'Ubicaciones', icon: MapPin, roles: ['administrador', 'editor', 'jefe_deposito'] },
-      { href: '/usuarios', label: 'Usuarios', icon: Users, roles: ['administrador', 'super-admin'] },
-      { href: '/suscripcion', label: 'Suscripción', icon: CreditCard, roles: ['administrador']},
-      { href: '/configuracion', label: 'Configuración', icon: Settings, roles: ['administrador', 'super-admin'] },
-    ];
     
-    const menuItems = useMemo(() => {
-      if (!currentUserProfile?.role) return [];
-      const userRole = currentUserProfile.role;
-      return allMenuItems.filter(item => item.roles.includes(userRole));
-    }, [currentUserProfile?.role]);
+    const getMenuItems = (dict: any) => [
+      { href: '/super-admin', label: dict.sidebar.superAdmin, icon: Shield, roles: ['super-admin'] },
+      { href: '/workspaces', label: dict.sidebar.workspaces, icon: Building2, roles: ['super-admin'] },
+      { href: '/dashboard', label: dict.sidebar.dashboard, icon: Home, roles: ['administrador'] },
+      { href: '/pedidos', label: dict.sidebar.orders, icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
+      { href: '/inventario', label: dict.sidebar.inventory, icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor'] },
+      { href: '/movimientos', label: dict.sidebar.movements, icon: Replace, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
+      { href: '/ajustes', label: dict.sidebar.adjustments, icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
+      { href: '/solicitudes', label: dict.sidebar.requests, icon: ClipboardList, roles: ['solicitante'] },
+      { href: '/productos', label: dict.sidebar.products, icon: Box, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/categorias', label: dict.sidebar.categories, icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/proveedores', label: dict.sidebar.suppliers, icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/clients', label: dict.sidebar.clients, icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/presupuestos', label: dict.sidebar.quotes, icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/depositos', label: dict.sidebar.deposits, icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/ubicaciones', label: dict.sidebar.locations, icon: MapPin, roles: ['administrador', 'editor', 'jefe_deposito'] },
+      { href: '/usuarios', label: dict.sidebar.users, icon: Users, roles: ['administrador', 'super-admin'] },
+      { href: '/suscripcion', label: dict.sidebar.subscription, icon: CreditCard, roles: ['administrador']},
+      { href: '/configuracion', label: dict.sidebar.settings, icon: Settings, roles: ['administrador', 'super-admin'] },
+    ];
 
-    const hideSidebar = ['/login', '/signup', '/'].includes(pathname) || pathname.startsWith('/super-admin/payment') || pathname === '/precios' || pathname === '/faq';
+    const menuItems = useMemo(() => {
+      if (!currentUserProfile?.role || !dictionary) return [];
+      const userRole = currentUserProfile.role;
+      const allMenuItems = getMenuItems(dictionary);
+      return allMenuItems.filter(item => item.roles.includes(userRole));
+    }, [currentUserProfile?.role, dictionary]);
+
+    const hideSidebar = !pathname.startsWith(`/${lang}/`) || [`/${lang}/login`, `/${lang}/signup`, `/${lang}`].includes(pathname) || pathname === `/${lang}/precios` || pathname === `/${lang}/faq`;
     
     if (isLoading) {
       return (
@@ -281,9 +283,9 @@
                 <SidebarMenuItem key={item.label}>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname.startsWith(item.href)}
+                    isActive={pathname.startsWith(`/${lang}${item.href}`)}
                   >
-                    <Link href={item.href}>
+                    <Link href={`/${lang}${item.href}`}>
                       <item.icon />
                       <span>{item.label}</span>
                     </Link>
@@ -305,17 +307,17 @@
           <SidebarFooter>
             <SidebarMenu>
               <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname.startsWith('/faq')}>
-                      <Link href="/faq">
+                  <SidebarMenuButton asChild isActive={pathname.startsWith(`/${lang}/faq`)}>
+                      <Link href={`/${lang}/faq`}>
                           <HelpCircle />
-                          <span>Ayuda y FAQ</span>
+                          <span>{dictionary.sidebar.help}</span>
                       </Link>
                   </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={handleLogout}>
                   <LogOut />
-                  <span>Cerrar Sesión</span>
+                  <span>{dictionary.sidebar.logout}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -331,8 +333,9 @@
           <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
             <SidebarTrigger className="md:hidden" />
             <div className="w-full flex-1">
-              {/* Notificaciones globales */}
+               {/* UserNav is now rendered here for mobile, but it's part of the sidebar trigger. The desktop one is in Sidebar component */}
             </div>
+             <UserNav />
           </header>
           <main className="flex-1">{children}</main>
         </SidebarInset>
@@ -342,15 +345,21 @@
 
   export function RootLayoutContent({ 
     children, 
-    globalSettings 
+    globalSettings,
+    dictionary,
+    lang,
   }: { 
     children: React.ReactNode, 
-    globalSettings: AppSettings | null 
+    globalSettings: AppSettings | null,
+    dictionary: any,
+    lang: Locale,
   }) {
     return (
       <FirebaseClientProvider>
-        <AppLayout globalSettings={globalSettings}>{children}</AppLayout>
-        <Toaster />
+        <I18nProvider dictionary={dictionary} lang={lang}>
+          <AppLayout globalSettings={globalSettings}>{children}</AppLayout>
+          <Toaster />
+        </I18nProvider>
       </FirebaseClientProvider>
     );
   }

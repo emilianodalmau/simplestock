@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "superAdmin": "Super Admin",
+    "workspaces": "Workspaces",
+    "dashboard": "Painel de Controle",
+    "orders": "Pedidos",
+    "inventory": "Inventário",
+    "movements": "Movimentos",
+    "adjustments": "Ajustes",
+    "requests": "Solicitações",
+    "products": "Produtos",
+    "categories": "Categorias",
+    "suppliers": "Fornecedores",
+    "clients": "Clientes",
+    "quotes": "Orçamentos",
+    "deposits": "Depósitos",
+    "locations": "Localizações",
+    "users": "Usuários",
+    "subscription": "Assinatura",
+    "settings": "Configurações",
+    "help": "Ajuda e FAQ",
+    "logout": "Sair"
+  },
+  "home": {
+    "welcome": "Bem-vindo ao SIMPLESTOCK",
+    "description": "Por favor, faça login ou cadastre-se para continuar.",
+    "login": "Entrar",
+    "signup": "Cadastre-se",
+    "prices": "Ver Preços"
+  }
+}
