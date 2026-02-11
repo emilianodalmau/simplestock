@@ -8,6 +8,7 @@ export type Product = {
   barcode?: string;
   imageUrl?: string;
   price: number;
+  costPrice: number;
   isArchived?: boolean;
   depositIds?: string[];
   createdAt: any; // Allow both Timestamp and string for flexibility

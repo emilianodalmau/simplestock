@@ -1,3 +1,4 @@
+
 {
   "sidebar": {
     "superAdmin": "Super Admin",
@@ -49,7 +50,9 @@
     },
     "dashboard": {
       "title": "Painel de Controle",
-      "description": "Bem-vindo ao seu painel de controle. Daqui você pode navegar para as diferentes seções do aplicativo."
+      "description": "Bem-vindo ao seu painel de controle. Daqui você pode navegar para as diferentes seções do aplicativo.",
+      "inventoryCostTitle": "Custo Total do Inventário",
+      "inventoryCostDescription": "Capital imobilizado em estoque (baseado no custo)."
     },
     "depositos": {
       "title": "Armazéns",
@@ -62,7 +65,8 @@
     "inventario": {
       "title": "Inventário Geral",
       "jefe_description": "Verifique o status do estoque do seu armazém designado.",
-      "general_description": "Filtre e pesquise para ver o status do estoque de todos os produtos."
+      "general_description": "Filtre e pesquise para ver o status do estoque de todos os produtos.",
+      "totalCostHeader": "Custo Total"
     },
     "movimientos": {
       "title": "Movimentos de Estoque",
@@ -82,7 +86,8 @@
     },
     "productos": {
       "title": "Produtos",
-      "description": "Aqui você pode cadastrar os itens do seu inventário. Cada produto está associado a uma categoria e a um fornecedor."
+      "description": "Aqui você pode cadastrar os itens do seu inventário. Cada produto está associado a uma categoria e a um fornecedor.",
+      "costPriceLabel": "Custo Unitário"
     },
     "proveedores": {
       "title": "Fornecedores",

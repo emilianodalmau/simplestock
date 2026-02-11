@@ -50,6 +50,7 @@ type Product = {
   minStock: number;
   unit: string;
   price: number;
+  costPrice: number;
   depositIds?: string[];
 };
 
@@ -89,6 +90,7 @@ type InventoryItem = {
   totalStock: number;
   minStock: number;
   totalValue: number;
+  totalCost: number;
   unit: string;
   status: StockStatus;
 };
@@ -218,6 +220,7 @@ export default function InventarioPage() {
       const totalStock = stockMap.get(product.id) || 0;
       const minStock = product.minStock;
       const totalValue = (product.price || 0) * totalStock;
+      const totalCost = (product.costPrice || 0) * totalStock;
       let status: StockStatus = 'En Stock';
       if (totalStock === 0) {
         status = 'Sin Stock';
@@ -234,6 +237,7 @@ export default function InventarioPage() {
         totalStock: totalStock,
         minStock: minStock,
         totalValue: totalValue,
+        totalCost: totalCost,
         unit: product.unit,
         status: status,
       };
@@ -347,7 +351,8 @@ export default function InventarioPage() {
       'Stock Total': item.totalStock,
       'Unidad': item.unit,
       'Stock Mínimo': item.minStock,
-      'Valor Total': item.totalValue,
+      'Costo Total': item.totalCost,
+      'Valor Total (Venta)': item.totalValue,
       'Estado': item.status,
     }));
 
@@ -461,6 +466,12 @@ export default function InventarioPage() {
                         </Button>
                     </TableHead>
                     <TableHead className="text-right">
+                        <Button variant="ghost" onClick={() => requestSort('totalCost')} className="group px-0">
+                        {dictionary.pages.inventario.totalCostHeader}
+                        {getSortIndicator('totalCost')}
+                        </Button>
+                    </TableHead>
+                    <TableHead className="text-right">
                         <Button variant="ghost" onClick={() => requestSort('totalValue')} className="group px-0">
                         Valor Total
                         {getSortIndicator('totalValue')}
@@ -493,6 +504,9 @@ export default function InventarioPage() {
                       <TableCell className="text-right">
                         <Skeleton className="h-5 w-20 ml-auto" />
                       </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-5 w-20 ml-auto" />
+                      </TableCell>
                       <TableCell className="text-center">
                         <Skeleton className="h-6 w-24 mx-auto" />
                       </TableCell>
@@ -500,7 +514,7 @@ export default function InventarioPage() {
                   ))}
                 {!isLoading && processedInventoryData.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center h-24">
+                    <TableCell colSpan={7} className="text-center h-24">
                       { isJefeDeposito && !assignedDepositId ? "No tienes un depósito asignado." : "No se encontraron productos con los filtros aplicados." }
                     </TableCell>
                   </TableRow>
@@ -522,6 +536,9 @@ export default function InventarioPage() {
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
                         {`${item.minStock} ${item.unit}`}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatPrice(item.totalCost)}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatPrice(item.totalValue)}

@@ -1,3 +1,4 @@
+
 {
   "sidebar": {
     "superAdmin": "Admin General",
@@ -49,7 +50,9 @@
     },
     "dashboard": {
       "title": "Panel de Control",
-      "description": "Bienvenido a tu panel de control. Desde aquí puedes navegar a las distintas secciones de la aplicación."
+      "description": "Bienvenido a tu panel de control. Desde aquí puedes navegar a las distintas secciones de la aplicación.",
+      "inventoryCostTitle": "Costo Total del Inventario",
+      "inventoryCostDescription": "Dinero inmovilizado en stock (basado en costo)."
     },
     "depositos": {
       "title": "Depósitos",
@@ -62,7 +65,8 @@
     "inventario": {
       "title": "Inventario General",
       "jefe_description": "Estado del stock de tu depósito asignado.",
-      "general_description": "Filtra y busca para ver el estado del stock de todos los productos."
+      "general_description": "Filtra y busca para ver el estado del stock de todos los productos.",
+      "totalCostHeader": "Costo Total"
     },
     "movimientos": {
       "title": "Movimientos de Stock",
@@ -82,7 +86,8 @@
     },
     "productos": {
       "title": "Productos",
-      "description": "Aquí puedes dar de alta los artículos de tu inventario. Cada producto se asocia a una categoría y un proveedor."
+      "description": "Aquí puedes dar de alta los artículos de tu inventario. Cada producto se asocia a una categoría y un proveedor.",
+      "costPriceLabel": "Costo Unitario"
     },
     "proveedores": {
       "title": "Proveedores",

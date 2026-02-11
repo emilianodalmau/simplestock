@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo } from 'react';
@@ -25,6 +26,7 @@ import {
   Legend,
 } from 'recharts';
 import type { Product, Category, InventoryStock } from '@/types/inventory';
+import { useI18n } from '@/i18n/i18n-provider';
 
 interface FinancialDashboardProps {
   products: Product[];
@@ -66,6 +68,7 @@ export function FinancialDashboard({
   inventory,
   categories,
 }: FinancialDashboardProps) {
+  const { dictionary } = useI18n();
 
   const financialData = useMemo(() => {
     if (!products || !inventory || !categories) {
@@ -89,7 +92,7 @@ export function FinancialDashboard({
     for (const product of products) {
       const stock = stockMap.get(product.id) || 0;
       if (stock > 0 && !product.isArchived) {
-        const value = stock * product.price;
+        const value = stock * (product.costPrice || 0);
         totalValue += value;
         
         const categoryName = categoryMap.get(product.categoryId) || 'Sin Categoría';
@@ -113,11 +116,11 @@ export function FinancialDashboard({
     <div className="space-y-8">
        <Card className="bg-primary/10 border-primary">
         <CardHeader>
-          <CardTitle className="text-muted-foreground">Valor Total del Inventario</CardTitle>
+          <CardTitle className="text-muted-foreground">{dictionary.pages.dashboard.inventoryCostTitle}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-4xl font-bold">{formatPrice(financialData.totalValue)}</p>
-          <p className="text-sm text-muted-foreground">Dinero inmovilizado en stock.</p>
+          <p className="text-sm text-muted-foreground">{dictionary.pages.dashboard.inventoryCostDescription}</p>
         </CardContent>
       </Card>
       

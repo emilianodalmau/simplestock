@@ -1,3 +1,4 @@
+
 {
   "sidebar": {
     "superAdmin": "Super Admin",
@@ -49,7 +50,9 @@
     },
     "dashboard": {
       "title": "Dashboard",
-      "description": "Welcome to your dashboard. From here you can navigate to the different sections of the application."
+      "description": "Welcome to your dashboard. From here you can navigate to the different sections of the application.",
+      "inventoryCostTitle": "Total Inventory Cost",
+      "inventoryCostDescription": "Capital tied up in stock (based on cost)."
     },
     "depositos": {
       "title": "Warehouses",
@@ -62,7 +65,8 @@
     "inventario": {
       "title": "General Inventory",
       "jefe_description": "Check the stock status of your assigned warehouse.",
-      "general_description": "Filter and search to see the stock status of all products."
+      "general_description": "Filter and search to see the stock status of all products.",
+      "totalCostHeader": "Total Cost"
     },
     "movimientos": {
       "title": "Stock Movements",
@@ -82,7 +86,8 @@
     },
     "productos": {
       "title": "Products",
-      "description": "Here you can register the items in your inventory. Each product is associated with a category and a supplier."
+      "description": "Here you can register the items in your inventory. Each product is associated with a category and a supplier.",
+      "costPriceLabel": "Unit Cost"
     },
     "proveedores": {
       "title": "Suppliers",

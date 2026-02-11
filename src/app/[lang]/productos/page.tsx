@@ -115,6 +115,7 @@ const formSchema = z.object({
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
   supplierId: z.string().min(1, { message: 'El proveedor es requerido.' }),
   price: z.coerce.number().min(0, { message: 'El precio no puede ser negativo.'}),
+  costPrice: z.coerce.number().min(0, { message: 'El precio de costo no puede ser negativo.' }),
   minStock: z.coerce
     .number()
     .min(0, { message: 'El stock mínimo no puede ser negativo.' }),
@@ -150,6 +151,7 @@ type Product = {
   categoryId: string;
   supplierId: string;
   price: number;
+  costPrice: number;
   minStock: number;
   unit: (typeof unitTypes)[number];
   isArchived?: boolean;
@@ -344,6 +346,7 @@ export default function ProductosPage() {
       categoryId: '',
       supplierId: '',
       price: 0,
+      costPrice: 0,
       minStock: 0,
       unit: 'unidades',
       depositIds: [],
@@ -363,6 +366,7 @@ export default function ProductosPage() {
         categoryId: editingProduct.categoryId,
         supplierId: editingProduct.supplierId,
         price: editingProduct.price || 0,
+        costPrice: editingProduct.costPrice || 0,
         minStock: editingProduct.minStock || 0,
         unit: editingProduct.unit,
         depositIds: editingProduct.depositIds || [],
@@ -439,6 +443,7 @@ export default function ProductosPage() {
         barcode: '',
         imageUrl: '',
         price: 0,
+        costPrice: 0,
         minStock: 0, // Reset minStock
         depositIds: [],
       });
@@ -551,6 +556,7 @@ export default function ProductosPage() {
         categoria_nombre: 'Electrónica',
         proveedor_nombre: 'Proveedor de Ejemplo',
         precio: 1500.50,
+        costo_unitario: 1200.00,
         stock_minimo: 10,
         unidad: 'unidades (debe ser una de: unidades, litros, kilos, metros, gramos, cajas)',
         depositos_nombres: 'Depósito Central,Depósito Secundario',
@@ -567,7 +573,7 @@ export default function ProductosPage() {
     ]);
     
     const wb = XLSX.utils.book_new();
-    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'codigo_de_barras', 'imagen_url', 'categoria_nombre', 'proveedor_nombre', 'precio', 'stock_minimo', 'unidad', 'depositos_nombres'] });
+    const wsModel = XLSX.utils.json_to_sheet(modelData, { header: ['nombre', 'codigo_de_barras', 'imagen_url', 'categoria_nombre', 'proveedor_nombre', 'precio', 'costo_unitario', 'stock_minimo', 'unidad', 'depositos_nombres'] });
     XLSX.utils.book_append_sheet(wb, wsModel, 'Modelo');
     XLSX.utils.book_append_sheet(wb, wsHelp, 'Ayuda');
     if (categoriesData.length > 0) {
@@ -647,6 +653,7 @@ export default function ProductosPage() {
             categoryId: categoryId,
             supplierId: supplierId,
             price: Number(row.precio),
+            costPrice: Number(row.costo_unitario) || 0,
             minStock: Number(row.stock_minimo),
             unit: row.unidad,
             depositIds: depositIds,
@@ -961,9 +968,22 @@ export default function ProductosPage() {
                       name="price"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Precio (por unidad)</FormLabel>
+                          <FormLabel>Precio de Venta</FormLabel>
                           <FormControl>
                             <Input type="number" placeholder="Ej: 1500.50" {...field} disabled={atLimit}/>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={createForm.control}
+                      name="costPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{dictionary.pages.productos.costPriceLabel}</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="Ej: 1200.00" {...field} disabled={atLimit}/>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1129,6 +1149,7 @@ export default function ProductosPage() {
                       <TableHead>Depósitos</TableHead>
                       <TableHead className="hidden lg:table-cell">Proveedor</TableHead>
                       <TableHead className="hidden md:table-cell">Unidad</TableHead>
+                      <TableHead className="hidden md:table-cell">Costo</TableHead>
                       <TableHead className="hidden md:table-cell">Precio</TableHead>
                       <TableHead className="hidden lg:table-cell">Stock Mínimo</TableHead>
                       {canManageProducts && (
@@ -1149,6 +1170,7 @@ export default function ProductosPage() {
                           <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-32" /></TableCell>
                           <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                           <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                           <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                           {canManageProducts && (
                             <TableCell className="text-right"><Skeleton className="ml-auto h-8 w-20" /></TableCell>
@@ -1157,7 +1179,7 @@ export default function ProductosPage() {
                       ))}
                     {!isLoadingProducts && filteredProducts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={canManageProducts ? 11 : 10} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={canManageProducts ? 12 : 11} className="h-24 text-center text-muted-foreground">
                           {products && products.length > 0 
                             ? "No se encontraron productos que coincidan con tus filtros."
                             : `Aún no has creado ningún producto. ${canManageProducts ? "Usa el formulario de arriba para empezar." : "Pide a un administrador que agregue productos."}`
@@ -1196,6 +1218,7 @@ export default function ProductosPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground hidden lg:table-cell">{getSupplierName(product.supplierId)}</TableCell>
                           <TableCell className="text-muted-foreground hidden md:table-cell">{product.unit}</TableCell>
+                          <TableCell className="text-muted-foreground font-medium hidden md:table-cell">{formatPrice(product.costPrice)}</TableCell>
                           <TableCell className="text-muted-foreground font-medium hidden md:table-cell">{formatPrice(product.price)}</TableCell>
                           <TableCell className="text-muted-foreground hidden lg:table-cell">{product.minStock}</TableCell>
                           {canManageProducts && (
@@ -1477,10 +1500,23 @@ export default function ProductosPage() {
               />
               <FormField
                 control={editForm.control}
+                name="costPrice"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{dictionary.pages.productos.costPriceLabel}</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Precio</FormLabel>
+                    <FormLabel>Precio de Venta</FormLabel>
                     <FormControl>
                       <Input type="number" {...field} />
                     </FormControl>
