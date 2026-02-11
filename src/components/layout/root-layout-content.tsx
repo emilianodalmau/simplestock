@@ -56,6 +56,7 @@
   import type { Locale } from '@/i18n/config';
   import { I18nProvider, useI18n } from '@/i18n/i18n-provider';
   import { Toaster } from '../ui/toaster';
+  import { Header } from './header';
 
   type UserProfile = {
     role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'vendedor';
@@ -246,7 +247,12 @@
     }
 
     if (hideSidebar || !user) {
-      return <main className="flex-1">{children}</main>;
+      return (
+        <div className="flex min-h-screen flex-col">
+            <Header />
+            <main className="flex-1">{children}</main>
+        </div>
+      );
     }
     
     const displayAppName = workspaceData?.name || workspaceData?.appName || globalSettings?.appName || 'Inventario';
