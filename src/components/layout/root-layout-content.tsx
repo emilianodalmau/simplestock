@@ -57,6 +57,7 @@
   import { I18nProvider, useI18n } from '@/i18n/i18n-provider';
   import { Toaster } from '../ui/toaster';
   import { Header } from './header';
+  import { UserNav } from './user-nav';
 
   type UserProfile = {
     role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'vendedor';
@@ -220,7 +221,7 @@
       { href: '/productos', label: dict.sidebar.products, icon: Box, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/categorias', label: dict.sidebar.categories, icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/proveedores', label: dict.sidebar.suppliers, icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/clients', label: dict.sidebar.clients, icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
+      { href: '/clientes', label: dict.sidebar.clients, icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/presupuestos', label: dict.sidebar.quotes, icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/depositos', label: dict.sidebar.deposits, icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/ubicaciones', label: dict.sidebar.locations, icon: MapPin, roles: ['administrador', 'editor', 'jefe_deposito'] },
