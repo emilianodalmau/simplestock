@@ -24,6 +24,15 @@ import {
   useMemoFirebase,
 } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useRouter, usePathname } from 'next/navigation';
+import { useI18n } from '@/i18n/i18n-provider';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador';
@@ -46,6 +55,9 @@ export default function ConfiguracionPage() {
   const { toast } = useToast();
   const { user: currentUser } = useUser();
   const firestore = useFirestore();
+  const { lang } = useI18n();
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Get current user's profile
   const userDocRef = useMemoFirebase(
@@ -149,12 +161,19 @@ export default function ConfiguracionPage() {
     }
   };
 
+  const handleLanguageChange = (newLocale: string) => {
+    if (!pathname) return;
+    const newPath = pathname.replace(`/${lang}`, `/${newLocale}`);
+    router.push(newPath);
+    router.refresh();
+  };
+
   const finalIsLoading = isLoading || isLoadingProfile || (isWorkspaceAdmin && isLoadingWorkspace);
 
   if (finalIsLoading) {
     return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8">
-        <Loader2 className="animate-spin" />
+      <div className="container mx-auto p-4 sm:p-6 md:p-8 flex justify-center items-center">
+        <Loader2 className="animate-spin h-12 w-12" />
       </div>
     );
   }
@@ -165,7 +184,7 @@ export default function ConfiguracionPage() {
     : "Personaliza el nombre y el logo que se muestran en tu espacio de trabajo.";
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">{title}</h1>
         <p className="text-muted-foreground">{description}</p>
@@ -226,6 +245,32 @@ export default function ConfiguracionPage() {
           </CardFooter>
         </form>
       </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Idioma</CardTitle>
+          <CardDescription>
+            Selecciona el idioma de la interfaz de usuario.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="language">Idioma</Label>
+            <Select value={lang} onValueChange={handleLanguageChange}>
+              <SelectTrigger className="w-[280px]" id="language">
+                <SelectValue placeholder="Seleccionar idioma" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="es">Español</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="pt">Português</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
     </div>
   );
 }
+
