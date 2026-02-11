@@ -210,21 +210,33 @@
     };
     
     const getMenuItems = (dict: any) => [
+      // Super Admin section
       { href: '/super-admin', label: dict.sidebar.superAdmin, icon: Shield, roles: ['super-admin'] },
       { href: '/workspaces', label: dict.sidebar.workspaces, icon: Building2, roles: ['super-admin'] },
+      
+      // Admin dashboard
       { href: '/dashboard', label: dict.sidebar.dashboard, icon: Home, roles: ['administrador'] },
+      
+      // --- New Order Start ---
       { href: '/pedidos', label: dict.sidebar.orders, icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },
-      { href: '/inventario', label: dict.sidebar.inventory, icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor'] },
+      { href: '/presupuestos', label: dict.sidebar.quotes, icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/movimientos', label: dict.sidebar.movements, icon: Replace, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'solicitante'] },
+      { href: '/inventario', label: dict.sidebar.inventory, icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor'] },
+      // --- New Order End ---
+
+      // Other operational items
       { href: '/ajustes', label: dict.sidebar.adjustments, icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
       { href: '/solicitudes', label: dict.sidebar.requests, icon: ClipboardList, roles: ['solicitante'] },
+      
+      // Data management items
       { href: '/productos', label: dict.sidebar.products, icon: Box, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/categorias', label: dict.sidebar.categories, icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/proveedores', label: dict.sidebar.suppliers, icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/clientes', label: dict.sidebar.clients, icon: Briefcase, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
-      { href: '/presupuestos', label: dict.sidebar.quotes, icon: FileText, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/depositos', label: dict.sidebar.deposits, icon: Archive, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/ubicaciones', label: dict.sidebar.locations, icon: MapPin, roles: ['administrador', 'editor', 'jefe_deposito'] },
+      
+      // Admin/Settings items
       { href: '/usuarios', label: dict.sidebar.users, icon: Users, roles: ['administrador', 'super-admin'] },
       { href: '/suscripcion', label: dict.sidebar.subscription, icon: CreditCard, roles: ['administrador']},
       { href: '/configuracion', label: dict.sidebar.settings, icon: Settings, roles: ['administrador', 'super-admin'] },
