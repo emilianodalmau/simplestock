@@ -6,18 +6,11 @@ import { UserNav } from "./user-nav";
 import { useUser } from "@/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/i18n/i18n-provider";
+import { LanguageSwitcher } from "./language-switcher";
 
 export function Header() {
   const { user, isUserLoading } = useUser();
-  // useI18n can fail here on public pages if not wrapped. We'll handle it gracefully.
-  let lang = 'es';
-  try {
-    const i18n = useI18n();
-    lang = i18n.lang;
-  } catch (e) {
-    // We are on a public page without the provider, default to 'es'
-  }
-
+  const { lang, dictionary } = useI18n();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -42,20 +35,18 @@ export function Header() {
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-end space-x-2">
+          <LanguageSwitcher lang={lang} />
           {isUserLoading ? (
-            <div className="flex items-center space-x-2">
-              <Skeleton className="h-8 w-20" />
-              <Skeleton className="h-8 w-20" />
-            </div>
+            <Skeleton className="h-8 w-8 rounded-full" />
           ) : user ? (
             <UserNav />
           ) : (
             <div className="flex items-center space-x-2">
               <Button asChild variant="ghost">
-                <Link href={`/${lang}/login`}>Iniciar Sesión</Link>
+                <Link href={`/${lang}/login`}>{dictionary.home.login}</Link>
               </Button>
               <Button asChild>
-                <Link href={`/${lang}/signup`}>Registrarse</Link>
+                <Link href={`/${lang}/signup`}>{dictionary.home.signup}</Link>
               </Button>
             </div>
           )}
