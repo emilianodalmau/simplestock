@@ -1,14 +1,13 @@
   'use client';
 
-  import { Toaster } from '@/components/ui/toaster';
   import {
-    FirebaseClientProvider,
     useUser,
     useFirestore,
     useDoc,
     useMemoFirebase,
     useAuth,
     useCollection,
+    FirebaseClientProvider,
   } from '@/firebase';
   import {
     Sidebar,
@@ -56,6 +55,7 @@
   import { Badge } from '@/components/ui/badge';
   import type { Locale } from '@/i18n/config';
   import { I18nProvider, useI18n } from '@/i18n/i18n-provider';
+  import { Toaster } from '../ui/toaster';
 
   type UserProfile = {
     role?: 'super-admin' | 'administrador' | 'editor' | 'visualizador' | 'jefe_deposito' | 'solicitante' | 'vendedor';
@@ -140,7 +140,7 @@
         const baseQuery = [
           orderBy('remitoNumber'),
           startAt('S-'),
-          endAt('S-\uf8ff')
+          endAt('S-uf8ff')
         ];
 
         if (isJefeDeposito) {

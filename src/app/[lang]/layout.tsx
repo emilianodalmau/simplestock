@@ -18,30 +18,15 @@ export default async function LangLayout({
   const globalSettings = await getSettings();
   const dictionary = await getDictionary(params.lang);
 
+  // This layout no longer renders <html> or <body>.
+  // It's responsible for fetching locale-specific data and rendering the UI shell.
   return (
-    <html lang={params.lang} suppressHydrationWarning>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Playfair+Display:wght@700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className="min-h-screen bg-background font-body antialiased">
-        <RootLayoutContent 
-            globalSettings={globalSettings} 
-            dictionary={dictionary} 
-            lang={params.lang}
-        >
-          {children}
-        </RootLayoutContent>
-      </body>
-    </html>
+    <RootLayoutContent 
+        globalSettings={globalSettings} 
+        dictionary={dictionary} 
+        lang={params.lang}
+    >
+      {children}
+    </RootLayoutContent>
   );
 }
