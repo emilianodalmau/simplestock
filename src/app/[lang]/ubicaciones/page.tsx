@@ -80,6 +80,7 @@ import { Loader2, Edit, Trash2 } from 'lucide-react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import type { Deposit, Location, UserProfile } from '@/types/inventory';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const formSchema = z.object({
   code: z.string().min(1, { message: 'El código es requerido.' }),
@@ -96,6 +97,7 @@ export default function UbicacionesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
+  const { dictionary } = useI18n();
 
   const userDocRef = useMemoFirebase(
     () => (currentUser ? doc(firestore, 'users', currentUser.uid) : null),
@@ -201,8 +203,8 @@ export default function UbicacionesPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Ubicaciones de Depósito</h1>
-        <p className="text-muted-foreground">Define las ubicaciones físicas (estanterías, racks, bins) dentro de cada depósito.</p>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.ubicaciones.title}</h1>
+        <p className="text-muted-foreground">{dictionary.pages.ubicaciones.description}</p>
       </div>
 
       <Card>

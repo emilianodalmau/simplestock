@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { useI18n } from '@/i18n/i18n-provider';
 
 
 type UserProfile = {
@@ -219,6 +220,7 @@ export default function PreciosPage() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { dictionary } = useI18n();
 
   const userDocRef = useMemoFirebase(() => (user ? doc(firestore, 'users', user.uid) : null), [user, firestore]);
   const { data: userProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
@@ -283,8 +285,8 @@ export default function PreciosPage() {
   return (
     <div className="container mx-auto max-w-6xl py-12 px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold tracking-tight font-headline sm:text-5xl">Un plan para cada etapa de tu negocio</h1>
-        <p className="mt-4 max-w-2xl mx-auto text-lg text-muted-foreground">Elige el plan que mejor se adapte al tamaño y a las necesidades de tu equipo.</p>
+        <h1 className="text-4xl font-bold tracking-tight font-headline sm:text-5xl">{dictionary.pages.precios.title}</h1>
+        <p className="mt-4 max-w-2xl mx-auto text-lg text-muted-foreground">{dictionary.pages.precios.description}</p>
       </div>
 
       <div className="flex justify-center items-center space-x-3 mb-10">

@@ -13,7 +13,7 @@
     "suppliers": "Fornecedores",
     "clients": "Clientes",
     "quotes": "Orçamentos",
-    "deposits": "Depósitos",
+    "deposits": "Armazéns",
     "locations": "Localizações",
     "users": "Usuários",
     "subscription": "Assinatura",
@@ -27,5 +27,91 @@
     "login": "Entrar",
     "signup": "Cadastre-se",
     "prices": "Ver Preços"
+  },
+  "pages": {
+    "ajustes": {
+      "title": "Ajustes de Inventário",
+      "description": "Corrija o estoque de um produto ou consulte o histórico de ajustes."
+    },
+    "categorias": {
+      "title": "Categorias",
+      "description": "Agrupe seus produtos em categorias para manter seu inventário organizado e facilitar a busca."
+    },
+    "clientes": {
+      "title": "Clientes",
+      "description": "Gerencie sua base de clientes para criar orçamentos."
+    },
+    "configuracion": {
+      "super_title": "Configurações Globais",
+      "super_description": "Configurações gerais que se aplicam a todo o aplicativo como fallback.",
+      "admin_title": "Configurações do Workspace",
+      "admin_description": "Personalize o nome e o logotipo exibidos em seu espaço de trabalho."
+    },
+    "dashboard": {
+      "title": "Painel de Controle",
+      "description": "Bem-vindo ao seu painel de controle. Daqui você pode navegar para as diferentes seções do aplicativo."
+    },
+    "depositos": {
+      "title": "Armazéns",
+      "description": "Crie e gerencie os locais físicos (armazéns, lojas) onde seus produtos são guardados."
+    },
+    "faq": {
+      "title": "Perguntas Frequentes (FAQ)",
+      "description": "Encontre respostas para as dúvidas mais comuns sobre o uso do aplicativo."
+    },
+    "inventario": {
+      "title": "Inventário Geral",
+      "jefe_description": "Verifique o status do estoque do seu armazém designado.",
+      "general_description": "Filtre e pesquise para ver o status do estoque de todos os produtos."
+    },
+    "movimientos": {
+      "title": "Movimentos de Estoque",
+      "description": "Registre entradas e saídas de inventário ou consulte o histórico de notas de entrega."
+    },
+    "pedidos": {
+      "title": "Pedidos Pendentes",
+      "description": "Solicitações de produtos que requerem sua ação para serem processadas."
+    },
+    "precios": {
+      "title": "Um plano para cada etapa do seu negócio",
+      "description": "Escolha o plano que melhor se adapta ao tamanho e às necessidades da sua equipe."
+    },
+    "presupuestos": {
+      "title": "Orçamentos",
+      "description": "Crie e gerencie cotações de produtos para seus clientes."
+    },
+    "productos": {
+      "title": "Produtos",
+      "description": "Aqui você pode cadastrar os itens do seu inventário. Cada produto está associado a uma categoria e a um fornecedor."
+    },
+    "proveedores": {
+      "title": "Fornecedores",
+      "description": "Cadastre as empresas ou pessoas que fornecem produtos para você. Você precisará de pelo menos um fornecedor para criar produtos."
+    },
+    "solicitudes": {
+      "title": "Portal de Solicitações",
+      "description": "Crie um pedido de produtos para que um Gerente de Armazém o aprove."
+    },
+    "super-admin": {
+      "title": "Administração Geral",
+      "description": "Painel de controle para o super-administrador."
+    },
+    "suscripcion": {
+      "title": "Assinatura e Faturamento",
+      "description": "Revise seu plano atual, seu uso e gerencie sua assinatura."
+    },
+    "ubicaciones": {
+      "title": "Localizações do Armazém",
+      "description": "Defina as localizações físicas (prateleiras, racks, caixas) dentro de cada armazém."
+    },
+    "usuarios": {
+      "title": "Usuários",
+      "super_description": "Gerencie todos os usuários do sistema, atribua funções e monitore suas atividades.",
+      "admin_description": "Convide e gerencie os membros da sua equipe, atribuindo-lhes funções de acordo com suas responsabilidades."
+    },
+    "workspaces": {
+      "title": "Workspaces",
+      "description": "Gerencie os espaços de trabalho de cada administrador."
+    }
   }
 }

@@ -57,6 +57,7 @@ import type {
   StockMovementItem,
   InventoryStock,
 } from '@/types/inventory';
+import { useI18n } from '@/i18n/i18n-provider';
 
 // --- Zod Schemas ---
 const requestItemSchema = z.object({
@@ -114,6 +115,7 @@ export default function SolicitudesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
+  const { dictionary } = useI18n();
 
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
@@ -375,10 +377,10 @@ export default function SolicitudesPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">
-          Portal de Solicitudes
+          {dictionary.pages.solicitudes.title}
         </h1>
         <p className="text-muted-foreground">
-          Crea un pedido de productos para que un Jefe de Depósito lo apruebe.
+          {dictionary.pages.solicitudes.description}
         </p>
       </div>
       

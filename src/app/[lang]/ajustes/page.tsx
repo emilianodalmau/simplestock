@@ -71,6 +71,7 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const adjustmentSchema = z.object({
   productId: z.string().min(1, 'Debe seleccionar un producto.'),
@@ -602,6 +603,7 @@ function AdjustmentHistory({
 export default function AjustesPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const { dictionary } = useI18n();
 
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
@@ -644,10 +646,10 @@ export default function AjustesPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">
-          Ajustes de Inventario
+          {dictionary.pages.ajustes.title}
         </h1>
         <p className="text-muted-foreground">
-          Corrige el stock de un producto o consulta el historial de ajustes.
+          {dictionary.pages.ajustes.description}
         </p>
       </div>
 

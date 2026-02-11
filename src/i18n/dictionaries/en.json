@@ -13,7 +13,7 @@
     "suppliers": "Suppliers",
     "clients": "Clients",
     "quotes": "Quotes",
-    "deposits": "Deposits",
+    "deposits": "Warehouses",
     "locations": "Locations",
     "users": "Users",
     "subscription": "Subscription",
@@ -27,5 +27,91 @@
     "login": "Login",
     "signup": "Sign Up",
     "prices": "See Pricing"
+  },
+  "pages": {
+    "ajustes": {
+      "title": "Inventory Adjustments",
+      "description": "Correct product stock or view the adjustment history."
+    },
+    "categorias": {
+      "title": "Categories",
+      "description": "Group your products into categories to keep your inventory organized and facilitate searching."
+    },
+    "clientes": {
+      "title": "Clients",
+      "description": "Manage your client database for creating quotes."
+    },
+    "configuracion": {
+      "super_title": "Global Settings",
+      "super_description": "General settings that apply to the entire application as a fallback.",
+      "admin_title": "Workspace Settings",
+      "admin_description": "Customize the name and logo displayed in your workspace."
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "description": "Welcome to your dashboard. From here you can navigate to the different sections of the application."
+    },
+    "depositos": {
+      "title": "Warehouses",
+      "description": "Create and manage the physical locations (warehouses, stores) where your products are stored."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions (FAQ)",
+      "description": "Find answers to the most common questions about using the application."
+    },
+    "inventario": {
+      "title": "General Inventory",
+      "jefe_description": "Check the stock status of your assigned warehouse.",
+      "general_description": "Filter and search to see the stock status of all products."
+    },
+    "movimientos": {
+      "title": "Stock Movements",
+      "description": "Record stock entries and exits or view the history of delivery notes."
+    },
+    "pedidos": {
+      "title": "Pending Orders",
+      "description": "Product requests that require your action to be processed."
+    },
+    "precios": {
+      "title": "A plan for every stage of your business",
+      "description": "Choose the plan that best suits the size and needs of your team."
+    },
+    "presupuestos": {
+      "title": "Quotes",
+      "description": "Create and manage product quotations for your clients."
+    },
+    "productos": {
+      "title": "Products",
+      "description": "Here you can register the items in your inventory. Each product is associated with a category and a supplier."
+    },
+    "proveedores": {
+      "title": "Suppliers",
+      "description": "Register the companies or people who supply you with products. You will need at least one supplier to create products."
+    },
+    "solicitudes": {
+      "title": "Requests Portal",
+      "description": "Create a product order for a Warehouse Manager to approve."
+    },
+    "super-admin": {
+      "title": "General Administration",
+      "description": "Control panel for the super-administrator."
+    },
+    "suscripcion": {
+      "title": "Subscription & Billing",
+      "description": "Review your current plan, usage, and manage your subscription."
+    },
+    "ubicaciones": {
+      "title": "Warehouse Locations",
+      "description": "Define the physical locations (shelves, racks, bins) within each warehouse."
+    },
+    "usuarios": {
+      "title": "Users",
+      "super_description": "Manage all users in the system, assign roles, and monitor their activity.",
+      "admin_description": "Invite and manage your team members, assigning them roles according to their functions."
+    },
+    "workspaces": {
+      "title": "Workspaces",
+      "description": "Manage the workspaces of each administrator."
+    }
   }
 }

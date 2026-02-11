@@ -39,6 +39,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ProcessRequestDialog } from '@/components/ui/process-request-dialog';
 import type { StockMovement, InventoryStock, Product, Deposit } from '@/types/inventory';
+import { useI18n } from '@/i18n/i18n-provider';
 
 
 // --- Data Types ---
@@ -53,6 +54,7 @@ export default function PedidosPage() {
   const [selectedRequest, setSelectedRequest] = useState<StockMovement | null>(null);
   const firestore = useFirestore();
   const { user } = useUser();
+  const { dictionary } = useI18n();
 
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
@@ -153,9 +155,9 @@ export default function PedidosPage() {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight font-headline">Pedidos Pendientes</h1>
+          <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.pedidos.title}</h1>
           <p className="text-muted-foreground">
-            Solicitudes de productos que requieren tu acción.
+            {dictionary.pages.pedidos.description}
           </p>
         </div>
         <Card>
@@ -189,9 +191,9 @@ export default function PedidosPage() {
     <>
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight font-headline">Pedidos Pendientes</h1>
+          <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.pedidos.title}</h1>
           <p className="text-muted-foreground">
-            Solicitudes de productos que requieren tu acción para ser procesadas.
+            {dictionary.pages.pedidos.description}
           </p>
         </div>
         <Card>

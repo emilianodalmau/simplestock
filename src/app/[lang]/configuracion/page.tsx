@@ -55,7 +55,7 @@ export default function ConfiguracionPage() {
   const { toast } = useToast();
   const { user: currentUser } = useUser();
   const firestore = useFirestore();
-  const { lang } = useI18n();
+  const { lang, dictionary } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -178,10 +178,10 @@ export default function ConfiguracionPage() {
     );
   }
   
-  const title = isSuperAdmin ? "Configuración Global" : "Configuración del Workspace";
+  const title = isSuperAdmin ? dictionary.pages.configuracion.super_title : dictionary.pages.configuracion.admin_title;
   const description = isSuperAdmin 
-    ? "Ajustes generales que se aplican a toda la aplicación como fallback." 
-    : "Personaliza el nombre y el logo que se muestran en tu espacio de trabajo.";
+    ? dictionary.pages.configuracion.super_description 
+    : dictionary.pages.configuracion.admin_description;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
@@ -273,4 +273,3 @@ export default function ConfiguracionPage() {
     </div>
   );
 }
-

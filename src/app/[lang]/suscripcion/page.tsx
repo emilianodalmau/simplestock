@@ -25,6 +25,7 @@ import Link from 'next/link';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useI18n } from '@/i18n/i18n-provider';
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador';
@@ -75,6 +76,7 @@ const statusColors: Record<string, 'default' | 'destructive' | 'secondary'> = {
 export default function SuscripcionPage() {
   const { user: currentUser } = useUser();
   const firestore = useFirestore();
+  const { dictionary } = useI18n();
 
   const userDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
@@ -162,8 +164,8 @@ export default function SuscripcionPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Suscripción y Facturación</h1>
-        <p className="text-muted-foreground">Revisa tu plan actual, tu uso y gestiona tu suscripción.</p>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.suscripcion.title}</h1>
+        <p className="text-muted-foreground">{dictionary.pages.suscripcion.description}</p>
       </div>
       <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
         <Card className="lg:col-span-2">

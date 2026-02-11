@@ -79,6 +79,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -189,6 +190,7 @@ export default function ClientsPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
+  const { dictionary } = useI18n();
 
   const userDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
@@ -324,9 +326,9 @@ export default function ClientsPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Clientes</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.clientes.title}</h1>
         <p className="text-muted-foreground">
-          Gestiona tu base de datos de clientes para la creación de presupuestos.
+          {dictionary.pages.clientes.description}
         </p>
       </div>
 

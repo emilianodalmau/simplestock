@@ -39,6 +39,7 @@ import { StockStatusBadge } from '@/components/ui/stock-status-badge';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown, FileDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useI18n } from '@/i18n/i18n-provider';
 
 // Data types from Firestore
 type Product = {
@@ -101,6 +102,7 @@ type SortConfig = {
 export default function InventarioPage() {
   const firestore = useFirestore();
   const { user } = useUser();
+  const { dictionary } = useI18n();
 
   // State for filters and search
   const [searchTerm, setSearchTerm] = useState('');
@@ -358,9 +360,9 @@ export default function InventarioPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Inventario General</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.inventario.title}</h1>
         <p className="text-muted-foreground">
-          {isJefeDeposito ? 'Estado del stock de tu depósito asignado.' : 'Filtra y busca para ver el estado del stock de todos los productos.'}
+          {isJefeDeposito ? dictionary.pages.inventario.jefe_description : dictionary.pages.inventario.general_description}
         </p>
       </div>
 

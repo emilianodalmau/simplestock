@@ -93,6 +93,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { deleteUser } from '@/lib/actions';
 import type { UserProfile as UserProfileType, Workspace } from '@/types/inventory';
+import { useI18n } from '@/i18n/i18n-provider';
 
 
 const editFormSchema = z.object({
@@ -272,6 +273,7 @@ export default function UsuariosPage() {
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
   const { toast } = useToast();
+  const { dictionary } = useI18n();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
@@ -553,11 +555,11 @@ export default function UsuariosPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-            <h1 className="text-3xl font-bold tracking-tight font-headline">Usuarios</h1>
+            <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.usuarios.title}</h1>
             <p className="text-muted-foreground">
             {currentUserIsSuperAdmin
-                ? 'Gestiona todos los usuarios del sistema, asigna roles y monitoriza su actividad.'
-                : 'Invita y administra los miembros de tu equipo, asignándoles roles según sus funciones.'}
+                ? dictionary.pages.usuarios.super_description
+                : dictionary.pages.usuarios.admin_description}
             </p>
         </div>
         {currentUserProfile?.role === 'administrador' && (

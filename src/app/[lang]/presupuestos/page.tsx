@@ -66,6 +66,7 @@ import type { Product, Client, Quote, QuoteItem, UserProfile, Workspace } from '
 import { ProductComboBox } from '@/components/ui/product-combobox';
 import { QuoteActions } from '@/components/quote-actions';
 import type { AppSettings } from '@/types/settings';
+import { useI18n } from '@/i18n/i18n-provider';
 
 
 // --- Zod Schemas ---
@@ -457,6 +458,7 @@ export default function PresupuestosPage() {
   const { user, isUserLoading } = useUser();
   const [activeTab, setActiveTab] = useState("list");
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  const { dictionary } = useI18n();
 
   const handleStartEdit = (quote: Quote) => {
     setEditingQuote(quote);
@@ -502,8 +504,8 @@ export default function PresupuestosPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Presupuestos</h1>
-        <p className="text-muted-foreground">Crea y gestiona cotizaciones de productos para tus clientes.</p>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.presupuestos.title}</h1>
+        <p className="text-muted-foreground">{dictionary.pages.presupuestos.description}</p>
       </div>
       <Tabs value={activeTab} onValueChange={(value) => {
           if (value === 'list') {

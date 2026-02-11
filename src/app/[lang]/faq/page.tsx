@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const faqs = [
     {
@@ -40,12 +41,13 @@ const faqs = [
 ];
 
 export default function FAQPage() {
+  const { dictionary } = useI18n();
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Preguntas Frecuentes (FAQ)</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.faq.title}</h1>
         <p className="text-muted-foreground">
-          Encuentra respuestas a las dudas más comunes sobre el uso de la aplicación.
+          {dictionary.pages.faq.description}
         </p>
       </div>
 

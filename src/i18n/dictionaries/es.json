@@ -27,5 +27,91 @@
     "login": "Iniciar Sesión",
     "signup": "Registrarse",
     "prices": "Ver Precios"
+  },
+  "pages": {
+    "ajustes": {
+      "title": "Ajustes de Inventario",
+      "description": "Corrige el stock de un producto o consulta el historial de ajustes."
+    },
+    "categorias": {
+      "title": "Categorías",
+      "description": "Agrupa tus productos en categorías para mantener tu inventario organizado y facilitar la búsqueda."
+    },
+    "clientes": {
+      "title": "Clientes",
+      "description": "Gestiona tu base de datos de clientes para la creación de presupuestos."
+    },
+    "configuracion": {
+      "super_title": "Configuración Global",
+      "super_description": "Ajustes generales que se aplican a toda la aplicación como fallback.",
+      "admin_title": "Configuración del Workspace",
+      "admin_description": "Personaliza el nombre y el logo que se muestran en tu espacio de trabajo."
+    },
+    "dashboard": {
+      "title": "Panel de Control",
+      "description": "Bienvenido a tu panel de control. Desde aquí puedes navegar a las distintas secciones de la aplicación."
+    },
+    "depositos": {
+      "title": "Depósitos",
+      "description": "Crea y administra los lugares físicos (almacenes, bodegas, locales) donde se guardan tus productos."
+    },
+    "faq": {
+      "title": "Preguntas Frecuentes (FAQ)",
+      "description": "Encuentra respuestas a las dudas más comunes sobre el uso de la aplicación."
+    },
+    "inventario": {
+      "title": "Inventario General",
+      "jefe_description": "Estado del stock de tu depósito asignado.",
+      "general_description": "Filtra y busca para ver el estado del stock de todos los productos."
+    },
+    "movimientos": {
+      "title": "Movimientos de Stock",
+      "description": "Registra entradas y salidas de inventario o consulta el historial de remitos."
+    },
+    "pedidos": {
+      "title": "Pedidos Pendientes",
+      "description": "Solicitudes de productos que requieren tu acción para ser procesadas."
+    },
+    "precios": {
+      "title": "Un plan para cada etapa de tu negocio",
+      "description": "Elige el plan que mejor se adapte al tamaño y a las necesidades de tu equipo."
+    },
+    "presupuestos": {
+      "title": "Presupuestos",
+      "description": "Crea y gestiona cotizaciones de productos para tus clientes."
+    },
+    "productos": {
+      "title": "Productos",
+      "description": "Aquí puedes dar de alta los artículos de tu inventario. Cada producto se asocia a una categoría y un proveedor."
+    },
+    "proveedores": {
+      "title": "Proveedores",
+      "description": "Registra a las empresas o personas que te abastecen de productos. Necesitarás al menos un proveedor para crear productos."
+    },
+    "solicitudes": {
+      "title": "Portal de Solicitudes",
+      "description": "Crea un pedido de productos para que un Jefe de Depósito lo apruebe."
+    },
+    "super-admin": {
+      "title": "Administración General",
+      "description": "Panel de control para el super-administrador."
+    },
+    "suscripcion": {
+      "title": "Suscripción y Facturación",
+      "description": "Revisa tu plan actual, tu uso y gestiona tu suscripción."
+    },
+    "ubicaciones": {
+      "title": "Ubicaciones de Depósito",
+      "description": "Define las ubicaciones físicas (estanterías, racks, bins) dentro de cada depósito."
+    },
+    "usuarios": {
+      "title": "Usuarios",
+      "super_description": "Gestiona todos los usuarios del sistema, asigna roles y monitoriza su actividad.",
+      "admin_description": "Invita y administra los miembros de tu equipo, asignándoles roles según sus funciones."
+    },
+    "workspaces": {
+      "title": "Workspaces",
+      "description": "Administra los espacios de trabajo de cada administrador."
+    }
   }
 }

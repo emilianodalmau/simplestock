@@ -71,6 +71,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Edit, Trash2 } from 'lucide-react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'El nombre es requerido.' }),
@@ -98,6 +99,7 @@ export default function CategoriasPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
+  const { dictionary } = useI18n();
 
   const userDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
@@ -226,9 +228,9 @@ export default function CategoriasPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Categorías</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.categorias.title}</h1>
         <p className="text-muted-foreground">
-          Agrupa tus productos en categorías para mantener tu inventario organizado y facilitar la búsqueda.
+          {dictionary.pages.categorias.description}
         </p>
       </div>
 

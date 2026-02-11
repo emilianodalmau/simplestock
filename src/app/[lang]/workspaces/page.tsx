@@ -87,6 +87,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const workspaceFormSchema = z.object({
   name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
@@ -176,6 +177,7 @@ export default function WorkspacesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: currentUser } = useUser();
+  const { dictionary } = useI18n();
 
   const currentUserDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
@@ -352,8 +354,8 @@ export default function WorkspacesPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight font-headline">Workspaces</h1>
-          <p className="text-muted-foreground">Administra los espacios de trabajo de cada administrador.</p>
+          <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.workspaces.title}</h1>
+          <p className="text-muted-foreground">{dictionary.pages.workspaces.description}</p>
         </div>
         {isSuperAdmin && (
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

@@ -23,6 +23,7 @@ import type {
   Deposit,
   Supplier,
 } from '@/types/inventory';
+import { useI18n } from '@/i18n/i18n-provider';
 
 
 type UserProfile = {
@@ -32,14 +33,14 @@ type UserProfile = {
 
 // Contenido principal del Dashboard
 function MainDashboard() {
+  const { dictionary } = useI18n();
   return (
     <div className="space-y-4">
       <h1 className="text-3xl font-bold tracking-tight font-headline">
-        Panel de Control
+        {dictionary.pages.dashboard.title}
       </h1>
       <p className="text-muted-foreground">
-        Bienvenido a tu panel de control. Desde aquí puedes navegar a las
-        distintas secciones de la aplicación.
+        {dictionary.pages.dashboard.description}
       </p>
     </div>
   );

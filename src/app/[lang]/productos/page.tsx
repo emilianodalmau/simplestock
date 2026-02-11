@@ -95,6 +95,7 @@ import * as XLSX from 'xlsx';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { getProductInfoFromBarcode } from '@/lib/actions';
+import { useI18n } from '@/i18n/i18n-provider';
 
 const unitTypes = [
   'unidades',
@@ -215,6 +216,7 @@ export default function ProductosPage() {
   const firestore = useFirestore();
   const storage = useStorage();
   const { user: currentUser } = useUser();
+  const { dictionary } = useI18n();
 
   const userDocRef = useMemoFirebase(
     () => (firestore && currentUser ? doc(firestore, 'users', currentUser.uid) : null),
@@ -722,9 +724,9 @@ export default function ProductosPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">Productos</h1>
+        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.productos.title}</h1>
         <p className="text-muted-foreground">
-          Aquí puedes dar de alta los artículos de tu inventario. Cada producto se asocia a una categoría y un proveedor.
+          {dictionary.pages.productos.description}
         </p>
       </div>
 
