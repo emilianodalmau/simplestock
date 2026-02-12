@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -9,13 +10,13 @@ import {
   useDoc,
 } from '@/firebase';
 import {
-  collection,
   collectionGroup,
   query,
   where,
   orderBy,
   Timestamp,
   doc,
+  collection,
 } from 'firebase/firestore';
 import {
   Card,
@@ -87,38 +88,43 @@ export default function VencimientosPage() {
     if (!collectionPrefix || !workspaceId) return null;
     const today = new Date();
     
-    const queryConstraints: any[] = [
+    return query(
+        collectionGroup(firestore, 'batches'),
         where('workspaceId', '==', workspaceId),
         where('expirationDate', '>=', today),
         orderBy('expirationDate', 'asc')
-      ];
-
-    if (daysFilter !== 'all') {
-        const limitDate = addDays(today, parseInt(daysFilter));
-        queryConstraints.push(where('expirationDate', '<=', limitDate));
-    }
-    
-    return query(
-        collectionGroup(firestore, 'batches'),
-        ...queryConstraints
       );
 
-  }, [collectionPrefix, workspaceId, firestore, daysFilter]);
+  }, [collectionPrefix, workspaceId, firestore]);
   
-  const { data: batches, isLoading: isLoadingBatches } = useCollection<Batch>(batchesQuery);
+  const { data: allBatches, isLoading: isLoadingBatches } = useCollection<Batch>(batchesQuery);
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(useMemoFirebase(() => collectionPrefix ? collection(firestore, `${collectionPrefix}/products`) : null, [collectionPrefix, firestore]));
   const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(useMemoFirebase(() => collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null, [collectionPrefix, firestore]));
 
   const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
   const depositsMap = useMemo(() => new Map(deposits?.map(d => [d.id, d.name])), [deposits]);
 
+  const filteredBatches = useMemo(() => {
+    if (!allBatches) return [];
+    if (daysFilter === 'all') return allBatches;
+    
+    const today = new Date();
+    const limitDate = addDays(today, parseInt(daysFilter));
+    
+    return allBatches.filter(batch => {
+        const expirationDate = batch.expirationDate.toDate();
+        return expirationDate <= limitDate;
+    });
+  }, [allBatches, daysFilter]);
+
+
   const isLoading = isLoadingProfile || isLoadingBatches || isLoadingProducts || isLoadingDeposits;
   
   const canAccessPage = currentUserProfile?.role && ['administrador', 'editor', 'jefe_deposito'].includes(currentUserProfile.role);
 
   const handleExport = () => {
-    if (!batches) return;
-    const dataToExport = batches.map(batch => {
+    if (!filteredBatches) return;
+    const dataToExport = filteredBatches.map(batch => {
         const product = productsMap.get(batch.productId);
         const deposit = depositsMap.get(batch.depositId);
         const status = getExpirationStatus(batch.expirationDate.toDate());
@@ -197,10 +203,10 @@ export default function VencimientosPage() {
                 {isLoading && [...Array(5)].map((_, i) => (
                   <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-5 w-full" /></TableCell></TableRow>
                 ))}
-                {!isLoading && batches?.length === 0 && (
+                {!isLoading && filteredBatches?.length === 0 && (
                   <TableRow><TableCell colSpan={6} className="h-24 text-center">No se encontraron lotes para el filtro seleccionado.</TableCell></TableRow>
                 )}
-                {!isLoading && batches?.map((batch) => {
+                {!isLoading && filteredBatches?.map((batch) => {
                   const product = productsMap.get(batch.productId);
                   const deposit = depositsMap.get(batch.depositId);
                   const status = getExpirationStatus(batch.expirationDate.toDate());
@@ -225,5 +231,3 @@ export default function VencimientosPage() {
     </div>
   );
 }
-
-    
