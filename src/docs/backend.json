@@ -435,6 +435,7 @@
       "description": "Represents a specific batch of a product with quantity and expiration date, stored in a specific deposit.",
       "properties": {
         "id": { "type": "string", "description": "Unique identifier for the Batch document." },
+        "workspaceId": { "type": "string", "description": "Reference to the Workspace." },
         "productId": { "type": "string", "description": "Reference to the Product." },
         "depositId": { "type": "string", "description": "Reference to the Deposit where the batch is stored." },
         "loteId": { "type": "string", "description": "The user-defined identifier for the batch (e.g., lot number)." },
@@ -442,7 +443,7 @@
         "expirationDate": { "type": "string", "format": "date-time", "description": "The expiration date of this batch." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the batch was first created." }
       },
-      "required": ["id", "productId", "depositId", "loteId", "quantity", "expirationDate", "createdAt"]
+      "required": ["id", "workspaceId", "productId", "depositId", "loteId", "quantity", "expirationDate", "createdAt"]
     },
     "StockMovement": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -614,3 +615,5 @@
     }
   }
 }
+
+    

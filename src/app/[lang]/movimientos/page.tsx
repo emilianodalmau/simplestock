@@ -87,6 +87,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { useI18n } from '@/i18n/i18n-provider';
+import { ProductComboBox } from '@/components/ui/product-combobox';
 
 // --- Zod Schemas ---
 const movementItemSchema = z.object({
@@ -510,7 +511,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   };
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
-    if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
+    if (!firestore || !user || !productsMap.size || !collectionPrefix || !workspaceId) return;
     setIsSubmitting(true);
   
     // Pre-fetch batch data for FEFO if needed
@@ -572,6 +573,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                         transaction.set(batchRef, {
                             id: batchRef.id, productId: item.productId, depositId: data.depositId, loteId: item.loteId,
                             quantity: item.quantity, expirationDate: item.expirationDate, createdAt: serverTimestamp(),
+                            workspaceId: workspaceId,
                         });
                     }
                 } else { // Salida
@@ -904,10 +906,12 @@ export default function MovimientosPage() {
   if (!currentUserProfile || !canAccessPage) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
-        <Card><CardHeader><CardTitle>Acceso Denegado</CardTitle><CardDescription>No tienes los permisos necesarios para ver esta página.</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle>Acceso Denegado</CardTitle><CardDescription>No tienes permisos para ver esta página.</CardDescription></CardHeader></Card>
       </div>
     );
   }
 
   return <MovimientosContent currentUserProfile={currentUserProfile} />;
 }
+
+    

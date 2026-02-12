@@ -84,6 +84,7 @@ export type InventoryStock = {
 
 export type Batch = {
   id: string;
+  workspaceId: string;
   productId: string;
   depositId: string;
   quantity: number;
@@ -137,3 +138,5 @@ export type Workspace = {
     id: string;
     name: string;
 }
+
+    

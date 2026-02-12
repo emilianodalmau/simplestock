@@ -137,6 +137,10 @@ service cloud.firestore {
                 get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(inventoryStockId.split('_')[1])).data.jefeId == request.auth.uid
             );
     }
+
+    match /workspaces/{workspaceId}/batches/{batchId} { 
+        allow read, write: if isInWorkspace(workspaceId);
+    }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
          allow read: if isSignedIn() && isInWorkspace(workspaceId);
@@ -151,5 +155,13 @@ service cloud.firestore {
                 get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
                );
     }
+
+    // Rule for collection group query on batches
+    match /{path=**}/batches/{batchId} {
+      allow list: if request.auth.uid != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == resource.data.workspaceId;
+    }
   }
 }
+
+    

@@ -81,26 +81,29 @@ export default function VencimientosPage() {
     () => (currentUserProfile?.workspaceId ? `workspaces/${currentUserProfile.workspaceId}` : null),
     [currentUserProfile]
   );
+  const workspaceId = currentUserProfile?.workspaceId;
 
   const batchesQuery = useMemoFirebase(() => {
-    if (!collectionPrefix) return null;
+    if (!collectionPrefix || !workspaceId) return null;
     const today = new Date();
     
-    let q = query(
-        collectionGroup(firestore, 'batches'),
-        where('__name__', '>=', `${collectionPrefix}/`),
-        where('__name__', '<', `${collectionPrefix}0`),
-        where('expirationDate', '>=', today)
-      );
+    const queryConstraints: any[] = [
+        where('workspaceId', '==', workspaceId),
+        where('expirationDate', '>=', today),
+        orderBy('expirationDate', 'asc')
+      ];
 
     if (daysFilter !== 'all') {
         const limitDate = addDays(today, parseInt(daysFilter));
-        q = query(q, where('expirationDate', '<=', limitDate));
+        queryConstraints.push(where('expirationDate', '<=', limitDate));
     }
     
-    return query(q, orderBy('expirationDate', 'asc'));
+    return query(
+        collectionGroup(firestore, 'batches'),
+        ...queryConstraints
+      );
 
-  }, [collectionPrefix, firestore, daysFilter]);
+  }, [collectionPrefix, workspaceId, firestore, daysFilter]);
   
   const { data: batches, isLoading: isLoadingBatches } = useCollection<Batch>(batchesQuery);
   const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(useMemoFirebase(() => collectionPrefix ? collection(firestore, `${collectionPrefix}/products`) : null, [collectionPrefix, firestore]));
@@ -222,3 +225,5 @@ export default function VencimientosPage() {
     </div>
   );
 }
+
+    
