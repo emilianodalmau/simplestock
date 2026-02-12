@@ -14,6 +14,7 @@ import {
   where,
   orderBy,
   Timestamp,
+  doc,
 } from 'firebase/firestore';
 import {
   Card,
