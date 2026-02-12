@@ -212,6 +212,14 @@
             "cajas"
           ]
         },
+        "trackingType": {
+          "type": "string",
+          "description": "Defines how the product's stock is tracked. NONE for standard quantity, BATCH_AND_EXPIRY for lot and expiration control.",
+          "enum": [
+            "NONE",
+            "BATCH_AND_EXPIRY"
+          ]
+        },
         "isArchived": {
           "type": "boolean",
           "description": "If true, the product is archived and not available for new transactions."
@@ -420,6 +428,22 @@
         "lastUpdated"
       ]
     },
+    "Batch": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Batch",
+      "type": "object",
+      "description": "Represents a specific batch of a product with quantity and expiration date, stored in a specific deposit.",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the Batch document." },
+        "productId": { "type": "string", "description": "Reference to the Product." },
+        "depositId": { "type": "string", "description": "Reference to the Deposit where the batch is stored." },
+        "loteId": { "type": "string", "description": "The user-defined identifier for the batch (e.g., lot number)." },
+        "quantity": { "type": "number", "description": "The current quantity of items in this batch." },
+        "expirationDate": { "type": "string", "format": "date-time", "description": "The expiration date of this batch." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the batch was first created." }
+      },
+      "required": ["id", "productId", "depositId", "loteId", "quantity", "expirationDate", "createdAt"]
+    },
     "StockMovement": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "StockMovement",
@@ -494,7 +518,9 @@
         "quantity": { "type": "number" },
         "unit": { "type": "string" },
         "price": { "type": "number" },
-        "total": { "type": "number" }
+        "total": { "type": "number" },
+        "loteId": { "type": "string", "description": "The batch/lot identifier, if applicable." },
+        "expirationDate": { "type": "string", "format": "date-time", "description": "The expiration date of the batch, if applicable." }
       },
       "required": ["productId", "productName", "quantity", "unit", "price", "total"]
     },
@@ -573,6 +599,10 @@
     "/workspaces/{workspaceId}/inventory/{inventoryStockId}": {
       "schema": { "$ref": "#/entities/InventoryStock" },
       "description": "Stores stock levels for a specific workspace."
+    },
+    "/workspaces/{workspaceId}/batches/{batchId}": {
+      "schema": { "$ref": "#/entities/Batch" },
+      "description": "Stores individual product batches with quantities and expiration dates."
     },
     "/workspaces/{workspaceId}/stockMovements/{movementId}": {
       "schema": { "$ref": "#/entities/StockMovement" },

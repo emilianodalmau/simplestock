@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -20,6 +19,9 @@ import {
   increment,
   where,
   query,
+  getDocs,
+  orderBy,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Card,
@@ -70,7 +72,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { RemitoActions } from '@/components/remito-actions';
 import type { AppSettings } from '@/types/settings';
-import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock } from '@/types/inventory';
+import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock, Batch } from '@/types/inventory';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -90,6 +92,8 @@ import { useI18n } from '@/i18n/i18n-provider';
 const movementItemSchema = z.object({
   productId: z.string().min(1, 'Selecciona un producto.'),
   quantity: z.coerce.number().min(0.1, 'La cantidad debe ser mayor a 0.'),
+  loteId: z.string().optional(),
+  expirationDate: z.date().optional(),
 });
 
 const movementFormSchema = z.object({
@@ -130,18 +134,14 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { user } = useUser();
   const { dictionary } = useI18n();
   
-  // --- Start: State for the new Add Product Dialog ---
   const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
   const [dialogSearchTerm, setDialogSearchTerm] = useState('');
   const [dialogQuantities, setDialogQuantities] = useState<Record<string, number>>({});
-  // --- End: State for the new Add Product Dialog ---
   
-  // --- Barcode Scanner States ---
   const [scanMode, setScanMode] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [scannedQuantity, setScannedQuantity] = useState<number>(1);
-  // --- End Barcode Scanner States ---
 
 
   // Filter states
@@ -241,7 +241,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   
     const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
   
-    // CASO 1: JEFE DE DEPOSITO
     if (isJefeDeposito) {
       if (assignedDepositIds === null) return null;
       if (assignedDepositIds.length === 0) return null;
@@ -251,7 +250,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       );
     }
   
-    // CASO 2: SOLICITANTE
     if (isSolicitante) {
       return query(
         movementsCollectionRef,
@@ -259,7 +257,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       );
     }
   
-    // CASO 3: ADMIN/EDITOR/VISUALIZADOR
     return query(movementsCollectionRef);
   }, [firestore, collectionPrefix, isJefeDeposito, isSolicitante, user, assignedDepositIds]);
 
@@ -270,7 +267,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     let filtered = movements;
 
-    // 1. Apply Filters
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(mov => 
@@ -296,7 +292,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         filtered = filtered.filter(mov => mov.createdAt.toDate() < toDate);
     }
 
-    // 2. Apply Sorting (Client-side)
     return filtered.sort((a, b) => {
         const dateA = a.createdAt?.toDate().getTime() || 0;
         const dateB = b.createdAt?.toDate().getTime() || 0;
@@ -409,7 +404,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     return [];
   }, [movementType, selectedDepositId, products, inventory]);
 
-  // --- Start: Logic for the new Add Product Dialog ---
   const dialogFilteredProducts = useMemo(() => {
     if (!availableProductsForMovement) return [];
     if (!dialogSearchTerm) return availableProductsForMovement;
@@ -443,9 +437,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     toast({ title: "Producto Agregado", description: `${product.name} ha sido agregado al remito.` });
     setDialogQuantities(prev => ({...prev, [product.id]: 0}));
   };
-  // --- End: Logic for the new Add Product Dialog ---
   
-  // --- Start: Logic for Barcode Scanner ---
   const handleScanSuccess = (barcode: string) => {
     setIsScannerOpen(false);
     
@@ -516,133 +508,137 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     
     setScannedProduct(null);
   };
-  // --- End: Logic for Barcode Scanner ---
-
 
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !collectionPrefix) return;
     setIsSubmitting(true);
+  
+    // Pre-fetch batch data for FEFO if needed
+    const productsToFetchBatches = data.items.filter(item => {
+        const product = productsMap.get(item.productId);
+        return data.type === 'salida' && product?.trackingType === 'BATCH_AND_EXPIRY';
+    });
+
+    const batchQueries = productsToFetchBatches.map(item => {
+        return getDocs(query(
+            collection(firestore, `${collectionPrefix}/batches`),
+            where('depositId', '==', data.depositId),
+            where('productId', '==', item.productId),
+            where('quantity', '>', 0),
+            orderBy('expirationDate', 'asc')
+        ));
+    });
 
     let movementDocRef: any; 
+
     try {
+        const batchQuerySnapshots = await Promise.all(batchQueries);
+        
+        const batchesByProduct = new Map<string, any[]>();
+        batchQuerySnapshots.forEach((snapshot, index) => {
+            const productId = productsToFetchBatches[index].productId;
+            batchesByProduct.set(productId, snapshot.docs);
+        });
+
         await runTransaction(firestore, async (transaction) => {
-        movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
-        const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
-        const counterSnap = await transaction.get(counterRef);
+            movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+            const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
+            const counterSnap = await transaction.get(counterRef);
+            
+            const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
+            const newRemitoNumber = lastNumber + 1;
+            const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
+            
+            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
-        const stockReads = await Promise.all(
-          data.items.map(item => {
-            const inventoryDocId = `${item.productId}_${data.depositId}`;
-            const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
-            return transaction.get(stockDocRef);
-          })
-        );
-        
-        const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
-        const newRemitoNumber = lastNumber + 1;
-        const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
+            let totalMovementValue = 0;
 
-        let totalMovementValue = 0;
-        const productChanges = new Map<string, number>();
+            for (const item of data.items) {
+                const product = productsMap.get(item.productId);
+                if (!product) throw new Error(`Producto con ID ${item.productId} no encontrado.`);
 
-        for (let i = 0; i < data.items.length; i++) {
-          const item = data.items[i];
-          const stockSnap = stockReads[i];
-          const product = productsMap.get(item.productId);
+                const inventoryDocId = `${item.productId}_${data.depositId}`;
+                const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+                totalMovementValue += (product.price || 0) * item.quantity;
+                
+                if (data.type === 'entrada') {
+                    transaction.set(stockDocRef, {
+                        quantity: increment(item.quantity), lastUpdated: serverTimestamp(), productId: item.productId, depositId: data.depositId,
+                    }, { merge: true });
 
-          if (!product) throw new Error(`Producto con ID ${item.productId} no encontrado.`);
+                    if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                        if (!item.loteId || !item.expirationDate) throw new Error(`El producto ${product.name} requiere lote y fecha de vencimiento.`);
+                        const batchRef = doc(collection(firestore, `${collectionPrefix}/batches`));
+                        transaction.set(batchRef, {
+                            id: batchRef.id, productId: item.productId, depositId: data.depositId, loteId: item.loteId,
+                            quantity: item.quantity, expirationDate: item.expirationDate, createdAt: serverTimestamp(),
+                        });
+                    }
+                } else { // Salida
+                    transaction.set(stockDocRef, { quantity: increment(-item.quantity) }, { merge: true });
 
-          totalMovementValue += (product.price || 0) * item.quantity;
-          const change = data.type === 'salida' ? -item.quantity : item.quantity;
-          productChanges.set(item.productId, (productChanges.get(item.productId) || 0) + change);
+                    if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                        let quantityToDeduct = item.quantity;
+                        const availableBatches = batchesByProduct.get(item.productId) || [];
 
-          if (data.type === 'salida') {
-            const currentQuantity = stockSnap.exists() ? stockSnap.data().quantity : 0;
-            if (currentQuantity < item.quantity) {
-              throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${item.quantity}.`);
+                        // Validate total stock in batches before proceeding
+                        const totalBatchStock = availableBatches.reduce((sum, doc) => sum + doc.data().quantity, 0);
+                        if (totalBatchStock < quantityToDeduct) {
+                           throw new Error(`Stock insuficiente en lotes para ${product.name}. Disponible: ${totalBatchStock}, Solicitado: ${quantityToDeduct}`);
+                        }
+
+                        for (const batchDoc of availableBatches) {
+                            if (quantityToDeduct <= 0) break;
+                            const batchData = batchDoc.data();
+                            const stockInBatch = batchData.quantity;
+                            const deductFromThisBatch = Math.min(stockInBatch, quantityToDeduct);
+                            
+                            transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
+                            quantityToDeduct -= deductFromThisBatch;
+                        }
+                    } else { // Salida de producto sin tracking
+                        const stockSnap = await transaction.get(stockDocRef);
+                        const currentQuantity = stockSnap.exists() ? stockSnap.data().quantity : 0;
+                        if (currentQuantity < item.quantity) {
+                             throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${item.quantity}.`);
+                        }
+                    }
+                }
             }
-          }
-        }
-        
-        transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
-
-        for (const [productId, change] of productChanges.entries()) {
-          const inventoryDocId = `${productId}_${data.depositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
-          transaction.set(
-            stockDocRef,
-            {
-              quantity: increment(change),
-              lastUpdated: serverTimestamp(),
-              productId: productId,
-              depositId: data.depositId,
-            },
-            { merge: true }
-          );
-        }
-
-        const movementItemsForDoc: StockMovementItem[] = data.items.map((item) => {
-            const product = productsMap.get(item.productId);
-            const price = product?.price || 0;
-            return {
-              productId: item.productId,
-              productName: product?.name || 'N/A',
-              quantity: item.quantity,
-              unit: product?.unit || 'N/A',
-              price: price,
-              total: price * item.quantity,
-            };
-          }
-        );
-
-        const deposit = deposits?.find((d) => d.id === data.depositId);
-        let actorName: string | null = null;
-        let actorType: 'user' | 'supplier' | null = null;
-        let finalActorId = data.actorId;
-
-        if (data.type === 'salida') {
-          actorType = 'user';
-          finalActorId = user.uid; // Always the current user
-          actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim() || user.email;
-        } else { // entrada
-          actorType = 'supplier';
-          const actor = suppliers?.find((s) => s.id === data.actorId);
-          actorName = actor ? actor.name : null;
-        }
-        
-        transaction.set(movementDocRef, {
-          id: movementDocRef.id,
-          remitoNumber: data.remitoNumber || formattedRemitoNumber,
-          type: data.type,
-          depositId: data.depositId,
-          depositName: deposit?.name || 'N/A',
-          actorId: finalActorId || null,
-          actorName: actorName,
-          actorType: finalActorId ? actorType : null,
-          createdAt: serverTimestamp(),
-          userId: user.uid,
-          items: movementItemsForDoc,
-          totalValue: totalMovementValue,
+            
+            const movementItemsForDoc: StockMovementItem[] = data.items.map((item) => {
+                const product = productsMap.get(item.productId);
+                const price = product?.price || 0;
+                return {
+                  productId: item.productId, productName: product?.name || 'N/A', quantity: item.quantity, unit: product?.unit || 'N/A',
+                  price: price, total: price * item.quantity, loteId: item.loteId, expirationDate: item.expirationDate,
+                };
+            });
+    
+            const deposit = deposits?.find((d) => d.id === data.depositId);
+            let actorName: string | null = null, actorType: 'user' | 'supplier' | null = null, finalActorId = data.actorId;
+    
+            if (data.type === 'salida') {
+              actorType = 'user'; finalActorId = user.uid;
+              actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim() || user.email;
+            } else {
+              actorType = 'supplier'; const actor = suppliers?.find((s) => s.id === data.actorId);
+              actorName = actor ? actor.name : null;
+            }
+            
+            transaction.set(movementDocRef, {
+              id: movementDocRef.id, remitoNumber: data.remitoNumber || formattedRemitoNumber, type: data.type, depositId: data.depositId,
+              depositName: deposit?.name || 'N/A', actorId: finalActorId || null, actorName: actorName, actorType: finalActorId ? actorType : null,
+              createdAt: serverTimestamp(), userId: user.uid, items: movementItemsForDoc, totalValue: totalMovementValue,
+            });
         });
-      });
-      toast({
-        title: 'Movimiento Registrado',
-        description: 'El remito ha sido registrado exitosamente.',
-      });
-      form.reset({
-        type: 'salida',
-        depositId: isJefeDeposito && deposits?.length === 1 ? deposits[0].id : '',
-        remitoNumber: '',
-        actorId: '',
-        items: [],
-      });
+        toast({ title: 'Movimiento Registrado', description: 'El remito ha sido registrado exitosamente.' });
+        form.reset({
+            type: 'salida', depositId: isJefeDeposito && deposits?.length === 1 ? deposits[0].id : '', remitoNumber: '', actorId: '', items: [],
+        });
     } catch(error: any) {
-        const permissionError = new FirestorePermissionError({
-            path: movementDocRef ? movementDocRef.path : `${collectionPrefix}/stockMovements`,
-            operation: 'create',
-            requestResourceData: form.getValues(),
-        });
-        errorEmitter.emit('permission-error', permissionError);
+        console.error("Error en transacción de movimiento: ", error);
+        toast({ variant: 'destructive', title: 'Error al registrar movimiento', description: error.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -667,10 +663,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             description: `El remito ${movement.remitoNumber} ha sido anulado y el stock ha sido revertido.`,
         });
     }).catch((error: any) => {
-        const permissionError = new FirestorePermissionError({
-            path: movementDocRef.path,
-            operation: 'delete',
-        });
+        const permissionError = new FirestorePermissionError({ path: movementDocRef.path, operation: 'delete' });
         errorEmitter.emit('permission-error', permissionError);
     });
   };
@@ -702,47 +695,25 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
   const handleExportToPdf = () => {
     if (!filteredMovements || filteredMovements.length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'No hay datos',
-        description: 'No hay movimientos filtrados para exportar.',
-      });
-      return;
+      toast({ variant: 'destructive', title: 'No hay datos', description: 'No hay movimientos filtrados para exportar.' }); return;
     }
-
     setIsGeneratingPdf(true);
-    
-    const doc = new jsPDF();
-    
+    const docPdf = new jsPDF();
     const tableData = filteredMovements.flatMap(mov => 
       mov.items.map(item => [
-        format(mov.createdAt.toDate(), 'dd/MM/yy', { locale: es }),
-        mov.remitoNumber || '-',
-        mov.type,
-        item.productName,
-        `${item.quantity} ${item.unit}`,
-        mov.actorName || mov.userId, 
+        format(mov.createdAt.toDate(), 'dd/MM/yy', { locale: es }), mov.remitoNumber || '-', mov.type, item.productName,
+        `${item.quantity} ${item.unit}`, mov.actorName || mov.userId, 
       ])
     );
-    
     const appName = workspaceData?.name || workspaceData?.appName || 'Reporte de Movimientos';
     const date = format(new Date(), 'dd/MM/yyyy');
-
-    doc.setFontSize(18);
-    doc.text(appName, 14, 22);
-    doc.setFontSize(11);
-    doc.text('Reporte de Movimientos de Stock', 14, 30);
-    doc.text(`Fecha: ${date}`, 150, 30);
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Fecha', 'Remito Nº', 'Tipo', 'Producto', 'Cantidad', 'Actor/Usuario']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [22, 160, 133] },
+    docPdf.setFontSize(18); docPdf.text(appName, 14, 22);
+    docPdf.setFontSize(11); docPdf.text('Reporte de Movimientos de Stock', 14, 30); docPdf.text(`Fecha: ${date}`, 150, 30);
+    autoTable(docPdf, {
+      startY: 35, head: [['Fecha', 'Remito Nº', 'Tipo', 'Producto', 'Cantidad', 'Actor/Usuario']],
+      body: tableData, theme: 'grid', headStyles: { fillColor: [22, 160, 133] },
     });
-    
-    doc.save('Reporte_Movimientos.pdf');
+    docPdf.save('Reporte_Movimientos.pdf');
     setIsGeneratingPdf(false);
   };
 
@@ -756,14 +727,19 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     return <MovementPageSkeleton />;
   }
 
+  if (!canManageMovements) {
+    return (
+        <div className="container mx-auto p-4 sm:p-6 md:p-8">
+            <Card><CardHeader><CardTitle>Acceso Denegado</CardTitle><CardDescription>No tienes permisos para ver esta página.</CardDescription></CardHeader></Card>
+        </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.movimientos.title}</h1>
-        <p className="text-muted-foreground">
-          {dictionary.pages.movimientos.description}
-        </p>
+        <p className="text-muted-foreground">{dictionary.pages.movimientos.description}</p>
       </div>
       <Tabs defaultValue="history">
         <TabsList className="grid w-full grid-cols-2">
@@ -771,206 +747,76 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
         </TabsList>
         <TabsContent value="create">
-          {canManageMovements && (
             <Card>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                   <CardHeader>
                     <CardTitle>Registrar Nuevo Remito</CardTitle>
-                    <CardDescription>
-                      Completa el formulario para registrar una entrada o salida de
-                      productos.
-                    </CardDescription>
+                    <CardDescription>Completa el formulario para registrar una entrada o salida.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <FormField
-                        control={form.control}
-                        name="type"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Tipo de Movimiento</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="salida">Salida</SelectItem>
-                                <SelectItem value="entrada">Entrada</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="depositId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Depósito</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value}
-                              disabled={isJefeDeposito && deposits?.length === 1}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un depósito" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {deposits?.map((d) => (
-                                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <FormField control={form.control} name="type" render={({ field }) => (
+                          <FormItem><FormLabel>Tipo</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="salida">Salida</SelectItem><SelectItem value="entrada">Entrada</SelectItem></SelectContent></Select></FormItem>
+                      )}/>
+                      <FormField control={form.control} name="depositId" render={({ field }) => (
+                          <FormItem><FormLabel>Depósito</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito && deposits?.length === 1}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger></FormControl><SelectContent>{deposits?.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
+                      )}/>
                       {movementType === 'entrada' && (
-                        <FormField
-                          control={form.control}
-                          name="actorId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Proveedor (Opcional)</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
-                                value={field.value || ''}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue
-                                      placeholder="Selecciona un proveedor"
-                                    />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {suppliers?.map((s) => (
-                                    <SelectItem key={s.id} value={s.id}>
-                                      {s.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </FormItem>
-                          )}
-                        />
+                        <FormField control={form.control} name="actorId" render={({ field }) => (
+                            <FormItem><FormLabel>Proveedor</FormLabel><Select onValueChange={field.onChange} value={field.value || ''}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un proveedor"/></SelectTrigger></FormControl><SelectContent>{suppliers?.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></FormItem>
+                        )}/>
                       )}
-                      <FormField
-                        control={form.control}
-                        name="remitoNumber"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Nº Remito (Auto)</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Se genera automáticamente"
-                                {...field}
-                                disabled
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <FormField control={form.control} name="remitoNumber" render={({ field }) => (
+                          <FormItem><FormLabel>Nº Remito (Auto)</FormLabel><FormControl><Input placeholder="Se genera automáticamente" {...field} disabled /></FormControl><FormMessage /></FormItem>
+                      )}/>
                     </div>
                     <Separator />
                     <div>
-                      <h3 className="text-lg font-medium mb-4">
-                        Productos del Remito
-                      </h3>
-                        <div className="rounded-md border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Producto</TableHead>
-                                <TableHead className="w-[100px]">Cantidad</TableHead>
-                                <TableHead className="w-[100px]">Unidad</TableHead>
-                                <TableHead className="w-[50px] text-right">Acción</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {fields.length === 0 ? (
-                                <TableRow>
-                                  <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                                    Aún no has agregado productos.
-                                  </TableCell>
-                                </TableRow>
-                              ) : (
-                                fields.map((item, index) => {
-                                  const product = productsMap.get(item.productId);
-                                  return (
-                                    <TableRow key={item.id}>
-                                      <TableCell className="font-medium">
-                                        {product?.name || 'Producto no encontrado'}
-                                      </TableCell>
-                                      <TableCell>{item.quantity}</TableCell>
-                                      <TableCell>{product?.unit}</TableCell>
-                                      <TableCell className="text-right">
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => remove(index)}
-                                        >
-                                          <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                      </TableCell>
-                                    </TableRow>
-                                  );
-                                })
-                              )}
-                            </TableBody>
-                          </Table>
+                      <h3 className="text-lg font-medium mb-4">Productos del Remito</h3>
+                        <div className="space-y-4">
+                          {fields.map((item, index) => {
+                            const product = productsMap.get(form.watch(`items.${index}.productId`));
+                            const isTracked = product?.trackingType === 'BATCH_AND_EXPIRY';
+                            return (
+                                <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 p-4 border rounded-md">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
+                                            <FormItem className="sm:col-span-2"><FormLabel>Producto</FormLabel><ProductComboBox products={availableProductsForMovement} value={field.value} onChange={field.onChange} disabled={!selectedDepositId} noStockMessage={!selectedDepositId ? 'Selecciona un depósito' : 'Busca un producto'}/><FormMessage /></FormItem>
+                                        )}/>
+                                         <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
+                                            <FormItem><FormLabel>Cantidad</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
+                                        )}/>
+                                        {movementType === 'entrada' && isTracked && (
+                                            <>
+                                                <FormField control={form.control} name={`items.${index}.loteId`} render={({ field }) => (
+                                                    <FormItem><FormLabel>Nº de Lote</FormLabel><FormControl><Input placeholder="Lote ABC-123" {...field}/></FormControl><FormMessage /></FormItem>
+                                                )}/>
+                                                <FormField control={form.control} name={`items.${index}.expirationDate`} render={({ field }) => (
+                                                    <FormItem className="flex flex-col"><FormLabel>Fecha de Vencimiento</FormLabel>
+                                                    <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP", {locale:es}) : <span>Elige una fecha</span>}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover>
+                                                    <FormMessage /></FormItem>
+                                                )}/>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="flex items-start justify-end md:items-center">
+                                      <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    </div>
+                                </div>
+                            );
+                          })}
                         </div>
-                      {form.formState.errors.items && (
-                          <p className="text-sm font-medium text-destructive mt-2">
-                            {typeof form.formState.errors.items === 'string'
-                              ? form.formState.errors.items
-                              : (form.formState.errors.items as any).root?.message}
-                          </p>
-                        )}
+                      {form.formState.errors.items && (<p className="text-sm font-medium text-destructive mt-2">{ (form.formState.errors.items as any).root?.message}</p>)}
                     </div>
                   </CardContent>
                   <CardFooter className="flex items-center gap-4 flex-wrap">
-                    <div className="flex items-center space-x-2">
-                        <Switch id="scan-mode" checked={scanMode} onCheckedChange={setScanMode} disabled={!selectedDepositId}/>
-                        <Label htmlFor="scan-mode">Agregar por Cámara</Label>
-                    </div>
-                     <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                          if (scanMode) {
-                              setIsScannerOpen(true);
-                          } else {
-                              setIsAddProductDialogOpen(true);
-                          }
-                      }}
-                      disabled={!selectedDepositId && !isJefeDeposito}
-                      className="w-auto"
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      {scanMode ? 'Escanear Producto' : 'Buscar Producto'}
-                    </Button>
-                    <Button type="submit" disabled={isSubmitting} className="w-auto">
-                      {isSubmitting && (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      )}
-                      Registrar Remito
-                    </Button>
+                    <Button type="button" variant="outline" onClick={() => append({productId: '', quantity: 1})} disabled={!selectedDepositId} className="w-auto"><PlusCircle className="mr-2 h-4 w-4" />Añadir Producto</Button>
+                    <Button type="submit" disabled={isSubmitting} className="w-auto">{isSubmitting && (<Loader2 className="mr-2 h-4 w-4 animate-spin" />)}Registrar Remito</Button>
                   </CardFooter>
                 </form>
               </Form>
             </Card>
-          )}
         </TabsContent>
         <TabsContent value="history">
           <Card>
@@ -980,192 +826,57 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             </CardHeader>
             <CardContent>
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
-                <Input
-                  placeholder="Buscar por Nº Remito o producto..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-grow"
-                />
+                <Input placeholder="Buscar por Nº Remito o producto..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-grow"/>
                 <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Filtrar por tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los tipos</SelectItem>
-                    <SelectItem value="entrada">Entrada</SelectItem>
-                    <SelectItem value="salida">Salida</SelectItem>
-                    <SelectItem value="ajuste">Ajuste</SelectItem>
-                  </SelectContent>
+                  <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por tipo" /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todos los tipos</SelectItem><SelectItem value="entrada">Entrada</SelectItem><SelectItem value="salida">Salida</SelectItem><SelectItem value="ajuste">Ajuste</SelectItem></SelectContent>
                 </Select>
-
                 <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isJefeDeposito}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Filtrar por depósito" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los depósitos</SelectItem>
-                    {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                  </SelectContent>
+                  <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por depósito" /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todos los depósitos</SelectItem>{deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                 </Select>
-
                 <Select value={selectedActor} onValueChange={setSelectedActor}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Filtrar por actor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los actores</SelectItem>
-                    {allActorsForFilter.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
+                  <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por actor" /></SelectTrigger>
+                  <SelectContent><SelectItem value="all">Todos los actores</SelectItem>{allActorsForFilter.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                 </Select>
-
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      id="date"
-                      variant={"outline"}
-                      className={cn(
-                        "w-full sm:w-[300px] justify-start text-left font-normal",
-                        !dateRange && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dateRange?.from ? (
-                        dateRange.to ? (
-                          <>
-                            {format(dateRange.from, "LLL dd, y")} -{" "}
-                            {format(dateRange.to, "LLL dd, y")}
-                          </>
-                        ) : (
-                          format(dateRange.from, "LLL dd, y")
-                        )
-                      ) : (
-                        <span>Seleccionar rango de fechas</span>
-                      )}
+                    <Button id="date" variant={"outline"} className={cn("w-full sm:w-[300px] justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Seleccionar rango de fechas</span>)}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={dateRange?.from}
-                      selected={dateRange}
-                      onSelect={setDateRange}
-                      numberOfMonths={2}
-                    />
-                  </PopoverContent>
+                  <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/></PopoverContent>
                 </Popover>
-                 <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto">
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Excel
-                </Button>
-                <Button onClick={handleExportToPdf} variant="outline" className="w-full sm:w-auto" disabled={isGeneratingPdf}>
-                  {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                  PDF
-                </Button>
+                 <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto"><FileDown className="mr-2 h-4 w-4" />Excel</Button>
+                <Button onClick={handleExportToPdf} variant="outline" className="w-full sm:w-auto" disabled={isGeneratingPdf}>{isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}PDF</Button>
               </div>
               <div className="rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Remito Nº</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Depósito</TableHead>
-                      <TableHead>Origen/Destino</TableHead>
-                      <TableHead>Productos</TableHead>
-                      <TableHead className='text-right'>Valor Total</TableHead>
-                      {canManageMovements && (
-                        <TableHead className="text-right">Acciones</TableHead>
-                      )}
+                      <TableHead>Fecha</TableHead><TableHead>Remito Nº</TableHead><TableHead>Tipo</TableHead><TableHead>Depósito</TableHead><TableHead>Origen/Destino</TableHead><TableHead>Productos</TableHead><TableHead className='text-right'>Valor Total</TableHead>
+                      {canManageMovements && (<TableHead className="text-right">Acciones</TableHead>)}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoadingMovements &&
-                      [...Array(3)].map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell>
-                            <Skeleton className="h-4 w-36" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-20" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-6 w-16 rounded-full" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-24" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-24" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-10" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-20 ml-auto" />
-                          </TableCell>
-                          {canManageMovements && (
-                            <TableCell>
-                              <Skeleton className="h-8 w-20 ml-auto" />
-                            </TableCell>
-                          )}
+                    {isLoadingMovements && [...Array(3)].map((_, i) => (
+                        <TableRow key={i}><TableCell><Skeleton className="h-4 w-36" /></TableCell><TableCell><Skeleton className="h-4 w-20" /></TableCell><TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                          {canManageMovements && (<TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>)}
                         </TableRow>
-                      ))}
+                    ))}
                     {!isLoadingMovements && filteredMovements?.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">
-                          {isJefeDeposito && (assignedDepositIds === null || assignedDepositIds.length === 0)
-                            ? "No tienes depósitos asignados para ver movimientos."
-                            : "No se encontraron movimientos con los filtros aplicados."
-                          }
-                        </TableCell>
-                      </TableRow>
+                      <TableRow><TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">{isJefeDeposito && (assignedDepositIds === null || assignedDepositIds.length === 0) ? "No tienes depósitos asignados para ver movimientos." : "No se encontraron movimientos con los filtros aplicados."}</TableCell></TableRow>
                     )}
-                    {!isLoadingMovements &&
-                      (filteredMovements || [])
-                        .map((mov) => (
-                          <TableRow key={mov.id}>
-                            <TableCell className="font-medium">
-                              {format(mov.createdAt.toDate(), 'PPpp', {
-                                locale: es,
-                              })}
-                            </TableCell>
-                            <TableCell className="font-mono">
-                              {mov.remitoNumber || '-'}
-                            </TableCell>
-                            <TableCell>
-                              <span
-                                className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                  mov.type === 'entrada'
-                                    ? 'bg-green-100 text-green-800'
-                                    : mov.type === 'salida'
-                                    ? 'bg-red-100 text-red-800'
-                                    : 'bg-blue-100 text-blue-800'
-                                }`}
-                              >
-                                {mov.type.charAt(0).toUpperCase() +
-                                  mov.type.slice(1)}
-                              </span>
-                            </TableCell>
-                            <TableCell>{mov.depositName}</TableCell>
-                            <TableCell>{mov.actorName || '-'}</TableCell>
-                            <TableCell>{mov.items.length}</TableCell>
-                            <TableCell className="text-right font-medium">
-                               {mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}
-                               {formatPrice(Math.abs(mov.totalValue || 0))}
-                            </TableCell>
-                            {canManageMovements && (
-                              <TableCell className="text-right">
-                                <RemitoActions
-                                  movement={mov}
-                                  settings={pdfSettings}
-                                  canDelete={isAdmin}
-                                  onDelete={() => handleDeleteMovement(mov)}
-                                />
-                              </TableCell>
-                            )}
-                          </TableRow>
-                        ))}
+                    {!isLoadingMovements && (filteredMovements || []).map((mov) => (
+                        <TableRow key={mov.id}>
+                            <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
+                            <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
+                            <TableCell><span className={`px-2 py-1 text-xs font-semibold rounded-full ${mov.type === 'entrada' ? 'bg-green-100 text-green-800' : mov.type === 'salida' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}</span></TableCell>
+                            <TableCell>{mov.depositName}</TableCell><TableCell>{mov.actorName || '-'}</TableCell><TableCell>{mov.items.length}</TableCell>
+                            <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
+                            {canManageMovements && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
+                        </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>
@@ -1173,129 +884,14 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           </Card>
         </TabsContent>
       </Tabs>
-      <Dialog open={isAddProductDialogOpen} onOpenChange={setIsAddProductDialogOpen}>
-        <DialogContent className="max-w-3xl">
-            <DialogHeader>
-                <DialogTitle>Agregar Productos al Remito</DialogTitle>
-                <DialogDescription>
-                    Busca productos y añade la cantidad que necesites. Puedes agregar varios productos antes de cerrar.
-                </DialogDescription>
-            </DialogHeader>
-            
-            <div className="flex items-center py-4">
-                <Input 
-                    placeholder="Buscar por nombre o código..."
-                    value={dialogSearchTerm}
-                    onChange={(e) => setDialogSearchTerm(e.target.value)}
-                />
-            </div>
-            
-            <div className="max-h-[50vh] overflow-y-auto border rounded-md">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Producto</TableHead>
-                            <TableHead className="w-[220px]">Cantidad a Agregar</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {dialogFilteredProducts.length > 0 ? dialogFilteredProducts.map(product => (
-                             <TableRow key={product.id}>
-                                <TableCell>
-                                    <div className="font-medium">{product.name}</div>
-                                    <div className="text-sm text-muted-foreground">{product.code}</div>
-                                    {movementType === 'salida' && (
-                                      <div className="text-xs text-green-600 font-medium">
-                                          Disponible: {stockForSelectedDeposit.get(product.id) || 0} {product.unit}
-                                      </div>
-                                    )}
-                                </TableCell>
-                                <TableCell>
-                                    <div className="flex items-center gap-2">
-                                        <Input 
-                                            type="number" 
-                                            min="1"
-                                            value={dialogQuantities[product.id] || ''}
-                                            onChange={(e) => setDialogQuantities(prev => ({...prev, [product.id]: Number(e.target.value)}))}
-                                            className="w-20"
-                                        />
-                                        <span>{product.unit}</span>
-                                        <Button size="sm" onClick={() => handleAddProductFromDialog(product)}>Añadir</Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        )) : (
-                            <TableRow>
-                                <TableCell colSpan={2} className="text-center h-24">
-                                  {availableProductsForMovement.length === 0 ? "No hay productos disponibles para este depósito y tipo de movimiento." : "No se encontraron productos."}
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-
-            <DialogFooter>
-                <Button variant="outline" onClick={() => { setIsAddProductDialogOpen(false); setDialogSearchTerm(''); setDialogQuantities({}); } }>Cerrar</Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      <BarcodeScanner 
-        isOpen={isScannerOpen} 
-        onClose={() => setIsScannerOpen(false)} 
-        onScanSuccess={handleScanSuccess}
-      />
-
-      <Dialog open={!!scannedProduct} onOpenChange={(open) => !open && setScannedProduct(null)}>
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Agregar Cantidad</DialogTitle>
-                <DialogDescription>
-                    Producto: <span className="font-bold">{scannedProduct?.name}</span>
-                </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-                <div className="flex items-center gap-4">
-                    <Label htmlFor="quantity" className="text-right">
-                        Cantidad
-                    </Label>
-                    <Input
-                        id="quantity"
-                        type="number"
-                        value={scannedQuantity}
-                        onChange={(e) => setScannedQuantity(Number(e.target.value))}
-                        className="col-span-3"
-                        min="1"
-                        autoFocus
-                    />
-                    <span className="text-muted-foreground">{scannedProduct?.unit}</span>
-                </div>
-                 {movementType === 'salida' && (
-                    <p className="text-sm text-green-600 mt-2">
-                        Stock disponible: {stockForSelectedDeposit.get(scannedProduct?.id || '') || 0} {scannedProduct?.unit}
-                    </p>
-                )}
-            </div>
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setScannedProduct(null)}>Cancelar</Button>
-                <Button onClick={handleAddScannedProduct}>Añadir al Remito</Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-// --- Main Page Component (Wrapper) ---
 export default function MovimientosPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
-
-  const userDocRef = useMemoFirebase(
-    () => (user ? doc(firestore, 'users', user.uid) : null),
-    [user, firestore]
-  );
+  const userDocRef = useMemoFirebase(() => (user ? doc(firestore, 'users', user.uid) : null), [user, firestore]);
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
 
   const canAccessPage = useMemo(() => {
@@ -1303,24 +899,15 @@ export default function MovimientosPage() {
     return ['administrador', 'editor', 'jefe_deposito', 'solicitante', 'visualizador'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
-  if (isUserLoading || isLoadingProfile) {
-    return <MovementPageSkeleton />;
-  }
+  if (isUserLoading || isLoadingProfile) { return <MovementPageSkeleton />; }
 
-  if (!canAccessPage) {
+  if (!currentUserProfile || !canAccessPage) {
     return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Acceso Denegado</CardTitle>
-            <CardDescription>
-              No tienes los permisos necesarios para ver esta página.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <Card><CardHeader><CardTitle>Acceso Denegado</CardTitle><CardDescription>No tienes los permisos necesarios para ver esta página.</CardDescription></CardHeader></Card>
       </div>
     );
   }
 
-  return <MovimientosContent currentUserProfile={currentUserProfile!} />;
+  return <MovimientosContent currentUserProfile={currentUserProfile} />;
 }

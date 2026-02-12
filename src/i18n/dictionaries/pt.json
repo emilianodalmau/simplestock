@@ -20,7 +20,8 @@
     "subscription": "Assinatura",
     "settings": "Configurações",
     "help": "Ajuda e FAQ",
-    "logout": "Sair"
+    "logout": "Sair",
+    "expirations": "Vencimentos"
   },
   "home": {
     "welcome": "Bem-vindo ao SIMPLESTOCK",
@@ -117,6 +118,10 @@
     "workspaces": {
       "title": "Workspaces",
       "description": "Gerencie os espaços de trabalho de cada administrador."
+    },
+    "vencimientos": {
+      "title": "Relatório de Vencimentos",
+      "description": "Lotes de produtos que estão próximos da data de validade ou já expiraram."
     }
   }
 }

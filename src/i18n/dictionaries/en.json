@@ -20,7 +20,8 @@
     "subscription": "Subscription",
     "settings": "Settings",
     "help": "Help & FAQ",
-    "logout": "Log Out"
+    "logout": "Log Out",
+    "expirations": "Expirations"
   },
   "home": {
     "welcome": "Welcome to SIMPLESTOCK",
@@ -117,6 +118,10 @@
     "workspaces": {
       "title": "Workspaces",
       "description": "Manage the workspaces of each administrator."
+    },
+    "vencimientos": {
+      "title": "Expiration Report",
+      "description": "Product batches that are nearing their expiration date or have already expired."
     }
   }
 }

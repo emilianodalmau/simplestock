@@ -20,7 +20,8 @@
     "subscription": "Suscripción",
     "settings": "Configuración",
     "help": "Ayuda y FAQ",
-    "logout": "Cerrar Sesión"
+    "logout": "Cerrar Sesión",
+    "expirations": "Vencimientos"
   },
   "home": {
     "welcome": "Bienvenido a SIMPLESTOCK",
@@ -117,6 +118,10 @@
     "workspaces": {
       "title": "Workspaces",
       "description": "Administra los espacios de trabajo de cada administrador."
+    },
+    "vencimientos": {
+      "title": "Reporte de Vencimientos",
+      "description": "Lotes de productos que están próximos a vencer o ya han expirado."
     }
   }
 }
