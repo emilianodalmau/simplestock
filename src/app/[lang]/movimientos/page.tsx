@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -514,7 +515,6 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (!firestore || !user || !productsMap.size || !collectionPrefix || !workspaceId) return;
     setIsSubmitting(true);
   
-    // Pre-fetch batch data for FEFO if needed
     const productsToFetchBatches = data.items.filter(item => {
         const product = productsMap.get(item.productId);
         return data.type === 'salida' && product?.trackingType === 'BATCH_AND_EXPIRY';
@@ -550,40 +550,43 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             const newRemitoNumber = lastNumber + 1;
             const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
             
-            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
-
+            const finalMovementItems: StockMovementItem[] = [];
             let totalMovementValue = 0;
 
-            for (const item of data.items) {
-                const product = productsMap.get(item.productId);
-                if (!product) throw new Error(`Producto con ID ${item.productId} no encontrado.`);
+            for (const formItem of data.items) {
+                const product = productsMap.get(formItem.productId);
+                if (!product) throw new Error(`Producto con ID ${formItem.productId} no encontrado.`);
 
-                const inventoryDocId = `${item.productId}_${data.depositId}`;
+                const inventoryDocId = `${formItem.productId}_${data.depositId}`;
                 const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
-                totalMovementValue += (product.price || 0) * item.quantity;
                 
                 if (data.type === 'entrada') {
                     transaction.set(stockDocRef, {
-                        quantity: increment(item.quantity), lastUpdated: serverTimestamp(), productId: item.productId, depositId: data.depositId,
+                        quantity: increment(formItem.quantity), lastUpdated: serverTimestamp(), productId: formItem.productId, depositId: data.depositId,
                     }, { merge: true });
 
                     if (product.trackingType === 'BATCH_AND_EXPIRY') {
-                        if (!item.loteId || !item.expirationDate) throw new Error(`El producto ${product.name} requiere lote y fecha de vencimiento.`);
+                        if (!formItem.loteId || !formItem.expirationDate) throw new Error(`El producto ${product.name} requiere lote y fecha de vencimiento.`);
                         const batchRef = doc(collection(firestore, `${collectionPrefix}/batches`));
                         transaction.set(batchRef, {
-                            id: batchRef.id, productId: item.productId, depositId: data.depositId, loteId: item.loteId,
-                            quantity: item.quantity, expirationDate: item.expirationDate, createdAt: serverTimestamp(),
+                            id: batchRef.id, productId: formItem.productId, depositId: data.depositId, loteId: formItem.loteId,
+                            quantity: formItem.quantity, expirationDate: formItem.expirationDate, createdAt: serverTimestamp(),
                             workspaceId: workspaceId,
                         });
                     }
+                    const price = product?.price || 0;
+                    const newItem: StockMovementItem = {
+                        productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
+                        price: price, total: price * formItem.quantity, loteId: formItem.loteId, expirationDate: formItem.expirationDate,
+                    };
+                    finalMovementItems.push(newItem);
+                    totalMovementValue += newItem.total;
+
                 } else { // Salida
-                    transaction.set(stockDocRef, { quantity: increment(-item.quantity) }, { merge: true });
-
                     if (product.trackingType === 'BATCH_AND_EXPIRY') {
-                        let quantityToDeduct = item.quantity;
-                        const availableBatches = batchesByProduct.get(item.productId) || [];
+                        let quantityToDeduct = formItem.quantity;
+                        const availableBatches = batchesByProduct.get(formItem.productId) || [];
 
-                        // Validate total stock in batches before proceeding
                         const totalBatchStock = availableBatches.reduce((sum, doc) => sum + doc.data().quantity, 0);
                         if (totalBatchStock < quantityToDeduct) {
                            throw new Error(`Stock insuficiente en lotes para ${product.name}. Disponible: ${totalBatchStock}, Solicitado: ${quantityToDeduct}`);
@@ -597,26 +600,35 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                             
                             transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
                             quantityToDeduct -= deductFromThisBatch;
+                            
+                            const price = product.price || 0;
+                            const newItem: StockMovementItem = {
+                                productId: product.id, productName: product.name, quantity: deductFromThisBatch, unit: product.unit,
+                                price: price, total: price * deductFromThisBatch, loteId: batchData.loteId, expirationDate: batchData.expirationDate,
+                            };
+                            finalMovementItems.push(newItem);
+                            totalMovementValue += newItem.total;
                         }
-                    } else { // Salida de producto sin tracking
+                         transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
+                    } else { 
                         const stockSnap = await transaction.get(stockDocRef);
                         const currentQuantity = stockSnap.exists() ? stockSnap.data().quantity : 0;
-                        if (currentQuantity < item.quantity) {
-                             throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${item.quantity}.`);
+                        if (currentQuantity < formItem.quantity) {
+                             throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${formItem.quantity}.`);
                         }
+                        transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
+
+                        const price = product.price || 0;
+                        const newItem: StockMovementItem = {
+                            productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
+                            price: price, total: price * formItem.quantity,
+                        };
+                        finalMovementItems.push(newItem);
+                        totalMovementValue += newItem.total;
                     }
                 }
             }
             
-            const movementItemsForDoc: StockMovementItem[] = data.items.map((item) => {
-                const product = productsMap.get(item.productId);
-                const price = product?.price || 0;
-                return {
-                  productId: item.productId, productName: product?.name || 'N/A', quantity: item.quantity, unit: product?.unit || 'N/A',
-                  price: price, total: price * item.quantity, loteId: item.loteId, expirationDate: item.expirationDate,
-                };
-            });
-    
             const deposit = deposits?.find((d) => d.id === data.depositId);
             let actorName: string | null = null, actorType: 'user' | 'supplier' | null = null, finalActorId = data.actorId;
     
@@ -631,7 +643,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             transaction.set(movementDocRef, {
               id: movementDocRef.id, remitoNumber: data.remitoNumber || formattedRemitoNumber, type: data.type, depositId: data.depositId,
               depositName: deposit?.name || 'N/A', actorId: finalActorId || null, actorName: actorName, actorType: finalActorId ? actorType : null,
-              createdAt: serverTimestamp(), userId: user.uid, items: movementItemsForDoc, totalValue: totalMovementValue,
+              createdAt: serverTimestamp(), userId: user.uid, items: finalMovementItems, totalValue: totalMovementValue,
             });
         });
         toast({ title: 'Movimiento Registrado', description: 'El remito ha sido registrado exitosamente.' });
