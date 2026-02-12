@@ -123,6 +123,7 @@ const formSchema = z.object({
     required_error: 'El tipo de unidad es requerido.',
   }),
   depositIds: z.array(z.string()).min(1, { message: "Debe seleccionar al menos un depósito."}),
+  trackingType: z.enum(['NONE', 'BATCH_AND_EXPIRY']),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -154,6 +155,7 @@ type Product = {
   costPrice: number;
   minStock: number;
   unit: (typeof unitTypes)[number];
+  trackingType: 'NONE' | 'BATCH_AND_EXPIRY';
   isArchived?: boolean;
   depositIds?: string[];
   createdAt: any; // Used for client-side sorting
@@ -350,6 +352,7 @@ export default function ProductosPage() {
       minStock: 0,
       unit: 'unidades',
       depositIds: [],
+      trackingType: 'NONE',
     },
   });
 
@@ -370,6 +373,7 @@ export default function ProductosPage() {
         minStock: editingProduct.minStock || 0,
         unit: editingProduct.unit,
         depositIds: editingProduct.depositIds || [],
+        trackingType: editingProduct.trackingType || 'NONE',
       });
       setEditImagePreview(editingProduct.imageUrl || null);
       setEditImageFile(null);
@@ -446,6 +450,7 @@ export default function ProductosPage() {
         costPrice: 0,
         minStock: 0, // Reset minStock
         depositIds: [],
+        trackingType: 'NONE',
       });
       setImageFile(null);
       setImagePreview(null);
@@ -660,6 +665,7 @@ export default function ProductosPage() {
             code: generateProductCode(row.nombre),
             isArchived: false,
             createdAt: serverTimestamp(),
+            trackingType: 'NONE', // Default tracking type for imports
           });
           productsCreated++;
         }
@@ -998,6 +1004,31 @@ export default function ProductosPage() {
                           <FormControl>
                             <Input type="number" placeholder="Ej: 10" {...field} disabled={atLimit}/>
                           </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <FormField
+                      control={createForm.control}
+                      name="trackingType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tipo de Seguimiento</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            disabled={atLimit}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona un tipo" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="NONE">Sin seguimiento (Solo Cantidad)</SelectItem>
+                              <SelectItem value="BATCH_AND_EXPIRY">Por Lote y Vencimiento</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1537,6 +1568,30 @@ export default function ProductosPage() {
                   </FormItem>
                 )}
               />
+               <FormField
+                  control={editForm.control}
+                  name="trackingType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Seguimiento</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona un tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="NONE">Sin seguimiento (Solo Cantidad)</SelectItem>
+                          <SelectItem value="BATCH_AND_EXPIRY">Por Lote y Vencimiento</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
               <DialogFooter>
                 <DialogClose asChild>

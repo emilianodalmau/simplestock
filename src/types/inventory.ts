@@ -9,6 +9,7 @@ export type Product = {
   imageUrl?: string;
   price: number;
   costPrice: number;
+  trackingType: 'NONE' | 'BATCH_AND_EXPIRY';
   isArchived?: boolean;
   depositIds?: string[];
   createdAt: any; // Allow both Timestamp and string for flexibility
@@ -54,6 +55,8 @@ export type StockMovementItem = {
   unit: string;
   price: number;
   total: number;
+  loteId?: string;
+  expirationDate?: any;
 };
 
 // This type is adjusted to handle both server (string) and client (Date object) representations
@@ -77,6 +80,16 @@ export type InventoryStock = {
   productId: string;
   depositId: string;
   quantity: number;
+};
+
+export type Batch = {
+  id: string;
+  productId: string;
+  depositId: string;
+  quantity: number;
+  loteId: string;
+  expirationDate: any; // For Firebase Timestamp
+  createdAt: any; // For Firebase Timestamp
 };
 
 export type RequestItem = {

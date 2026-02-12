@@ -125,6 +125,11 @@ service cloud.firestore {
     match /workspaces/{workspaceId}/deposits/{depositId} {
         allow read: if isSignedIn();
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+        
+        match /locations/{locationId} {
+            allow read: if isSignedIn() && isInWorkspace(workspaceId);
+            allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || (hasWorkspaceRole(workspaceId, 'jefe_deposito') && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid);
+        }
     }
     
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
@@ -138,8 +143,12 @@ service cloud.firestore {
             );
     }
     
+    match /workspaces/{workspaceId}/batches/{batchId} { 
+        allow read, write: if isInWorkspace(workspaceId);
+    }
+    
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         allow read: if isSignedIn();
+         allow read: if isSignedIn() && isInWorkspace(workspaceId);
          
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
          allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
