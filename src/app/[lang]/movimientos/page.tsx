@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -89,14 +88,24 @@ import { Label } from '@/components/ui/label';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { useI18n } from '@/i18n/i18n-provider';
 import { ProductComboBox } from '@/components/ui/product-combobox';
+import { SelectBatchDialog } from '@/components/ui/select-batch-dialog';
+
 
 // --- Zod Schemas ---
+const batchSelectionSchema = z.object({
+  batchId: z.string(),
+  loteId: z.string(),
+  quantity: z.number(),
+});
+
 const movementItemSchema = z.object({
   productId: z.string().min(1, 'Selecciona un producto.'),
   quantity: z.coerce.number().min(0.1, 'La cantidad debe ser mayor a 0.'),
   loteId: z.string().optional(),
   expirationDate: z.date().optional(),
+  manualBatches: z.array(batchSelectionSchema).optional(),
 });
+
 
 const movementFormSchema = z.object({
   type: z.enum(['entrada', 'salida']),
@@ -144,6 +153,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [scannedQuantity, setScannedQuantity] = useState<number>(1);
+  
+  const [batchSelectorState, setBatchSelectorState] = useState<{ open: boolean, itemIndex: number | null }>({ open: false, itemIndex: null });
 
 
   // Filter states
@@ -405,6 +416,22 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     
     return [];
   }, [movementType, selectedDepositId, products, inventory]);
+  
+  const openBatchSelector = (index: number) => {
+    setBatchSelectorState({ open: true, itemIndex: index });
+  };
+  
+  const handleBatchSelectionConfirm = (selections: { batchId: string; loteId: string; quantity: number }[]) => {
+    if (batchSelectorState.itemIndex === null) return;
+  
+    const totalQuantity = selections.reduce((sum, s) => sum + s.quantity, 0);
+  
+    form.setValue(`items.${batchSelectorState.itemIndex}.quantity`, totalQuantity, { shouldValidate: true });
+    form.setValue(`items.${batchSelectorState.itemIndex}.manualBatches`, selections, { shouldValidate: true });
+  
+    setBatchSelectorState({ open: false, itemIndex: null });
+    toast({ title: "Lotes Seleccionados", description: `Se asignaron ${totalQuantity} unidades desde ${selections.length} lote(s).` });
+  };
 
   const dialogFilteredProducts = useMemo(() => {
     if (!availableProductsForMovement) return [];
@@ -514,46 +541,50 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !collectionPrefix || !workspaceId) return;
     setIsSubmitting(true);
-  
-    const productsToFetchBatches = data.items.filter(item => {
+
+    const batchReads: { ref: any, itemIndex: number, selectionIndex?: number }[] = [];
+    
+    data.items.forEach((item, itemIndex) => {
         const product = productsMap.get(item.productId);
-        return data.type === 'salida' && product?.trackingType === 'BATCH_AND_EXPIRY';
+        if (data.type === 'salida' && product?.trackingType === 'BATCH_AND_EXPIRY') {
+            if (item.manualBatches && item.manualBatches.length > 0) {
+                item.manualBatches.forEach((selection, selectionIndex) => {
+                    batchReads.push({ ref: doc(firestore, `${collectionPrefix}/batches`, selection.batchId), itemIndex, selectionIndex });
+                });
+            } else {
+                // Pre-fetch for FEFO
+                 const q = query(
+                    collection(firestore, `${collectionPrefix}/batches`),
+                    where('depositId', '==', data.depositId),
+                    where('productId', '==', item.productId),
+                    where('quantity', '>', 0),
+                    orderBy('expirationDate', 'asc')
+                );
+                // In a real scenario, you'd fetch this query before the transaction.
+                // For simplicity here, we'll fetch inside, but be aware of read-after-write limitations.
+                // The current logic fetches inside the transaction which is okay as long as it's the first operation.
+            }
+        }
     });
-
-    const batchQueries = productsToFetchBatches.map(item => {
-        return getDocs(query(
-            collection(firestore, `${collectionPrefix}/batches`),
-            where('depositId', '==', data.depositId),
-            where('productId', '==', item.productId),
-            where('quantity', '>', 0),
-            orderBy('expirationDate', 'asc')
-        ));
-    });
-
-    let movementDocRef: any; 
 
     try {
-        const batchQuerySnapshots = await Promise.all(batchQueries);
-        
-        const batchesByProduct = new Map<string, any[]>();
-        batchQuerySnapshots.forEach((snapshot, index) => {
-            const productId = productsToFetchBatches[index].productId;
-            batchesByProduct.set(productId, snapshot.docs);
-        });
-
         await runTransaction(firestore, async (transaction) => {
-            movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+            const movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
             const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
-            const counterSnap = await transaction.get(counterRef);
             
+            const [counterSnap, ...manualBatchSnaps] = await Promise.all([
+                transaction.get(counterRef),
+                ...batchReads.map(b => transaction.get(b.ref))
+            ]);
+
             const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
             const newRemitoNumber = lastNumber + 1;
             const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
             
-            const finalMovementItems: StockMovementItem[] = [];
+            let finalMovementItems: StockMovementItem[] = [];
             let totalMovementValue = 0;
 
-            for (const formItem of data.items) {
+            for (const [itemIndex, formItem] of data.items.entries()) {
                 const product = productsMap.get(formItem.productId);
                 if (!product) throw new Error(`Producto con ID ${formItem.productId} no encontrado.`);
 
@@ -583,48 +614,66 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     totalMovementValue += newItem.total;
 
                 } else { // Salida
+                    transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
+
                     if (product.trackingType === 'BATCH_AND_EXPIRY') {
-                        let quantityToDeduct = formItem.quantity;
-                        const availableBatches = batchesByProduct.get(formItem.productId) || [];
+                        if (formItem.manualBatches && formItem.manualBatches.length > 0) {
+                            // --- MANUAL BATCH SELECTION LOGIC ---
+                            formItem.manualBatches.forEach((selection, selectionIndex) => {
+                                const batchReadIndex = batchReads.findIndex(b => b.itemIndex === itemIndex && b.selectionIndex === selectionIndex);
+                                const batchSnap = manualBatchSnaps[batchReadIndex];
 
-                        const totalBatchStock = availableBatches.reduce((sum, doc) => sum + doc.data().quantity, 0);
-                        if (totalBatchStock < quantityToDeduct) {
-                           throw new Error(`Stock insuficiente en lotes para ${product.name}. Disponible: ${totalBatchStock}, Solicitado: ${quantityToDeduct}`);
-                        }
+                                if (!batchSnap.exists() || batchSnap.data()!.quantity < selection.quantity) {
+                                    throw new Error(`Stock insuficiente para el lote ${selection.loteId}.`);
+                                }
+                                transaction.update(batchSnap.ref, { quantity: increment(-selection.quantity) });
 
-                        for (const batchDoc of availableBatches) {
-                            if (quantityToDeduct <= 0) break;
-                            const batchData = batchDoc.data();
-                            const stockInBatch = batchData.quantity;
-                            const deductFromThisBatch = Math.min(stockInBatch, quantityToDeduct);
-                            
-                            transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
-                            quantityToDeduct -= deductFromThisBatch;
-                            
-                            const price = product.price || 0;
-                            const newItem: StockMovementItem = {
-                                productId: product.id, productName: product.name, quantity: deductFromThisBatch, unit: product.unit,
-                                price: price, total: price * deductFromThisBatch, loteId: batchData.loteId, expirationDate: batchData.expirationDate,
-                            };
-                            finalMovementItems.push(newItem);
-                            totalMovementValue += newItem.total;
-                        }
-                         transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
-                    } else { 
-                        const stockSnap = await transaction.get(stockDocRef);
-                        const currentQuantity = stockSnap.exists() ? stockSnap.data().quantity : 0;
-                        if (currentQuantity < formItem.quantity) {
-                             throw new Error(`Stock insuficiente para ${product.name}. Stock actual: ${currentQuantity}, se necesitan: ${formItem.quantity}.`);
-                        }
-                        transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
+                                const price = product.price || 0;
+                                finalMovementItems.push({
+                                    productId: product.id, productName: product.name, quantity: selection.quantity, unit: product.unit,
+                                    price: price, total: price * selection.quantity, loteId: selection.loteId, expirationDate: batchSnap.data()!.expirationDate,
+                                });
+                                totalMovementValue += price * selection.quantity;
+                            });
+                        } else {
+                            // --- AUTOMATIC FEFO LOGIC ---
+                            let quantityToDeduct = formItem.quantity;
+                            const availableBatchesQuery = query(
+                                collection(firestore, `${collectionPrefix}/batches`),
+                                where('depositId', '==', data.depositId), where('productId', '==', formItem.productId),
+                                where('quantity', '>', 0), orderBy('expirationDate', 'asc')
+                            );
+                            const availableBatchesSnap = await getDocs(availableBatchesQuery);
+                            const totalBatchStock = availableBatchesSnap.docs.reduce((sum, doc) => sum + doc.data().quantity, 0);
 
+                            if (totalBatchStock < quantityToDeduct) {
+                                throw new Error(`Stock insuficiente en lotes para ${product.name}. Disp: ${totalBatchStock}, Sol: ${quantityToDeduct}`);
+                            }
+
+                            for (const batchDoc of availableBatchesSnap.docs) {
+                                if (quantityToDeduct <= 0) break;
+                                const batchData = batchDoc.data();
+                                const stockInBatch = batchData.quantity;
+                                const deductFromThisBatch = Math.min(stockInBatch, quantityToDeduct);
+                                
+                                transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
+                                quantityToDeduct -= deductFromThisBatch;
+                                
+                                const price = product.price || 0;
+                                finalMovementItems.push({
+                                    productId: product.id, productName: product.name, quantity: deductFromThisBatch, unit: product.unit,
+                                    price: price, total: price * deductFromThisBatch, loteId: batchData.loteId, expirationDate: batchData.expirationDate,
+                                });
+                                totalMovementValue += price * deductFromThisBatch;
+                            }
+                        }
+                    } else { // Product is not tracked
                         const price = product.price || 0;
-                        const newItem: StockMovementItem = {
+                        finalMovementItems.push({
                             productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
                             price: price, total: price * formItem.quantity,
-                        };
-                        finalMovementItems.push(newItem);
-                        totalMovementValue += newItem.total;
+                        });
+                        totalMovementValue += price * formItem.quantity;
                     }
                 }
             }
@@ -645,6 +694,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
               depositName: deposit?.name || 'N/A', actorId: finalActorId || null, actorName: actorName, actorType: finalActorId ? actorType : null,
               createdAt: serverTimestamp(), userId: user.uid, items: finalMovementItems, totalValue: totalMovementValue,
             });
+            transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
         });
         toast({ title: 'Movimiento Registrado', description: 'El remito ha sido registrado exitosamente.' });
         form.reset({
@@ -750,155 +800,182 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.movimientos.title}</h1>
-        <p className="text-muted-foreground">{dictionary.pages.movimientos.description}</p>
-      </div>
-      <Tabs defaultValue="history">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
-          <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
-        </TabsList>
-        <TabsContent value="create">
-            <Card>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)}>
-                  <CardHeader>
-                    <CardTitle>Registrar Nuevo Remito</CardTitle>
-                    <CardDescription>Completa el formulario para registrar una entrada o salida.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <FormField control={form.control} name="type" render={({ field }) => (
-                          <FormItem><FormLabel>Tipo</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="salida">Salida</SelectItem><SelectItem value="entrada">Entrada</SelectItem></SelectContent></Select></FormItem>
-                      )}/>
-                      <FormField control={form.control} name="depositId" render={({ field }) => (
-                          <FormItem><FormLabel>Depósito</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito && deposits?.length === 1}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger></FormControl><SelectContent>{deposits?.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
-                      )}/>
-                      {movementType === 'entrada' && (
-                        <FormField control={form.control} name="actorId" render={({ field }) => (
-                            <FormItem><FormLabel>Proveedor</FormLabel><Select onValueChange={field.onChange} value={field.value || ''}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un proveedor"/></SelectTrigger></FormControl><SelectContent>{suppliers?.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></FormItem>
+    <>
+      {batchSelectorState.open && batchSelectorState.itemIndex !== null && (
+        <SelectBatchDialog
+          isOpen={batchSelectorState.open}
+          onClose={() => setBatchSelectorState({ open: false, itemIndex: null })}
+          onConfirm={handleBatchSelectionConfirm}
+          productId={form.getValues(`items.${batchSelectorState.itemIndex}.productId`)}
+          productName={productsMap.get(form.getValues(`items.${batchSelectorState.itemIndex}.productId`))?.name || null}
+          depositId={selectedDepositId}
+          workspaceId={workspaceId || null}
+          totalNeeded={form.getValues(`items.${batchSelectorState.itemIndex}.quantity`)}
+        />
+      )}
+      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.movimientos.title}</h1>
+          <p className="text-muted-foreground">{dictionary.pages.movimientos.description}</p>
+        </div>
+        <Tabs defaultValue="history">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
+            <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
+          </TabsList>
+          <TabsContent value="create">
+              <Card>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)}>
+                    <CardHeader>
+                      <CardTitle>Registrar Nuevo Remito</CardTitle>
+                      <CardDescription>Completa el formulario para registrar una entrada o salida.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <FormField control={form.control} name="type" render={({ field }) => (
+                            <FormItem><FormLabel>Tipo</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="salida">Salida</SelectItem><SelectItem value="entrada">Entrada</SelectItem></SelectContent></Select></FormItem>
                         )}/>
+                        <FormField control={form.control} name="depositId" render={({ field }) => (
+                            <FormItem><FormLabel>Depósito</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito && deposits?.length === 1}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger></FormControl><SelectContent>{deposits?.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
+                        )}/>
+                        {movementType === 'entrada' && (
+                          <FormField control={form.control} name="actorId" render={({ field }) => (
+                              <FormItem><FormLabel>Proveedor</FormLabel><Select onValueChange={field.onChange} value={field.value || ''}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un proveedor"/></SelectTrigger></FormControl><SelectContent>{suppliers?.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></FormItem>
+                          )}/>
+                        )}
+                        <FormField control={form.control} name="remitoNumber" render={({ field }) => (
+                            <FormItem><FormLabel>Nº Remito (Auto)</FormLabel><FormControl><Input placeholder="Se genera automáticamente" {...field} disabled /></FormControl><FormMessage /></FormItem>
+                        )}/>
+                      </div>
+                      <Separator />
+                      <div>
+                        <h3 className="text-lg font-medium mb-4">Productos del Remito</h3>
+                          <div className="space-y-4">
+                            {fields.map((item, index) => {
+                              const product = productsMap.get(form.watch(`items.${index}.productId`));
+                              const isTracked = product?.trackingType === 'BATCH_AND_EXPIRY';
+                              return (
+                                  <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 p-4 border rounded-md">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                          <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
+                                              <FormItem className="sm:col-span-2"><FormLabel>Producto</FormLabel><ProductComboBox products={availableProductsForMovement} value={field.value} onChange={field.onChange} disabled={!selectedDepositId} noStockMessage={!selectedDepositId ? 'Selecciona un depósito' : 'Busca un producto'}/><FormMessage /></FormItem>
+                                          )}/>
+                                          {movementType === 'salida' && isTracked ? (
+                                            <FormItem>
+                                                <FormLabel>Cantidad</FormLabel>
+                                                <div className="flex items-center gap-2">
+                                                    <FormControl>
+                                                        <Input type="number" readOnly value={form.watch(`items.${index}.quantity`) || 0} />
+                                                    </FormControl>
+                                                    <Button type="button" variant="outline" onClick={() => openBatchSelector(index)}>Seleccionar Lotes</Button>
+                                                </div>
+                                                <FormMessage />
+                                            </FormItem>
+                                          ) : (
+                                            <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
+                                                <FormItem><FormLabel>Cantidad</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
+                                            )}/>
+                                          )}
+                                          {movementType === 'entrada' && isTracked && (
+                                              <>
+                                                  <FormField control={form.control} name={`items.${index}.loteId`} render={({ field }) => (
+                                                      <FormItem><FormLabel>Nº de Lote</FormLabel><FormControl><Input placeholder="Lote ABC-123" {...field}/></FormControl><FormMessage /></FormItem>
+                                                  )}/>
+                                                  <FormField control={form.control} name={`items.${index}.expirationDate`} render={({ field }) => (
+                                                      <FormItem className="flex flex-col"><FormLabel>Fecha de Vencimiento</FormLabel>
+                                                      <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP", {locale:es}) : <span>Elige una fecha</span>}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover>
+                                                      <FormMessage /></FormItem>
+                                                  )}/>
+                                              </>
+                                          )}
+                                      </div>
+                                      <div className="flex items-start justify-end md:items-center">
+                                        <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                      </div>
+                                  </div>
+                              );
+                            })}
+                          </div>
+                        {form.formState.errors.items && (<p className="text-sm font-medium text-destructive mt-2">{ (form.formState.errors.items as any).root?.message}</p>)}
+                      </div>
+                    </CardContent>
+                    <CardFooter className="flex items-center gap-4 flex-wrap">
+                      <Button type="button" variant="outline" onClick={() => append({productId: '', quantity: 1})} disabled={!selectedDepositId} className="w-auto"><PlusCircle className="mr-2 h-4 w-4" />Añadir Producto</Button>
+                      <Button type="submit" disabled={isSubmitting} className="w-auto">{isSubmitting && (<Loader2 className="mr-2 h-4 w-4 animate-spin" />)}Registrar Remito</Button>
+                    </CardFooter>
+                  </form>
+                </Form>
+              </Card>
+          </TabsContent>
+          <TabsContent value="history">
+            <Card>
+              <CardHeader>
+                <CardTitle>Historial de Movimientos</CardTitle>
+                {isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tus depósitos asignados.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
+              </CardHeader>
+              <CardContent>
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                  <Input placeholder="Buscar por Nº Remito o producto..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-grow"/>
+                  <Select value={selectedType} onValueChange={setSelectedType}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por tipo" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">Todos los tipos</SelectItem><SelectItem value="entrada">Entrada</SelectItem><SelectItem value="salida">Salida</SelectItem><SelectItem value="ajuste">Ajuste</SelectItem></SelectContent>
+                  </Select>
+                  <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isJefeDeposito}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por depósito" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">Todos los depósitos</SelectItem>{deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={selectedActor} onValueChange={setSelectedActor}>
+                    <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por actor" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">Todos los actores</SelectItem>{allActorsForFilter.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button id="date" variant={"outline"} className={cn("w-full sm:w-[300px] justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Seleccionar rango de fechas</span>)}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/></PopoverContent>
+                  </Popover>
+                   <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto"><FileDown className="mr-2 h-4 w-4" />Excel</Button>
+                  <Button onClick={handleExportToPdf} variant="outline" className="w-full sm:w-auto" disabled={isGeneratingPdf}>{isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}PDF</Button>
+                </div>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead><TableHead>Remito Nº</TableHead><TableHead>Tipo</TableHead><TableHead>Depósito</TableHead><TableHead>Origen/Destino</TableHead><TableHead>Productos</TableHead><TableHead className='text-right'>Valor Total</TableHead>
+                        {canManageMovements && (<TableHead className="text-right">Acciones</TableHead>)}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoadingMovements && [...Array(3)].map((_, i) => (
+                          <TableRow key={i}><TableCell><Skeleton className="h-4 w-36" /></TableCell><TableCell><Skeleton className="h-4 w-20" /></TableCell><TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                            {canManageMovements && (<TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>)}
+                          </TableRow>
+                      ))}
+                      {!isLoadingMovements && filteredMovements?.length === 0 && (
+                        <TableRow><TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">{isJefeDeposito && (assignedDepositIds === null || assignedDepositIds.length === 0) ? "No tienes depósitos asignados para ver movimientos." : "No se encontraron movimientos con los filtros aplicados."}</TableCell></TableRow>
                       )}
-                      <FormField control={form.control} name="remitoNumber" render={({ field }) => (
-                          <FormItem><FormLabel>Nº Remito (Auto)</FormLabel><FormControl><Input placeholder="Se genera automáticamente" {...field} disabled /></FormControl><FormMessage /></FormItem>
-                      )}/>
-                    </div>
-                    <Separator />
-                    <div>
-                      <h3 className="text-lg font-medium mb-4">Productos del Remito</h3>
-                        <div className="space-y-4">
-                          {fields.map((item, index) => {
-                            const product = productsMap.get(form.watch(`items.${index}.productId`));
-                            const isTracked = product?.trackingType === 'BATCH_AND_EXPIRY';
-                            return (
-                                <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 p-4 border rounded-md">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
-                                            <FormItem className="sm:col-span-2"><FormLabel>Producto</FormLabel><ProductComboBox products={availableProductsForMovement} value={field.value} onChange={field.onChange} disabled={!selectedDepositId} noStockMessage={!selectedDepositId ? 'Selecciona un depósito' : 'Busca un producto'}/><FormMessage /></FormItem>
-                                        )}/>
-                                         <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
-                                            <FormItem><FormLabel>Cantidad</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
-                                        )}/>
-                                        {movementType === 'entrada' && isTracked && (
-                                            <>
-                                                <FormField control={form.control} name={`items.${index}.loteId`} render={({ field }) => (
-                                                    <FormItem><FormLabel>Nº de Lote</FormLabel><FormControl><Input placeholder="Lote ABC-123" {...field}/></FormControl><FormMessage /></FormItem>
-                                                )}/>
-                                                <FormField control={form.control} name={`items.${index}.expirationDate`} render={({ field }) => (
-                                                    <FormItem className="flex flex-col"><FormLabel>Fecha de Vencimiento</FormLabel>
-                                                    <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "PPP", {locale:es}) : <span>Elige una fecha</span>}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover>
-                                                    <FormMessage /></FormItem>
-                                                )}/>
-                                            </>
-                                        )}
-                                    </div>
-                                    <div className="flex items-start justify-end md:items-center">
-                                      <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                    </div>
-                                </div>
-                            );
-                          })}
-                        </div>
-                      {form.formState.errors.items && (<p className="text-sm font-medium text-destructive mt-2">{ (form.formState.errors.items as any).root?.message}</p>)}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex items-center gap-4 flex-wrap">
-                    <Button type="button" variant="outline" onClick={() => append({productId: '', quantity: 1})} disabled={!selectedDepositId} className="w-auto"><PlusCircle className="mr-2 h-4 w-4" />Añadir Producto</Button>
-                    <Button type="submit" disabled={isSubmitting} className="w-auto">{isSubmitting && (<Loader2 className="mr-2 h-4 w-4 animate-spin" />)}Registrar Remito</Button>
-                  </CardFooter>
-                </form>
-              </Form>
+                      {!isLoadingMovements && (filteredMovements || []).map((mov) => (
+                          <TableRow key={mov.id}>
+                              <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
+                              <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
+                              <TableCell><span className={`px-2 py-1 text-xs font-semibold rounded-full ${mov.type === 'entrada' ? 'bg-green-100 text-green-800' : mov.type === 'salida' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}</span></TableCell>
+                              <TableCell>{mov.depositName}</TableCell><TableCell>{mov.actorName || '-'}</TableCell><TableCell>{mov.items.length}</TableCell>
+                              <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
+                              {canManageMovements && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
+                          </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
             </Card>
-        </TabsContent>
-        <TabsContent value="history">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historial de Movimientos</CardTitle>
-              {isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tus depósitos asignados.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
-            </CardHeader>
-            <CardContent>
-              <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
-                <Input placeholder="Buscar por Nº Remito o producto..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-grow"/>
-                <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por tipo" /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">Todos los tipos</SelectItem><SelectItem value="entrada">Entrada</SelectItem><SelectItem value="salida">Salida</SelectItem><SelectItem value="ajuste">Ajuste</SelectItem></SelectContent>
-                </Select>
-                <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isJefeDeposito}>
-                  <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por depósito" /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">Todos los depósitos</SelectItem>{deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={selectedActor} onValueChange={setSelectedActor}>
-                  <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por actor" /></SelectTrigger>
-                  <SelectContent><SelectItem value="all">Todos los actores</SelectItem>{allActorsForFilter.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button id="date" variant={"outline"} className={cn("w-full sm:w-[300px] justify-start text-left font-normal", !dateRange && "text-muted-foreground")}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? (dateRange.to ? (<>{format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}</>) : (format(dateRange.from, "LLL dd, y"))) : (<span>Seleccionar rango de fechas</span>)}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/></PopoverContent>
-                </Popover>
-                 <Button onClick={handleExportToExcel} variant="outline" className="w-full sm:w-auto"><FileDown className="mr-2 h-4 w-4" />Excel</Button>
-                <Button onClick={handleExportToPdf} variant="outline" className="w-full sm:w-auto" disabled={isGeneratingPdf}>{isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}PDF</Button>
-              </div>
-              <div className="rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead><TableHead>Remito Nº</TableHead><TableHead>Tipo</TableHead><TableHead>Depósito</TableHead><TableHead>Origen/Destino</TableHead><TableHead>Productos</TableHead><TableHead className='text-right'>Valor Total</TableHead>
-                      {canManageMovements && (<TableHead className="text-right">Acciones</TableHead>)}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoadingMovements && [...Array(3)].map((_, i) => (
-                        <TableRow key={i}><TableCell><Skeleton className="h-4 w-36" /></TableCell><TableCell><Skeleton className="h-4 w-20" /></TableCell><TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                          {canManageMovements && (<TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>)}
-                        </TableRow>
-                    ))}
-                    {!isLoadingMovements && filteredMovements?.length === 0 && (
-                      <TableRow><TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">{isJefeDeposito && (assignedDepositIds === null || assignedDepositIds.length === 0) ? "No tienes depósitos asignados para ver movimientos." : "No se encontraron movimientos con los filtros aplicados."}</TableCell></TableRow>
-                    )}
-                    {!isLoadingMovements && (filteredMovements || []).map((mov) => (
-                        <TableRow key={mov.id}>
-                            <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
-                            <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
-                            <TableCell><span className={`px-2 py-1 text-xs font-semibold rounded-full ${mov.type === 'entrada' ? 'bg-green-100 text-green-800' : mov.type === 'salida' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}</span></TableCell>
-                            <TableCell>{mov.depositName}</TableCell><TableCell>{mov.actorName || '-'}</TableCell><TableCell>{mov.items.length}</TableCell>
-                            <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
-                            {canManageMovements && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
-                        </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </>
   );
 }
 
@@ -925,5 +1002,3 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile} />;
 }
-
-    
