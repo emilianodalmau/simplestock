@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, type SubmitHandler, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Image from 'next/image';
@@ -88,7 +88,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Edit, Trash2, FileUp, FileDown, Info, ChevronLeft, ChevronRight, ScanLine, Box } from 'lucide-react';
+import { Loader2, Edit, Trash2, FileUp, FileDown, Info, ChevronLeft, ChevronRight, ScanLine, Box, PlusCircle } from 'lucide-react';
 import { MultiSelect, type Option } from '@/components/ui/multi-select';
 import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
@@ -96,6 +96,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { getProductInfoFromBarcode } from '@/lib/actions';
 import { useI18n } from '@/i18n/i18n-provider';
+import { ProductComboBox } from '@/components/ui/product-combobox';
 
 const unitTypes = [
   'unidades',
@@ -107,24 +108,45 @@ const unitTypes = [
 ] as const;
 
 const formSchema = z.object({
-  name: z
-    .string()
-    .min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
+  productType: z.enum(['SIMPLE', 'COMBO']),
+  name: z.string().min(3, { message: 'El nombre debe tener al menos 3 caracteres.' }),
   barcode: z.string().optional(),
   imageUrl: z.string().url({ message: "Por favor, ingresa una URL válida." }).optional().or(z.literal('')),
   categoryId: z.string().min(1, { message: 'La categoría es requerida.' }),
   supplierId: z.string().min(1, { message: 'El proveedor es requerido.' }),
-  price: z.coerce.number().min(0, { message: 'El precio no puede ser negativo.'}),
-  costPrice: z.coerce.number().min(0, { message: 'El precio de costo no puede ser negativo.' }),
-  minStock: z.coerce
-    .number()
-    .min(0, { message: 'El stock mínimo no puede ser negativo.' }),
-  unit: z.enum(unitTypes, {
-    required_error: 'El tipo de unidad es requerido.',
-  }),
-  depositIds: z.array(z.string()).min(1, { message: "Debe seleccionar al menos un depósito."}),
-  trackingType: z.enum(['NONE', 'BATCH_AND_EXPIRY']),
+  price: z.coerce.number().min(0, { message: 'El precio no puede ser negativo.' }),
+  // Campos opcionales para producto simple
+  costPrice: z.coerce.number().min(0, { message: 'El precio de costo no puede ser negativo.' }).optional(),
+  minStock: z.coerce.number().min(0, { message: 'El stock mínimo no puede ser negativo.' }).optional(),
+  unit: z.enum(unitTypes).optional(),
+  depositIds: z.array(z.string()).optional(),
+  trackingType: z.enum(['NONE', 'BATCH_AND_EXPIRY']).optional(),
+  // Campo para combo
+  components: z.array(z.object({
+    productId: z.string().min(1, { message: "Debes seleccionar un producto." }),
+    quantity: z.coerce.number().min(0.01, { message: "La cantidad debe ser positiva." }),
+  })).optional(),
+}).superRefine((data, ctx) => {
+  if (data.productType === 'COMBO' && (!data.components || data.components.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Un combo debe tener al menos un componente.",
+      path: ["components"],
+    });
+  }
+  if (data.productType === 'SIMPLE') {
+    if (data.depositIds === undefined || data.depositIds.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Debe seleccionar al menos un depósito.", path: ["depositIds"] });
+    }
+    if (data.unit === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "El tipo de unidad es requerido.", path: ["unit"] });
+    }
+    if (data.trackingType === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "El tipo de seguimiento es requerido.", path: ["trackingType"] });
+    }
+  }
 });
+
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -155,6 +177,8 @@ type Product = {
   costPrice: number;
   minStock: number;
   unit: (typeof unitTypes)[number];
+  productType: 'SIMPLE' | 'COMBO';
+  components?: { productId: string; quantity: number }[];
   trackingType: 'NONE' | 'BATCH_AND_EXPIRY';
   isArchived?: boolean;
   depositIds?: string[];
@@ -316,6 +340,9 @@ export default function ProductosPage() {
   useEffect(() => {
     fetchProducts();
   }, [collectionPrefix]); // Refetch when collectionPrefix changes
+  
+  const simpleProducts = useMemo(() => products?.filter(p => p.productType === 'SIMPLE'), [products]);
+
 
   const productCount = products?.length ?? 0;
   const atLimit = (workspaceData?.subscription?.limits?.maxProducts ?? 0) <= productCount;
@@ -342,6 +369,7 @@ export default function ProductosPage() {
   const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      productType: 'SIMPLE',
       name: '',
       barcode: '',
       imageUrl: '',
@@ -353,27 +381,31 @@ export default function ProductosPage() {
       unit: 'unidades',
       depositIds: [],
       trackingType: 'NONE',
+      components: [],
     },
+  });
+  
+  const { fields: componentFields, append: appendComponent, remove: removeComponent } = useFieldArray({
+    control: createForm.control,
+    name: "components"
   });
 
   const editForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
   });
 
+   const { fields: editComponentFields, append: editAppendComponent, remove: editRemoveComponent } = useFieldArray({
+    control: editForm.control,
+    name: "components"
+  });
+
   useEffect(() => {
     if (editingProduct) {
       editForm.reset({
-        name: editingProduct.name,
-        barcode: editingProduct.barcode || '',
-        imageUrl: editingProduct.imageUrl || '',
-        categoryId: editingProduct.categoryId,
-        supplierId: editingProduct.supplierId,
-        price: editingProduct.price || 0,
-        costPrice: editingProduct.costPrice || 0,
+        ...editingProduct,
         minStock: editingProduct.minStock || 0,
-        unit: editingProduct.unit,
-        depositIds: editingProduct.depositIds || [],
-        trackingType: editingProduct.trackingType || 'NONE',
+        costPrice: editingProduct.costPrice || 0,
+        components: editingProduct.components || [],
       });
       setEditImagePreview(editingProduct.imageUrl || null);
       setEditImageFile(null);
@@ -429,28 +461,57 @@ export default function ProductosPage() {
       }
 
       const productCode = generateProductCode(data.name);
-      await addDoc(collection(firestore, `${collectionPrefix}/products`), {
-        ...data,
-        imageUrl: finalImageUrl,
-        code: productCode,
-        isArchived: false,
-        createdAt: serverTimestamp(),
-      });
+      
+      let productData: any;
+      if (data.productType === 'COMBO') {
+        productData = {
+          name: data.name,
+          barcode: data.barcode,
+          categoryId: data.categoryId,
+          supplierId: data.supplierId,
+          price: data.price,
+          productType: 'COMBO',
+          components: data.components,
+          imageUrl: finalImageUrl,
+          code: productCode,
+          isArchived: false,
+          createdAt: serverTimestamp(),
+          // Default values for fields not applicable to combos
+          costPrice: 0,
+          minStock: 0,
+          unit: 'unidades',
+          depositIds: [],
+          trackingType: 'NONE',
+        };
+      } else {
+        productData = {
+            ...data,
+            imageUrl: finalImageUrl,
+            code: productCode,
+            isArchived: false,
+            createdAt: serverTimestamp(),
+        };
+        delete productData.components;
+      }
+      
+      await addDoc(collection(firestore, `${collectionPrefix}/products`), productData);
+
       toast({
         title: 'Producto Creado',
         description: `El producto "${data.name}" con código "${productCode}" ha sido agregado.`,
       });
       // Smart form reset
       createForm.reset({
-        ...data, // Keep previous data
-        name: '', // Clear only name
+        ...data, // Keep previous data like category
+        productType: data.productType,
+        name: '',
         barcode: '',
         imageUrl: '',
         price: 0,
         costPrice: 0,
-        minStock: 0, // Reset minStock
+        minStock: 0,
         depositIds: [],
-        trackingType: 'NONE',
+        components: [],
       });
       setImageFile(null);
       setImagePreview(null);
@@ -480,12 +541,35 @@ export default function ProductosPage() {
         finalImageUrl = await getDownloadURL(storageRef);
       }
 
+      let productData: any;
+      if (data.productType === 'COMBO') {
+        productData = {
+          name: data.name,
+          barcode: data.barcode,
+          categoryId: data.categoryId,
+          supplierId: data.supplierId,
+          price: data.price,
+          productType: 'COMBO',
+          components: data.components,
+          imageUrl: finalImageUrl,
+          // Default values for fields not applicable to combos
+          costPrice: 0,
+          minStock: 0,
+          unit: 'unidades',
+          depositIds: [],
+          trackingType: 'NONE',
+        };
+      } else { // SIMPLE
+        productData = { ...data };
+        delete productData.components;
+      }
+      productData.imageUrl = finalImageUrl;
+      productData.updatedAt = serverTimestamp();
+
+
       const productRef = doc(firestore, `${collectionPrefix}/products`, editingProduct.id);
-      await updateDoc(productRef, {
-        ...data,
-        imageUrl: finalImageUrl,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(productRef, productData);
+
       toast({
         title: 'Producto Actualizado',
         description: `El producto "${data.name}" ha sido actualizado.`,
@@ -666,6 +750,7 @@ export default function ProductosPage() {
             isArchived: false,
             createdAt: serverTimestamp(),
             trackingType: 'NONE', // Default tracking type for imports
+            productType: 'SIMPLE',
           });
           productsCreated++;
         }
@@ -733,6 +818,9 @@ export default function ProductosPage() {
       setSelectedProducts(prev => prev.filter(id => id !== productId));
     }
   };
+  
+  const productType = createForm.watch('productType');
+  const editProductType = editForm.watch('productType');
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -766,13 +854,31 @@ export default function ProductosPage() {
                   onSubmit={createForm.handleSubmit(onCreateSubmit)}
                   className="space-y-6"
                 >
+                  <FormField
+                    control={createForm.control}
+                    name="productType"
+                    render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                        <FormLabel>Tipo de Producto</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent>
+                                <SelectItem value="SIMPLE">Simple (con stock físico)</SelectItem>
+                                <SelectItem value="COMBO">Combo / Kit</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                   />
+
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                     <FormField
                       control={createForm.control}
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nombre del Producto</FormLabel>
+                          <FormLabel>Nombre del Producto / Combo</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="Ej: Martillo de Goma"
@@ -802,6 +908,19 @@ export default function ProductosPage() {
                                 <FormMessage />
                             </FormItem>
                         )}
+                    />
+                     <FormField
+                      control={createForm.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Precio de Venta</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="Ej: 1500.50" {...field} disabled={atLimit}/>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                     <div className="lg:col-span-3">
                         <FormLabel>Imagen del Producto</FormLabel>
@@ -926,114 +1045,144 @@ export default function ProductosPage() {
                         </FormItem>
                       )}
                     />
-                    <FormField
-                      control={createForm.control}
-                      name="depositIds"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                            <FormLabel>Depósitos Asignados</FormLabel>
-                            <MultiSelect 
-                                options={depositOptions}
-                                selected={field.value}
-                                onChange={field.onChange}
+                    
+                    {productType === 'SIMPLE' && (
+                        <>
+                            <FormField
+                            control={createForm.control}
+                            name="depositIds"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-col">
+                                    <FormLabel>Depósitos Asignados</FormLabel>
+                                    <MultiSelect 
+                                        options={depositOptions}
+                                        selected={field.value || []}
+                                        onChange={field.onChange}
+                                    />
+                                    <FormMessage />
+                                </FormItem>
+                            )}
                             />
-                            <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                     <FormField
-                      control={createForm.control}
-                      name="unit"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Tipo de Unidad</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            disabled={atLimit}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecciona una unidad" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {unitTypes.map((unit) => (
-                                <SelectItem key={unit} value={unit}>
-                                  {unit.charAt(0).toUpperCase() + unit.slice(1)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                     <FormField
-                      control={createForm.control}
-                      name="price"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Precio de Venta</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="Ej: 1500.50" {...field} disabled={atLimit}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={createForm.control}
-                      name="costPrice"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{dictionary.pages.productos.costPriceLabel}</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="Ej: 1200.00" {...field} disabled={atLimit}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={createForm.control}
-                      name="minStock"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Stock Mínimo (Alerta)</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="Ej: 10" {...field} disabled={atLimit}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                     <FormField
-                      control={createForm.control}
-                      name="trackingType"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Tipo de Seguimiento</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            disabled={atLimit}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecciona un tipo" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="NONE">Sin seguimiento (Solo Cantidad)</SelectItem>
-                              <SelectItem value="BATCH_AND_EXPIRY">Por Lote y Vencimiento</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormField
+                            control={createForm.control}
+                            name="unit"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Tipo de Unidad</FormLabel>
+                                <Select
+                                    onValueChange={field.onChange}
+                                    value={field.value}
+                                    disabled={atLimit}
+                                >
+                                    <FormControl>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecciona una unidad" />
+                                    </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                    {unitTypes.map((unit) => (
+                                        <SelectItem key={unit} value={unit}>
+                                        {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                                        </SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                            />
+                             <FormField
+                              control={createForm.control}
+                              name="costPrice"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>{dictionary.pages.productos.costPriceLabel}</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" placeholder="Ej: 1200.00" {...field} value={field.value || ''} disabled={atLimit}/>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                            control={createForm.control}
+                            name="minStock"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Stock Mínimo (Alerta)</FormLabel>
+                                <FormControl>
+                                    <Input type="number" placeholder="Ej: 10" {...field} value={field.value || ''} disabled={atLimit}/>
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                            />
+                            <FormField
+                            control={createForm.control}
+                            name="trackingType"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Tipo de Seguimiento</FormLabel>
+                                <Select
+                                    onValueChange={field.onChange}
+                                    value={field.value}
+                                    disabled={atLimit}
+                                >
+                                    <FormControl>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecciona un tipo" />
+                                    </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                    <SelectItem value="NONE">Sin seguimiento (Solo Cantidad)</SelectItem>
+                                    <SelectItem value="BATCH_AND_EXPIRY">Por Lote y Vencimiento</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                            />
+                        </>
+                    )}
                   </div>
+                  {productType === 'COMBO' && (
+                    <div className="space-y-4 pt-4 border-t">
+                        <div className="flex justify-between items-center">
+                            <FormLabel>Componentes del Combo</FormLabel>
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendComponent({productId: '', quantity: 1})}><PlusCircle className="mr-2"/>Añadir Componente</Button>
+                        </div>
+                        {componentFields.map((field, index) => (
+                            <div key={field.id} className="grid grid-cols-[1fr_100px_auto] gap-2 items-start">
+                                 <FormField
+                                    control={createForm.control}
+                                    name={`components.${index}.productId`}
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <ProductComboBox products={simpleProducts || []} value={field.value} onChange={field.onChange} noStockMessage="Seleccionar componente..."/>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={createForm.control}
+                                    name={`components.${index}.quantity`}
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormControl><Input type="number" placeholder="Cant." {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <Button type="button" variant="ghost" size="icon" onClick={() => removeComponent(index)}>
+                                    <Trash2 className="text-destructive"/>
+                                </Button>
+                            </div>
+                        ))}
+                         {createForm.formState.errors.components && (
+                            <p className="text-sm font-medium text-destructive">{createForm.formState.errors.components.root?.message || createForm.formState.errors.components.message}</p>
+                         )}
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="submit"
@@ -1238,7 +1387,7 @@ export default function ProductosPage() {
                             )}
                           </TableCell>
                           <TableCell className="font-mono hidden md:table-cell">{product.code}</TableCell>
-                          <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell className="font-medium">{product.name} {product.productType === 'COMBO' && <Badge variant="outline">Combo</Badge>}</TableCell>
                           <TableCell className="text-muted-foreground">{getCategoryName(product.categoryId)}</TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
@@ -1337,7 +1486,7 @@ export default function ProductosPage() {
         open={!!editingProduct}
         onOpenChange={(isOpen) => !isOpen && setEditingProduct(null)}
       >
-        <DialogContent className="sm:max-w-[625px]">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Editar Producto</DialogTitle>
             <DialogDescription>
@@ -1347,8 +1496,25 @@ export default function ProductosPage() {
           <Form {...editForm}>
             <form
               onSubmit={editForm.handleSubmit(onEditSubmit)}
-              className="space-y-6"
+              className="space-y-6 max-h-[70vh] overflow-y-auto pr-6"
             >
+                <FormField
+                    control={editForm.control}
+                    name="productType"
+                    render={({ field }) => (
+                        <FormItem className="max-w-xs">
+                        <FormLabel>Tipo de Producto</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent>
+                                <SelectItem value="SIMPLE">Simple (con stock físico)</SelectItem>
+                                <SelectItem value="COMBO">Combo / Kit</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={editForm.control}
@@ -1487,7 +1653,22 @@ export default function ProductosPage() {
                   </FormItem>
                 )}
               />
-               <FormField
+              <FormField
+                control={editForm.control}
+                name="price"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Precio de Venta</FormLabel>
+                    <FormControl>
+                        <Input type="number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+            {editProductType === 'SIMPLE' && (
+                <>
+                <FormField
                 control={editForm.control}
                 name="depositIds"
                 render={({ field }) => (
@@ -1495,7 +1676,7 @@ export default function ProductosPage() {
                       <FormLabel>Depósitos Asignados</FormLabel>
                       <MultiSelect 
                           options={depositOptions}
-                          selected={field.value}
+                          selected={field.value || []}
                           onChange={field.onChange}
                       />
                       <FormMessage />
@@ -1544,19 +1725,6 @@ export default function ProductosPage() {
               />
               <FormField
                 control={editForm.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Precio de Venta</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
                 name="minStock"
                 render={({ field }) => (
                   <FormItem>
@@ -1592,8 +1760,49 @@ export default function ProductosPage() {
                     </FormItem>
                   )}
                 />
+              </>
+            )}
               </div>
-              <DialogFooter>
+                {editProductType === 'COMBO' && (
+                    <div className="space-y-4 pt-4 border-t">
+                        <div className="flex justify-between items-center">
+                            <FormLabel>Componentes del Combo</FormLabel>
+                            <Button type="button" variant="outline" size="sm" onClick={() => editAppendComponent({productId: '', quantity: 1})}><PlusCircle className="mr-2"/>Añadir Componente</Button>
+                        </div>
+                        {editComponentFields.map((field, index) => (
+                            <div key={field.id} className="grid grid-cols-[1fr_100px_auto] gap-2 items-start">
+                                 <FormField
+                                    control={editForm.control}
+                                    name={`components.${index}.productId`}
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <ProductComboBox products={simpleProducts || []} value={field.value} onChange={field.onChange} noStockMessage="Seleccionar componente..."/>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={editForm.control}
+                                    name={`components.${index}.quantity`}
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormControl><Input type="number" placeholder="Cant." {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <Button type="button" variant="ghost" size="icon" onClick={() => editRemoveComponent(index)}>
+                                    <Trash2 className="text-destructive"/>
+                                </Button>
+                            </div>
+                        ))}
+                         {editForm.formState.errors.components && (
+                            <p className="text-sm font-medium text-destructive">{editForm.formState.errors.components.root?.message || editForm.formState.errors.components.message}</p>
+                         )}
+                    </div>
+                  )}
+
+              <DialogFooter className="pt-4">
                 <DialogClose asChild>
                   <Button variant="outline">Cancelar</Button>
                 </DialogClose>

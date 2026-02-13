@@ -9,6 +9,11 @@ export type Product = {
   imageUrl?: string;
   price: number;
   costPrice: number;
+  productType: 'SIMPLE' | 'COMBO';
+  components?: {
+    productId: string;
+    quantity: number;
+  }[];
   trackingType: 'NONE' | 'BATCH_AND_EXPIRY';
   isArchived?: boolean;
   depositIds?: string[];
@@ -138,5 +143,3 @@ export type Workspace = {
     id: string;
     name: string;
 }
-
-    
