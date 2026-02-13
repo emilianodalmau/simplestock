@@ -40,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowUpDown, FileDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useI18n } from '@/i18n/i18n-provider';
+import { Badge } from '@/components/ui/badge';
 
 // Data types from Firestore
 type Product = {
@@ -52,6 +53,8 @@ type Product = {
   price: number;
   costPrice: number;
   depositIds?: string[];
+  productType?: 'SIMPLE' | 'COMBO';
+  components?: { productId: string; quantity: number }[];
 };
 
 type Category = {
@@ -93,6 +96,7 @@ type InventoryItem = {
   totalCost: number;
   unit: string;
   status: StockStatus;
+  productType?: 'SIMPLE' | 'COMBO';
 };
 
 type SortConfig = {
@@ -199,9 +203,9 @@ export default function InventarioPage() {
     }
 
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
+    const productsMap = new Map(products.map((p) => [p.id, p]));
     const stockMap = new Map<string, number>();
     
-    // Filter inventory by selected deposit first, or use all inventory if 'all' is selected
     const relevantInventory = selectedDeposit === 'all' 
       ? inventory 
       : inventory.filter(stock => stock.depositId === selectedDeposit);
@@ -210,21 +214,47 @@ export default function InventarioPage() {
       const currentStock = stockMap.get(stockItem.productId) || 0;
       stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
     }
-
-    // If a deposit is selected, only show products assigned to that deposit.
+    
     const productsInScope = selectedDeposit === 'all'
       ? products
-      : products.filter(p => p.depositIds?.includes(selectedDeposit));
+      : products.filter(p => p.productType === 'COMBO' || p.depositIds?.includes(selectedDeposit));
+
 
     const combinedData: InventoryItem[] = productsInScope.map((product) => {
-      const totalStock = stockMap.get(product.id) || 0;
+        let totalStock: number;
+        let totalCost: number;
+        let unit: string = product.unit;
+
+        if (product.productType === 'COMBO') {
+            let maxKits = Infinity;
+            let componentsCost = 0;
+            if (product.components && product.components.length > 0) {
+                for (const component of product.components) {
+                    const componentStock = stockMap.get(component.productId) || 0;
+                    const possibleSets = Math.floor(componentStock / component.quantity);
+                    if (possibleSets < maxKits) {
+                        maxKits = possibleSets;
+                    }
+                    const componentProduct = productsMap.get(component.productId);
+                    componentsCost += (componentProduct?.costPrice || 0) * component.quantity;
+                }
+            } else {
+                maxKits = 0;
+            }
+            totalStock = maxKits === Infinity ? 0 : maxKits;
+            totalCost = totalStock * componentsCost;
+            unit = 'combo';
+        } else {
+            totalStock = stockMap.get(product.id) || 0;
+            totalCost = (product.costPrice || 0) * totalStock;
+        }
+
       const minStock = product.minStock;
       const totalValue = (product.price || 0) * totalStock;
-      const totalCost = (product.costPrice || 0) * totalStock;
       let status: StockStatus = 'En Stock';
       if (totalStock === 0) {
         status = 'Sin Stock';
-      } else if (totalStock <= minStock) {
+      } else if (totalStock <= minStock && product.productType !== 'COMBO') { // Min stock alert doesn't apply to combos
         status = 'Stock Bajo';
       }
 
@@ -235,11 +265,12 @@ export default function InventarioPage() {
         categoryId: product.categoryId,
         categoryName: categoryMap.get(product.categoryId) || 'Sin categoría',
         totalStock: totalStock,
-        minStock: minStock,
+        minStock: product.productType === 'COMBO' ? 0 : minStock,
         totalValue: totalValue,
         totalCost: totalCost,
-        unit: product.unit,
+        unit: unit,
         status: status,
+        productType: product.productType,
       };
     });
 
@@ -291,7 +322,7 @@ export default function InventarioPage() {
     inventory,
     searchTerm,
     selectedCategory,
-    selectedDeposit, // Add dependency
+    selectedDeposit,
     selectedStatus,
     sortConfig,
   ]);
@@ -299,6 +330,23 @@ export default function InventarioPage() {
   // Memoize data for the detail modal, now with aggregation
   const productStockDetails = useMemo(() => {
     if (!selectedProduct || !inventory || !deposits) return [];
+
+    if (selectedProduct.productType === 'COMBO') {
+        const combo = products?.find(p => p.id === selectedProduct.productId);
+        if (!combo || !combo.components) return [];
+
+        const componentDetails = combo.components.map(comp => {
+            const componentProduct = products?.find(p => p.id === comp.productId);
+            const totalStock = Array.from(inventory.values())
+                                    .filter(inv => inv.productId === comp.productId)
+                                    .reduce((sum, inv) => sum + inv.quantity, 0);
+            return {
+                depositName: componentProduct?.name || 'Componente desconocido',
+                quantity: `${totalStock} ${componentProduct?.unit || ''} (Req: ${comp.quantity} por combo)`
+            };
+        });
+        return componentDetails;
+    }
     
     // Non-jefes see all deposits, so we need the full deposit map.
     // Jefes only see their own deposit.
@@ -321,9 +369,9 @@ export default function InventarioPage() {
     // Create the final details array from the aggregated map
     return Array.from(stockByDeposit.entries()).map(([depositId, quantity]) => ({
       depositName: depositMap.get(depositId) || 'Depósito desconocido',
-      quantity: quantity,
+      quantity: `${quantity} ${selectedProduct?.unit}`,
     }));
-  }, [selectedProduct, inventory, deposits, isJefeDeposito, assignedDepositId]);
+  }, [selectedProduct, inventory, deposits, isJefeDeposito, assignedDepositId, products]);
   
   const requestSort = (key: keyof InventoryItem) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -523,7 +571,10 @@ export default function InventarioPage() {
                   processedInventoryData.map((item) => (
                     <TableRow key={item.productId} onClick={() => setSelectedProduct(item)} className="cursor-pointer">
                       <TableCell>
-                        <div className="font-medium">{item.productName}</div>
+                        <div className="font-medium flex items-center gap-2">
+                            {item.productName}
+                            {item.productType === 'COMBO' && <Badge variant="outline">Combo</Badge>}
+                        </div>
                         <div className="text-sm text-muted-foreground font-mono">
                           {item.productCode}
                         </div>
@@ -535,7 +586,7 @@ export default function InventarioPage() {
                         {`${item.totalStock} ${item.unit}`}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
-                        {`${item.minStock} ${item.unit}`}
+                        {item.productType !== 'COMBO' ? `${item.minStock} ${item.unit}` : '-'}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatPrice(item.totalCost)}
@@ -560,7 +611,10 @@ export default function InventarioPage() {
           <DialogHeader>
             <DialogTitle>{selectedProduct?.productName}</DialogTitle>
             <DialogDescription>
-              Desglose de stock por depósito. Stock total: {selectedProduct?.totalStock} {selectedProduct?.unit}.
+              {selectedProduct?.productType === 'COMBO' 
+                ? `Desglose de componentes. Stock disponible para armar: ${selectedProduct?.totalStock}`
+                : `Desglose de stock por depósito. Stock total: ${selectedProduct?.totalStock} ${selectedProduct?.unit}.`
+              }
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4">
@@ -568,7 +622,7 @@ export default function InventarioPage() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Depósito</TableHead>
+                            <TableHead>{selectedProduct?.productType === 'COMBO' ? 'Componente' : 'Depósito'}</TableHead>
                             <TableHead className="text-right">Cantidad</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -576,7 +630,7 @@ export default function InventarioPage() {
                         {productStockDetails.map((detail, index) => (
                             <TableRow key={index}>
                                 <TableCell className="font-medium">{detail.depositName}</TableCell>
-                                <TableCell className="text-right">{`${detail.quantity} ${selectedProduct?.unit}`}</TableCell>
+                                <TableCell className="text-right">{detail.quantity}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -592,3 +646,4 @@ export default function InventarioPage() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -397,11 +398,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     if (!products || !selectedDepositId) return [];
 
     const productsInDeposit = products.filter(
-        (p) => !p.isArchived && p.depositIds?.includes(selectedDepositId)
+        (p) => !p.isArchived && (p.productType === 'COMBO' || p.depositIds?.includes(selectedDepositId))
     );
 
     if (movementType === 'entrada') {
-        return productsInDeposit;
+        return productsInDeposit.filter(p => p.productType !== 'COMBO'); // Cannot stock a combo
     }
 
     if (movementType === 'salida') {
@@ -411,7 +412,15 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 .filter(stockItem => stockItem.depositId === selectedDepositId && stockItem.quantity > 0)
                 .map(stockItem => stockItem.productId)
         );
-        return productsInDeposit.filter(product => productsWithStockInDeposit.has(product.id));
+        
+        return productsInDeposit.filter(product => {
+            if (product.productType === 'COMBO') {
+                if (!product.components) return false;
+                 // A combo is available if all its components are available
+                return product.components.every(comp => productsWithStockInDeposit.has(comp.productId));
+            }
+            return productsWithStockInDeposit.has(product.id);
+        });
     }
     
     return [];
@@ -450,7 +459,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         return;
     }
 
-    if (movementType === 'salida') {
+    if (movementType === 'salida' && product.productType !== 'COMBO') {
         const availableStock = stockForSelectedDeposit.get(product.id) || 0;
         if (quantity > availableStock) {
             toast({
@@ -499,7 +508,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
     if (existingItemIndex > -1) {
         const newQuantity = currentItems[existingItemIndex].quantity + scannedQuantity;
-        if (movementType === 'salida') {
+        if (movementType === 'salida' && scannedProduct.productType !== 'COMBO') {
             const availableStock = stockForSelectedDeposit.get(scannedProduct.id) || 0;
             if (newQuantity > availableStock) {
                  toast({
@@ -517,7 +526,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         });
 
     } else {
-        if (movementType === 'salida') {
+        if (movementType === 'salida' && scannedProduct.productType !== 'COMBO') {
             const availableStock = stockForSelectedDeposit.get(scannedProduct.id) || 0;
             if (scannedQuantity > availableStock) {
                 toast({
@@ -541,139 +550,121 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const onSubmit: SubmitHandler<MovementFormValues> = async (data) => {
     if (!firestore || !user || !productsMap.size || !collectionPrefix || !workspaceId) return;
     setIsSubmitting(true);
-
-    const batchReads: { ref: any, itemIndex: number, selectionIndex?: number }[] = [];
     
-    data.items.forEach((item, itemIndex) => {
+    const totalMovementValue = data.items.reduce((acc, item) => {
         const product = productsMap.get(item.productId);
-        if (data.type === 'salida' && product?.trackingType === 'BATCH_AND_EXPIRY') {
-            if (item.manualBatches && item.manualBatches.length > 0) {
-                item.manualBatches.forEach((selection, selectionIndex) => {
-                    batchReads.push({ ref: doc(firestore, `${collectionPrefix}/batches`, selection.batchId), itemIndex, selectionIndex });
-                });
-            } else {
-                // Pre-fetch for FEFO
-                 const q = query(
-                    collection(firestore, `${collectionPrefix}/batches`),
-                    where('depositId', '==', data.depositId),
-                    where('productId', '==', item.productId),
-                    where('quantity', '>', 0),
-                    orderBy('expirationDate', 'asc')
-                );
-                // In a real scenario, you'd fetch this query before the transaction.
-                // For simplicity here, we'll fetch inside, but be aware of read-after-write limitations.
-                // The current logic fetches inside the transaction which is okay as long as it's the first operation.
-            }
-        }
-    });
+        const price = product?.price || 0;
+        return acc + (price * item.quantity);
+    }, 0);
 
     try {
         await runTransaction(firestore, async (transaction) => {
             const movementDocRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
             const counterRef = doc(firestore, `${collectionPrefix}/counters/remitoCounter`);
+            const counterSnap = await transaction.get(counterRef);
             
-            const [counterSnap, ...manualBatchSnaps] = await Promise.all([
-                transaction.get(counterRef),
-                ...batchReads.map(b => transaction.get(b.ref))
-            ]);
-
             const lastNumber = counterSnap.exists() ? counterSnap.data().lastNumber : 0;
             const newRemitoNumber = lastNumber + 1;
             const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
             
             let finalMovementItems: StockMovementItem[] = [];
-            let totalMovementValue = 0;
 
-            for (const [itemIndex, formItem] of data.items.entries()) {
+            for (const formItem of data.items) {
                 const product = productsMap.get(formItem.productId);
                 if (!product) throw new Error(`Producto con ID ${formItem.productId} no encontrado.`);
 
-                const inventoryDocId = `${formItem.productId}_${data.depositId}`;
-                const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
-                
-                if (data.type === 'entrada') {
-                    transaction.set(stockDocRef, {
-                        quantity: increment(formItem.quantity), lastUpdated: serverTimestamp(), productId: formItem.productId, depositId: data.depositId,
-                    }, { merge: true });
+                if (product.productType === 'COMBO') {
+                    if (data.type === 'entrada') throw new Error('No se pueden registrar entradas de productos tipo "Combo".');
+                    if (!product.components?.length) throw new Error(`El combo "${product.name}" no tiene componentes.`);
 
-                    if (product.trackingType === 'BATCH_AND_EXPIRY') {
-                        if (!formItem.loteId || !formItem.expirationDate) throw new Error(`El producto ${product.name} requiere lote y fecha de vencimiento.`);
-                        const batchRef = doc(collection(firestore, `${collectionPrefix}/batches`));
-                        transaction.set(batchRef, {
-                            id: batchRef.id, productId: formItem.productId, depositId: data.depositId, loteId: formItem.loteId,
-                            quantity: formItem.quantity, expirationDate: formItem.expirationDate, createdAt: serverTimestamp(),
-                            workspaceId: workspaceId,
+                    for (const component of product.components) {
+                        const componentProduct = productsMap.get(component.productId);
+                        if (!componentProduct) throw new Error(`Componente con ID ${component.productId} no encontrado.`);
+
+                        const quantityToDeduct = formItem.quantity * component.quantity;
+                        const componentStockDocId = `${component.productId}_${data.depositId}`;
+                        const componentStockRef = doc(firestore, `${collectionPrefix}/inventory/${componentStockDocId}`);
+                        
+                        transaction.set(componentStockRef, { quantity: increment(-quantityToDeduct) }, { merge: true });
+
+                        const price = componentProduct.price || 0;
+                        finalMovementItems.push({
+                            productId: componentProduct.id,
+                            productName: `${componentProduct.name} (de: ${product.name})`,
+                            quantity: quantityToDeduct,
+                            unit: componentProduct.unit,
+                            price,
+                            total: price * quantityToDeduct,
                         });
                     }
-                    const price = product?.price || 0;
-                    const newItem: StockMovementItem = {
-                        productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
-                        price: price, total: price * formItem.quantity, loteId: formItem.loteId, expirationDate: formItem.expirationDate,
-                    };
-                    finalMovementItems.push(newItem);
-                    totalMovementValue += newItem.total;
+                } else { // Product is SIMPLE
+                    const inventoryDocId = `${formItem.productId}_${data.depositId}`;
+                    const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
 
-                } else { // Salida
-                    transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
+                    if (data.type === 'entrada') {
+                        transaction.set(stockDocRef, { quantity: increment(formItem.quantity), lastUpdated: serverTimestamp(), productId: formItem.productId, depositId: data.depositId }, { merge: true });
 
-                    if (product.trackingType === 'BATCH_AND_EXPIRY') {
-                        if (formItem.manualBatches && formItem.manualBatches.length > 0) {
-                            // --- MANUAL BATCH SELECTION LOGIC ---
-                            formItem.manualBatches.forEach((selection, selectionIndex) => {
-                                const batchReadIndex = batchReads.findIndex(b => b.itemIndex === itemIndex && b.selectionIndex === selectionIndex);
-                                const batchSnap = manualBatchSnaps[batchReadIndex];
-
-                                if (!batchSnap.exists() || batchSnap.data()!.quantity < selection.quantity) {
-                                    throw new Error(`Stock insuficiente para el lote ${selection.loteId}.`);
-                                }
-                                transaction.update(batchSnap.ref, { quantity: increment(-selection.quantity) });
-
-                                const price = product.price || 0;
-                                finalMovementItems.push({
-                                    productId: product.id, productName: product.name, quantity: selection.quantity, unit: product.unit,
-                                    price: price, total: price * selection.quantity, loteId: selection.loteId, expirationDate: batchSnap.data()!.expirationDate,
-                                });
-                                totalMovementValue += price * selection.quantity;
+                        if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                            if (!formItem.loteId || !formItem.expirationDate) throw new Error(`El producto ${product.name} requiere lote y fecha de vencimiento.`);
+                            const batchRef = doc(collection(firestore, `${collectionPrefix}/batches`));
+                            transaction.set(batchRef, {
+                                id: batchRef.id, productId: formItem.productId, depositId: data.depositId, loteId: formItem.loteId,
+                                quantity: formItem.quantity, expirationDate: formItem.expirationDate, createdAt: serverTimestamp(), workspaceId: workspaceId,
                             });
-                        } else {
-                            // --- AUTOMATIC FEFO LOGIC ---
-                            let quantityToDeduct = formItem.quantity;
-                            const availableBatchesQuery = query(
-                                collection(firestore, `${collectionPrefix}/batches`),
-                                where('depositId', '==', data.depositId), where('productId', '==', formItem.productId),
-                                where('quantity', '>', 0), orderBy('expirationDate', 'asc')
-                            );
-                            const availableBatchesSnap = await getDocs(availableBatchesQuery);
-                            const totalBatchStock = availableBatchesSnap.docs.reduce((sum, doc) => sum + doc.data().quantity, 0);
-
-                            if (totalBatchStock < quantityToDeduct) {
-                                throw new Error(`Stock insuficiente en lotes para ${product.name}. Disp: ${totalBatchStock}, Sol: ${quantityToDeduct}`);
-                            }
-
-                            for (const batchDoc of availableBatchesSnap.docs) {
-                                if (quantityToDeduct <= 0) break;
-                                const batchData = batchDoc.data();
-                                const stockInBatch = batchData.quantity;
-                                const deductFromThisBatch = Math.min(stockInBatch, quantityToDeduct);
-                                
-                                transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
-                                quantityToDeduct -= deductFromThisBatch;
-                                
-                                const price = product.price || 0;
-                                finalMovementItems.push({
-                                    productId: product.id, productName: product.name, quantity: deductFromThisBatch, unit: product.unit,
-                                    price: price, total: price * deductFromThisBatch, loteId: batchData.loteId, expirationDate: batchData.expirationDate,
-                                });
-                                totalMovementValue += price * deductFromThisBatch;
-                            }
                         }
-                    } else { // Product is not tracked
                         const price = product.price || 0;
                         finalMovementItems.push({
                             productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
-                            price: price, total: price * formItem.quantity,
+                            price: price, total: price * formItem.quantity, loteId: formItem.loteId, expirationDate: formItem.expirationDate,
                         });
-                        totalMovementValue += price * formItem.quantity;
+                    } else { // Salida de producto SIMPLE
+                        transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
+
+                        if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                            if (formItem.manualBatches && formItem.manualBatches.length > 0) {
+                                for (const selection of formItem.manualBatches) {
+                                    const batchRef = doc(firestore, `${collectionPrefix}/batches`, selection.batchId);
+                                    const batchSnap = await transaction.get(batchRef);
+                                    if (!batchSnap.exists() || batchSnap.data()!.quantity < selection.quantity) throw new Error(`Stock insuficiente para el lote ${selection.loteId}.`);
+                                    transaction.update(batchRef, { quantity: increment(-selection.quantity) });
+
+                                    const price = product.price || 0;
+                                    finalMovementItems.push({
+                                        productId: product.id, productName: product.name, quantity: selection.quantity, unit: product.unit,
+                                        price: price, total: price * selection.quantity, loteId: selection.loteId, expirationDate: batchSnap.data()!.expirationDate,
+                                    });
+                                }
+                            } else {
+                                let quantityToDeduct = formItem.quantity;
+                                const availableBatchesQuery = query(
+                                    collection(firestore, `${collectionPrefix}/batches`),
+                                    where('depositId', '==', data.depositId), where('productId', '==', formItem.productId),
+                                    where('quantity', '>', 0), orderBy('expirationDate', 'asc')
+                                );
+                                const availableBatchesSnap = await getDocs(availableBatchesQuery);
+                                
+                                for (const batchDoc of availableBatchesSnap.docs) {
+                                    if (quantityToDeduct <= 0) break;
+                                    const batchData = batchDoc.data();
+                                    const deductFromThisBatch = Math.min(batchData.quantity, quantityToDeduct);
+                                    transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
+                                    quantityToDeduct -= deductFromThisBatch;
+                                    
+                                    const price = product.price || 0;
+                                    finalMovementItems.push({
+                                        productId: product.id, productName: product.name, quantity: deductFromThisBatch, unit: product.unit,
+                                        price: price, total: price * deductFromThisBatch, loteId: batchData.loteId, expirationDate: batchData.expirationDate,
+                                    });
+                                }
+                                 if (quantityToDeduct > 0) throw new Error(`Stock de lotes insuficiente para ${product.name}.`);
+                            }
+                        } else {
+                            const price = product.price || 0;
+                            finalMovementItems.push({
+                                productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
+                                price: price, total: price * formItem.quantity,
+                            });
+                        }
                     }
                 }
             }
@@ -861,7 +852,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                           <FormField control={form.control} name={`items.${index}.productId`} render={({ field }) => (
                                               <FormItem className="sm:col-span-2"><FormLabel>Producto</FormLabel><ProductComboBox products={availableProductsForMovement} value={field.value} onChange={field.onChange} disabled={!selectedDepositId} noStockMessage={!selectedDepositId ? 'Selecciona un depósito' : 'Busca un producto'}/><FormMessage /></FormItem>
                                           )}/>
-                                          {movementType === 'salida' && isTracked ? (
+                                          {movementType === 'salida' && isTracked && product?.productType !== 'COMBO' ? (
                                             <FormItem>
                                                 <FormLabel>Cantidad</FormLabel>
                                                 <div className="flex items-center gap-2">
@@ -877,7 +868,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                                 <FormItem><FormLabel>Cantidad</FormLabel><FormControl><Input type="number" placeholder="0" {...field} /></FormControl><FormMessage /></FormItem>
                                             )}/>
                                           )}
-                                          {movementType === 'entrada' && isTracked && (
+                                          {movementType === 'entrada' && isTracked && product?.productType !== 'COMBO' && (
                                               <>
                                                   <FormField control={form.control} name={`items.${index}.loteId`} render={({ field }) => (
                                                       <FormItem><FormLabel>Nº de Lote</FormLabel><FormControl><Input placeholder="Lote ABC-123" {...field}/></FormControl><FormMessage /></FormItem>
