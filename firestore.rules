@@ -20,12 +20,12 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isSignedIn() && getMyData().get('role', '') == 'super-admin';
+      return isSignedIn() && getMyData().role == 'super-admin';
     }
     
     function hasWorkspaceRole(workspaceId, role) {
       let userData = getMyData();
-      return userData != null && userData.get('workspaceId', '') == workspaceId && userData.get('role', '') == role;
+      return userData != null && userData.workspaceId == workspaceId && userData.role == role;
     }
 
     function isWorkspaceAdmin(workspaceId) {
@@ -35,7 +35,7 @@ service cloud.firestore {
     // Checks if the user's document says they belong to the workspace.
     // This is safe for LIST queries as it only reads the user's own data.
     function isMemberOfWorkspace(workspaceId) {
-       return isSignedIn() && getMyData().get('workspaceId', '') == workspaceId;
+       return isSignedIn() && getMyData().workspaceId == workspaceId;
     }
 
     // Checks membership OR ownership. Ownership check involves a GET, so this
@@ -50,8 +50,8 @@ service cloud.firestore {
     function isOrphanAdmin() {
       let userData = getMyData();
       return isSignedIn()
-             && userData.get('role', '') == 'administrador'
-             && userData.get('workspaceId', null) == null;
+             && userData.role == 'administrador'
+             && userData.workspaceId == null;
     }
 
 
@@ -166,7 +166,7 @@ service cloud.firestore {
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
          allow get: if isSignedIn() && isInWorkspace(workspaceId);
-         allow list: if isSignedIn() && isMemberOfWorkspace(workspaceId); // <-- FIX
+         allow list: if isSignedIn() && isMemberOfWorkspace(workspaceId);
          
          allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
          allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
@@ -175,6 +175,7 @@ service cloud.firestore {
             || isWorkspaceAdmin(workspaceId)
             || (
                 hasWorkspaceRole(workspaceId, 'jefe_deposito') &&
+                resource.data.depositId != null &&
                 get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid
                );
     }
