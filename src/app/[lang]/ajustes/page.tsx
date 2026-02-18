@@ -351,36 +351,86 @@ function AdjustmentHistory({
   const workspaceId = currentUserProfile?.workspaceId;
   const isJefe = currentUserProfile?.role === 'jefe_deposito';
 
+  // LOG 1: Check dependencies before creating the query
+  console.log('[AdjustmentHistory] PRE-QUERY: Checking dependencies.', {
+    hasFirestore: !!firestore,
+    workspaceId,
+    isJefe,
+    hasDeposits: !!deposits,
+    depositsCount: deposits?.length
+  });
+
   const adjustmentsQuery = useMemoFirebase(() => {
-    if (!firestore || !workspaceId) return null;
+    console.log('[AdjustmentHistory] QUERY-BUILDER: Entering useMemoFirebase callback.');
     
-    // For 'jefe_deposito', we must have the list of their allowed deposits.
-    if (isJefe && !deposits) return null;
+    if (!firestore || !workspaceId) {
+      console.log('[AdjustmentHistory] QUERY-BUILDER: ABORT. Firestore or WorkspaceId is missing.');
+      return null;
+    }
+    
+    if (isJefe && !deposits) {
+      console.log('[AdjustmentHistory] QUERY-BUILDER: ABORT. User is Jefe but deposits list is not ready.');
+      return null;
+    }
 
     const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
+    console.log(`[AdjustmentHistory] QUERY-BUILDER: Base collection path: workspaces/${workspaceId}/stockMovements`);
     
     const filters = [where('type', '==', 'ajuste')];
+    let finalQuery;
     
     if (isJefe) {
       const allowedDepositIds = deposits?.map(d => d.id);
-      // If a 'jefe' has no assigned deposits, they can't see any history.
       if (!allowedDepositIds || allowedDepositIds.length === 0) {
+        console.log('[AdjustmentHistory] QUERY-BUILDER: ABORT. Jefe has no assigned deposits.');
         return null;
       }
-      // Firestore 'in' query supports up to 30 elements.
       filters.push(where('depositId', 'in', allowedDepositIds.slice(0, 30)));
+      console.log('[AdjustmentHistory] QUERY-BUILDER: Applying JEFE filter. Allowed deposits:', allowedDepositIds);
+    } else {
+      console.log('[AdjustmentHistory] QUERY-BUILDER: Applying ADMIN/EDITOR filter (no deposit restriction).');
     }
     
-    return query(
+    finalQuery = query(
       collectionRef,
       ...filters,
       orderBy('createdAt', 'desc')
     );
+
+    console.log('[AdjustmentHistory] QUERY-BUILDER: SUCCESS. Query object created.');
+    return finalQuery;
+
   }, [firestore, workspaceId, deposits, isJefe]);
+
+  // LOG 2: Check the query object itself
+  console.log('[AdjustmentHistory] POST-QUERY: Query object result from useMemoFirebase.', {
+      isQueryNull: adjustmentsQuery === null
+  });
 
   const { data: adjustments, isLoading, error } = useCollection<StockMovement>(adjustmentsQuery);
 
-  if (error) console.error("Error en Historial:", error);
+  // LOG 3: Monitor the output of useCollection
+  useEffect(() => {
+    console.log('[AdjustmentHistory] RENDER/STATE-CHANGE:', {
+      isLoading,
+      hasData: !!adjustments,
+      dataCount: adjustments?.length ?? 0,
+      hasError: !!error,
+    });
+  }, [isLoading, adjustments, error]);
+
+  // LOG 4: Log the actual data or error when they appear
+  useEffect(() => {
+    if (adjustments) {
+      console.log('[AdjustmentHistory] DATA-RECEIVED: Successfully fetched adjustments.', adjustments);
+    }
+  }, [adjustments]);
+
+  useEffect(() => {
+    if (error) {
+      console.error('[AdjustmentHistory] ERROR-RECEIVED: An error occurred during fetch.', error);
+    }
+  }, [error]);
 
   return (
     <Card>
@@ -395,7 +445,7 @@ function AdjustmentHistory({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? <TableRow><TableCell colSpan={3}>Cargando...</TableCell></TableRow> : 
+            {isLoading ? <TableRow><TableCell colSpan={3}>Cargando historial (revisa la consola para ver los pasos)...</TableCell></TableRow> : 
              adjustments?.length === 0 ? (
                 <TableRow>
                     <TableCell colSpan={3} className="text-center h-24 text-muted-foreground">
