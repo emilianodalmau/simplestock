@@ -358,15 +358,15 @@ function AdjustmentHistory({
     const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
     
     let finalQuery;
-    const filters = []; // Fetch all movements
     
     if (isJefe) {
       const allowedDepositIds = deposits?.map(d => d.id) || [];
       if (allowedDepositIds.length === 0) return null;
-      filters.push(where('depositId', 'in', allowedDepositIds.slice(0, 30)));
+      finalQuery = query(collectionRef, where('depositId', 'in', allowedDepositIds.slice(0, 30)));
+    } else {
+      finalQuery = query(collectionRef, orderBy('createdAt', 'desc'));
     }
     
-    finalQuery = query(collectionRef, ...filters, orderBy('createdAt', 'desc'));
     return finalQuery;
 
   }, [firestore, workspaceId, deposits, isJefe]);
@@ -387,15 +387,16 @@ function AdjustmentHistory({
             <TableRow>
               <TableHead>Fecha</TableHead>
               <TableHead>Depósito</TableHead>
+              <TableHead>Usuario</TableHead>
               <TableHead>Detalle</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? <TableRow><TableCell colSpan={3}>Cargando historial...</TableCell></TableRow> : 
-             error ? <TableRow><TableCell colSpan={3} className="text-destructive">Error al cargar historial: {error.message}</TableCell></TableRow> :
+            {isLoading ? <TableRow><TableCell colSpan={4}>Cargando historial...</TableCell></TableRow> : 
+             error ? <TableRow><TableCell colSpan={4} className="text-destructive">Error al cargar historial: {error.message}</TableCell></TableRow> :
              adjustments?.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={3} className="text-center h-24 text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
                         {isJefe && (!deposits || deposits.length === 0) 
                             ? "No tienes depósitos asignados." 
                             : "No hay historial de ajustes."
@@ -407,6 +408,7 @@ function AdjustmentHistory({
               <TableRow key={adj.id}>
                 <TableCell>{adj.createdAt?.toDate ? format(adj.createdAt.toDate(), 'dd/MM/yy HH:mm') : 'Fecha inválida'}</TableCell>
                 <TableCell>{adj.depositName}</TableCell>
+                <TableCell>{adj.actorName || '-'}</TableCell>
                 <TableCell>
                   {adj.items.map((it, i) => <div key={i} className="text-xs">{it.productName}: {it.quantity > 0 ? '+' : ''}{it.quantity}</div>)}
                 </TableCell>
