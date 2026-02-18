@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -28,7 +27,7 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Loader2, FileDown, ArrowDown, ArrowUp } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   useFirestore,
@@ -68,9 +67,7 @@ import {
 } from '@/components/ui/table';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
 import { useI18n } from '@/i18n/i18n-provider';
-import { Badge } from '@/components/ui/badge';
 
 // --- ZOD Schemas ---
 const adjustmentItemSchema = z.object({
@@ -95,8 +92,10 @@ type BulkAdjustmentFormValues = z.infer<typeof bulkAdjustmentSchema>;
 
 function BulkAdjustmentForm({
   currentUserProfile,
+  deposits,
 }: {
   currentUserProfile?: UserProfile | null;
+  deposits?: Deposit[] | null;
 }) {
   const [selectedDepositId, setSelectedDepositId] = useState<string>('');
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -109,15 +108,6 @@ function BulkAdjustmentForm({
   const workspaceId = currentUserProfile?.workspaceId;
   const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
-
-  // Queries
-  const depositsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix) return null;
-    const depositsRef = collection(firestore, `${collectionPrefix}/deposits`);
-    return isJefeDeposito && user?.uid ? query(depositsRef, where('jefeId', '==', user.uid)) : depositsRef;
-  }, [firestore, collectionPrefix, isJefeDeposito, user?.uid]);
-
-  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsQuery);
   
   const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(
     useMemoFirebase(() => (collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null), [collectionPrefix])
@@ -276,7 +266,8 @@ function BulkAdjustmentForm({
       loadDataForDeposit();
     } catch (error: any) {
       console.error(error);
-      toast({ variant: 'destructive', title: 'Error al Guardar Ajuste', description: error.message || 'No se pudo completar la operación.' });
+      const errorMessage = error.message || 'No se pudo completar la operación. Revisa los permisos o contacta a soporte.';
+      toast({ variant: 'destructive', title: 'Error al Guardar Ajuste', description: errorMessage });
     } finally {
       setIsSubmitting(false);
     }
@@ -304,7 +295,7 @@ function BulkAdjustmentForm({
             {selectedDepositId && (
               <>
                 <div className="flex flex-col gap-4 sm:flex-row items-center">
-                  <Input placeholder="Buscar..." onChange={(e) => setFilters(f => ({...f, name: e.target.value}))} className="flex-grow" />
+                  <Input placeholder="Buscar por nombre o código..." onChange={(e) => setFilters(f => ({...f, name: e.target.value}))} className="flex-grow" />
                   <Button type="submit" disabled={isSubmitting || isLoadingData}>
                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Guardar Ajustes
@@ -367,19 +358,35 @@ function BulkAdjustmentForm({
   );
 }
 
-function AdjustmentHistory({ currentUserProfile }: { currentUserProfile?: UserProfile | null; }) {
+function AdjustmentHistory({ currentUserProfile, deposits }: { currentUserProfile?: UserProfile | null, deposits?: Deposit[] | null }) {
   const firestore = useFirestore();
   const workspaceId = currentUserProfile?.workspaceId;
   const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  
+  const assignedDepositIds = useMemo(() => {
+      if (!isJefeDeposito || !deposits) return null; // Wait for deposits
+      return deposits.map(d => d.id);
+  }, [isJefeDeposito, deposits]);
 
   const adjustmentsQuery = useMemoFirebase(() => {
     if (!collectionPrefix) return null;
-    return query(
-      collection(firestore, `${collectionPrefix}/stockMovements`),
-      where('type', '==', 'ajuste'),
-      orderBy('createdAt', 'desc')
-    );
-  }, [collectionPrefix, firestore]);
+
+    const baseQuery = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
+    
+    if (isJefeDeposito) {
+        if (assignedDepositIds === null) return null; // Waiting for deposits
+        if (assignedDepositIds.length === 0) return null; // No deposits, no query
+        
+        return query(
+            collection(firestore, `${collectionPrefix}/stockMovements`),
+            ...baseQuery,
+            where('depositId', 'in', assignedDepositIds.slice(0, 30))
+        );
+    }
+    
+    return query(collection(firestore, `${collectionPrefix}/stockMovements`), ...baseQuery);
+  }, [collectionPrefix, firestore, isJefeDeposito, assignedDepositIds]);
 
   const { data: adjustments, isLoading } = useCollection<StockMovement>(adjustmentsQuery);
 
@@ -441,8 +448,19 @@ export default function AjustesPage() {
     [user, firestore]
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
+  
+  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
+  const collectionPrefix = useMemo(() => currentUserProfile?.workspaceId ? `workspaces/${currentUserProfile.workspaceId}` : null, [currentUserProfile?.workspaceId]);
+  
+  const depositsQuery = useMemoFirebase(() => {
+    if (!firestore || !collectionPrefix) return null;
+    const depositsRef = collection(firestore, `${collectionPrefix}/deposits`);
+    return isJefeDeposito && user?.uid ? query(depositsRef, where('jefeId', '==', user.uid)) : depositsRef;
+  }, [firestore, collectionPrefix, isJefeDeposito, user?.uid]);
 
-  const isLoading = isUserLoading || isLoadingProfile;
+  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsQuery);
+
+  const isLoading = isUserLoading || isLoadingProfile || isLoadingDeposits;
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile?.role) return false;
@@ -482,14 +500,12 @@ export default function AjustesPage() {
           <TabsTrigger value="historial">Historial de Ajustes</TabsTrigger>
         </TabsList>
         <TabsContent value="ajuste" className="pt-6">
-          <BulkAdjustmentForm currentUserProfile={currentUserProfile} />
+          <BulkAdjustmentForm currentUserProfile={currentUserProfile} deposits={deposits} />
         </TabsContent>
         <TabsContent value="historial" className="pt-6">
-          <AdjustmentHistory currentUserProfile={currentUserProfile} />
+          <AdjustmentHistory currentUserProfile={currentUserProfile} deposits={deposits} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-
-    
