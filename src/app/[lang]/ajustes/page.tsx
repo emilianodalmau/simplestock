@@ -351,14 +351,14 @@ function AdjustmentHistory({
   const workspaceId = currentUserProfile?.workspaceId;
   const isJefe = currentUserProfile?.role === 'jefe_deposito';
 
-  const adjustmentsQuery = useMemoFirebase(() => {
+  const movementsQuery = useMemoFirebase(() => {
     if (!firestore || !workspaceId) return null;
     if (isJefe && !deposits) return null;
 
     const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
     
     let finalQuery;
-    const filters = [where('type', '==', 'ajuste')];
+    const filters = []; // Fetch all movements
     
     if (isJefe) {
       const allowedDepositIds = deposits?.map(d => d.id) || [];
@@ -371,7 +371,12 @@ function AdjustmentHistory({
 
   }, [firestore, workspaceId, deposits, isJefe]);
 
-  const { data: adjustments, isLoading, error } = useCollection<StockMovement>(adjustmentsQuery);
+  const { data: allMovements, isLoading, error } = useCollection<StockMovement>(movementsQuery);
+  
+  const adjustments = useMemo(() => {
+    if (!allMovements) return null;
+    return allMovements.filter(movement => movement.type === 'ajuste');
+  }, [allMovements]);
 
   return (
     <Card>
