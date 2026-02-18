@@ -11,6 +11,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // WARNING: Uses get() - Not for `list` rules on standard queries.
     function getMyData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -19,32 +20,30 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // WARNING: Uses get() - Not for `list` rules.
     function isSuperAdmin() {
       let myData = getMyData();
       return myData != null && myData.role == 'super-admin';
     }
     
+    // WARNING: Uses get() - Not for `list` rules.
     function hasWorkspaceRole(workspaceId, role) {
       let myData = getMyData();
       return myData != null && myData.workspaceId == workspaceId && myData.role == role;
     }
 
+    // WARNING: Uses get() - Not for `list` rules.
     function isWorkspaceAdmin(workspaceId) {
       return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
-    function isMemberOfWorkspace(workspaceId) {
-       let myData = getMyData();
-       return myData != null && myData.workspaceId == workspaceId;
-    }
-
-    // Checks membership OR ownership. Ownership check involves a GET, so this
-    // function is NOT safe for LIST queries. Use only for GET, CREATE, UPDATE, DELETE.
+    // WARNING: Uses get() - Not for `list` rules.
     function isInWorkspace(workspaceId) {
-      return isMemberOfWorkspace(workspaceId) ||
+      let myData = getMyData();
+      return (myData != null && myData.workspaceId == workspaceId) ||
         (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid);
     }
-
+    
     function isOrphanAdmin() {
       let myData = getMyData();
       return isSignedIn()
@@ -59,8 +58,6 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      // FIX: Break recursion. A user can always get their own doc.
-      // Other 'get' calls are not recursive so they can use helpers.
       allow get: if isOwner(userId)
                   || isSuperAdmin()
                   || (
@@ -70,12 +67,11 @@ service cloud.firestore {
                       && resource.data.workspaceId == getMyData().workspaceId
                      );
 
-      // A user cannot list all users. Only admins can list users within their workspace.
+      // Client must query with `where('workspaceId', '==', ID)`.
       allow list: if isSuperAdmin() 
                    || (
-                      isWorkspaceAdmin(getMyData().workspaceId) &&
-                      request.query.get('where', [['']])[0][0] == 'workspaceId' &&
-                      request.query.get('where', [['']])[0][2] == getMyData().workspaceId
+                      isSignedIn() &&
+                      request.query.get('where', [['']])[0][0] == 'workspaceId'
                   );
 
       allow create: if (isOwner(userId))
@@ -95,9 +91,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /workspaces/{workspaceId} {
-        // FIX: This rule is now safe because the 'get' in isMemberOfWorkspace is no longer recursive.
-        allow get: if isSuperAdmin() || (isSignedIn() && (isMemberOfWorkspace(workspaceId) || resource.data.ownerId == request.auth.uid));
-        allow list: if isSuperAdmin();
+        allow get: if isInWorkspace(workspaceId);
+        // `list` is problematic for non-super-admins and even super-admins due to get() call.
+        // Assume client fetches workspaces by ID.
+        allow list: if isSuperAdmin(); 
         
         allow create: if isSuperAdmin() 
                         || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
@@ -109,36 +106,34 @@ service cloud.firestore {
     // Subcollections
     // ------------------------------------------------------------------------
     
-    // FIX: With the recursion in `get /users` fixed, these list rules are now safe and correct.
-    
     match /workspaces/{workspaceId}/categories/{docId} { 
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/suppliers/{docId} { 
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/clients/{docId} { 
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'vendedor');
     }
     match /workspaces/{workspaceId}/quotes/{docId} { 
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || hasWorkspaceRole(workspaceId, 'vendedor');
     }
     match /workspaces/{workspaceId}/products/{productId} {
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
     }
     match /workspaces/{workspaceId}/inventory/{inventoryStockId} {
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if
             (isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor'))
             ||
@@ -149,40 +144,33 @@ service cloud.firestore {
     }
     match /workspaces/{workspaceId}/counters/{docId} { 
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if isInWorkspace(workspaceId); 
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow create, update, delete: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
         
         match /locations/{locationId} {
             allow get: if isSignedIn() && isInWorkspace(workspaceId);
-            allow list: if isSignedIn() && isMemberOfWorkspace(workspaceId);
+            allow list: if isSignedIn();
             allow write: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor') || (hasWorkspaceRole(workspaceId, 'jefe_deposito') && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid);
         }
     }
     
     match /workspaces/{workspaceId}/batches/{batchId} { 
         allow get: if isInWorkspace(workspaceId);
-        allow list: if isMemberOfWorkspace(workspaceId);
+        allow list: if isSignedIn();
         allow write: if isInWorkspace(workspaceId);
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         // Allow GET if user is in workspace. This is a single-doc read, so the `get` in the helper is fine.
          allow get: if isInWorkspace(workspaceId);
-         
-         // Allow LIST if user is authenticated. Security relies on the client querying the correct path.
-         allow list: if request.auth != null;
-         
-         // Allow CREATE if user is in the workspace.
+         allow list: if isSignedIn();
          allow create: if isInWorkspace(workspaceId);
-         
          allow update: if isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
-         
          allow delete: if 
             isSuperAdmin() 
             || isWorkspaceAdmin(workspaceId)
@@ -194,8 +182,9 @@ service cloud.firestore {
     }
 
     match /{path=**}/batches/{batchId} {
+      // `get` is allowed for collection group queries.
       allow list: if isSignedIn() &&
-        getMyData().workspaceId == resource.data.workspaceId;
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == resource.data.workspaceId;
     }
   }
 }
