@@ -41,8 +41,14 @@ service cloud.firestore {
       // Allow a user to read their own workspace document.
       allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
       
-      // Super-admins can do anything to workspaces.
-      allow list, write: if isSignedIn() && getUserData().role == 'super-admin';
+      // An admin can update their own workspace. A super-admin can update any.
+      allow update: if isSignedIn() && (
+        (getUserData().role == 'administrador' && getUserData().workspaceId == workspaceId) ||
+        getUserData().role == 'super-admin'
+      );
+      
+      // Super-admins can list, create, and delete any workspace.
+      allow list, create, delete: if isSignedIn() && getUserData().role == 'super-admin';
       
       // --- SUBCOLLECTION RULES ---
 
