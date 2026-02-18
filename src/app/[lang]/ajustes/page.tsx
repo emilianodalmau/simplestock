@@ -235,6 +235,8 @@ function BulkAdjustmentForm({
     }
 
     setIsSubmitting(true);
+    const timestamp = Date.now(); // Generate stable timestamp BEFORE transaction
+
     try {
         await runTransaction(firestore, async (transaction) => {
             const deposit = deposits?.find(d => d.id === selectedDepositId);
@@ -267,7 +269,7 @@ function BulkAdjustmentForm({
 
             const movementData = {
                 id: movementRef.id,
-                remitoNumber: `AJ-${Date.now()}`,
+                remitoNumber: `AJ-${timestamp}`, // Use stable timestamp
                 type: 'ajuste' as const,
                 depositId: selectedDepositId,
                 depositName: deposit.name,
