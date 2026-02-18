@@ -95,9 +95,11 @@ type BulkAdjustmentFormValues = z.infer<typeof bulkAdjustmentSchema>;
 function BulkAdjustmentForm({
   currentUserProfile,
   deposits,
+  categories,
 }: {
   currentUserProfile: UserProfile | null;
   deposits: Deposit[] | null;
+  categories: Category[] | null;
 }) {
   const [selectedDepositId, setSelectedDepositId] = useState<string>('');
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -255,7 +257,28 @@ function BulkAdjustmentForm({
             </Select>
             {selectedDepositId && (
               <div className="space-y-4">
-                <Input placeholder="Filtrar..." onChange={(e) => setFilters(f => ({...f, name: e.target.value}))} />
+                 <div className="flex flex-col sm:flex-row gap-4">
+                    <Input placeholder="Filtrar por nombre o código..." onChange={(e) => setFilters(f => ({...f, name: e.target.value}))} className="flex-grow" />
+                    <Select value={filters.category} onValueChange={(value) => setFilters(f => ({...f, category: value}))}>
+                        <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las categorías</SelectItem>
+                            {categories?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    <Select value={filters.type} onValueChange={(value) => setFilters(f => ({...f, type: value as any}))}>
+                        <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los tipos</SelectItem>
+                            <SelectItem value="SIMPLE">Simple</SelectItem>
+                            <SelectItem value="COMBO">Combo</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="flex justify-start border-t pt-4">
+                    <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar Ajustes'}</Button>
+                </div>
+
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -265,10 +288,28 @@ function BulkAdjustmentForm({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {visibleIndices.map(index => (
+                    {isLoadingData && (
+                        <TableRow>
+                            <TableCell colSpan={3} className="text-center h-48">
+                                <Loader2 className="animate-spin inline mr-2"/>
+                                Cargando productos...
+                            </TableCell>
+                        </TableRow>
+                    )}
+                    {!isLoadingData && visibleIndices.length === 0 && (
+                         <TableRow>
+                            <TableCell colSpan={3} className="text-center h-24 text-muted-foreground">
+                                No se encontraron productos para este depósito o filtros.
+                            </TableCell>
+                        </TableRow>
+                    )}
+                    {!isLoadingData && visibleIndices.map(index => (
                       <TableRow key={fields[index]._rhf_id}>
-                        <TableCell>{fields[index].productName}</TableCell>
-                        <TableCell className="text-right">{fields[index].currentStock}</TableCell>
+                        <TableCell>
+                            <p className="font-medium">{fields[index].productName}</p>
+                            <p className="text-sm text-muted-foreground font-mono">{fields[index].productCode}</p>
+                        </TableCell>
+                        <TableCell className="text-right">{fields[index].currentStock} {fields[index].unit}</TableCell>
                         <TableCell>
                           <FormField
                             control={form.control}
@@ -288,7 +329,6 @@ function BulkAdjustmentForm({
                     ))}
                   </TableBody>
                 </Table>
-                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar Ajustes'}</Button>
               </div>
             )}
           </CardContent>
@@ -403,14 +443,21 @@ export default function AjustesPage() {
     }, [firestore, colPrefix, profile, user])
   );
 
-  if (isLoadProfile || isLoadDeps) return <div className="p-10 text-center"><Loader2 className="animate-spin inline mr-2"/> Cargando perfil...</div>;
+  const { data: categories, isLoading: isLoadCats } = useCollection<Category>(
+    useMemoFirebase(() => {
+        if (!firestore || !colPrefix) return null;
+        return collection(firestore, `${colPrefix}/categories`);
+    }, [firestore, colPrefix])
+  );
+
+  if (isLoadProfile || isLoadDeps || isLoadCats) return <div className="p-10 text-center"><Loader2 className="animate-spin inline mr-2"/> Cargando...</div>;
 
   return (
     <div className="container mx-auto p-4 space-y-6">
       <h1 className="text-2xl font-bold">{dictionary.pages.ajustes.title}</h1>
       <Tabs defaultValue="ajuste">
         <TabsList><TabsTrigger value="ajuste">Ajuste</TabsTrigger><TabsTrigger value="historial">Historial</TabsTrigger></TabsList>
-        <TabsContent value="ajuste"><BulkAdjustmentForm currentUserProfile={profile} deposits={deposits} /></TabsContent>
+        <TabsContent value="ajuste"><BulkAdjustmentForm currentUserProfile={profile} deposits={deposits} categories={categories} /></TabsContent>
         <TabsContent value="historial"><AdjustmentHistory currentUserProfile={profile} deposits={deposits} /></TabsContent>
       </Tabs>
     </div>
