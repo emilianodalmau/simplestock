@@ -299,18 +299,20 @@ function BulkAdjustmentForm({
 }
 
 // --- Componente AdjustmentHistory ---
-function AdjustmentHistory({ currentUserProfile }: { currentUserProfile: UserProfile | null }) {
+function AdjustmentHistory({ currentUserProfile }: { currentUserProfile?: UserProfile | null }) {
   const firestore = useFirestore();
+  
+  // 1. Extraemos el workspaceId de forma segura
   const workspaceId = currentUserProfile?.workspaceId;
 
   const adjustmentsQuery = useMemoFirebase(() => {
-    // CRITICAL BLOCK: If there is no workspaceId, return null.
-    // This prevents attempting to list /workspaces/undefined/... which causes a permission error.
+    // 2. BLOQUEO CRÍTICO: Si no hay workspaceId, devolvemos null. 
+    // Esto evita que se intente listar /workspaces/undefined/... que es lo que da error de permisos.
     if (!firestore || !workspaceId) return null;
 
     const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
     
-    // Specific and filtered query
+    // 3. Consulta específica y filtrada
     return query(
       collectionRef,
       where('type', '==', 'ajuste'),
@@ -320,9 +322,8 @@ function AdjustmentHistory({ currentUserProfile }: { currentUserProfile: UserPro
 
   const { data: adjustments, isLoading, error } = useCollection<StockMovement>(adjustmentsQuery);
 
-  if (error) {
-    console.error("Error en Historial:", error);
-  }
+  // Debug: Esto te dirá en consola si el error viene de aquí
+  if (error) console.error("Error en Historial:", error);
 
   return (
     <Card>
