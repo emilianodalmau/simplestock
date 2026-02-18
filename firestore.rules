@@ -83,7 +83,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /workspaces/{workspaceId} {
-        allow read, list: if isSuperAdmin() || isInWorkspace(workspaceId);
+        // `get` is non-recursive. It checks the user's own doc or the requested workspace's ownerId.
+        allow get: if isSuperAdmin() || (isSignedIn() && (getMyData().workspaceId == workspaceId || resource.data.ownerId == request.auth.uid));
+        // Listing all workspaces is a super-admin only task.
+        allow list: if isSuperAdmin();
+        
         allow create: if isSuperAdmin() 
                         || (isOrphanAdmin() && request.resource.data.ownerId == request.auth.uid);
         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId);
