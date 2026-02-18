@@ -30,10 +30,14 @@ export function middleware(request: NextRequest) {
   );
 
   if (pathnameIsMissingLocale) {
-    const locale = getLocale(request);
+    // If the root is accessed, force Spanish.
+    if (pathname === '/') {
+        return NextResponse.redirect(new URL('/es', request.url));
+    }
     
-    // Prepend the locale to the path
-    const newUrl = new URL(`/${locale}${pathname.startsWith('/') ? '' : '/'}${pathname}`, request.url);
+    // For other paths, use the detected locale.
+    const locale = getLocale(request);
+    const newUrl = new URL(`/${locale}${pathname}`, request.url);
     return NextResponse.redirect(newUrl);
   }
   
