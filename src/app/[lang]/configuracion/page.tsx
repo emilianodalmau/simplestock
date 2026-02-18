@@ -43,6 +43,7 @@ type Workspace = {
     name?: string;
     appName?: string;
     logoUrl?: string;
+    language?: 'es' | 'en' | 'pt';
 }
 
 export default function ConfiguracionPage() {
@@ -163,6 +164,14 @@ export default function ConfiguracionPage() {
 
   const handleLanguageChange = (newLocale: string) => {
     if (!pathname) return;
+
+    if (isWorkspaceAdmin && workspaceDocRef) {
+      updateDoc(workspaceDocRef, { language: newLocale }).catch(error => {
+        console.error("Failed to save language preference:", error);
+        // This is non-critical, so we don't show a toast. The UI will still update for the session.
+      });
+    }
+
     const newPath = pathname.replace(`/${lang}`, `/${newLocale}`);
     router.push(newPath);
     router.refresh();
@@ -250,13 +259,13 @@ export default function ConfiguracionPage() {
         <CardHeader>
           <CardTitle>Idioma</CardTitle>
           <CardDescription>
-            Selecciona el idioma de la interfaz de usuario.
+            Selecciona el idioma de la interfaz de usuario para este workspace.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label htmlFor="language">Idioma</Label>
-            <Select value={lang} onValueChange={handleLanguageChange}>
+            <Label htmlFor="language">Idioma del Workspace</Label>
+            <Select value={lang} onValueChange={handleLanguageChange} disabled={!isWorkspaceAdmin && !isSuperAdmin}>
               <SelectTrigger className="w-[280px]" id="language">
                 <SelectValue placeholder="Seleccionar idioma" />
               </SelectTrigger>

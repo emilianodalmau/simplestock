@@ -1,3 +1,4 @@
+
 'use client';
 
   import {
@@ -69,6 +70,7 @@
       name?: string;
       appName?: string;
       logoUrl?: string;
+      language?: 'es' | 'en' | 'pt';
   }
   
   type Deposit = {
@@ -199,6 +201,17 @@
         return count;
     }, [allProducts, allInventory]);
     // --- Fin de la lógica del badge de inventario ---
+
+    // Redirect to workspace language if it differs from URL
+    useEffect(() => {
+        if (isUserLoading || isLoadingProfile || isLoadingWorkspace) return;
+        
+        if (workspaceData?.language && workspaceData.language !== lang) {
+            const currentPathWithoutLang = pathname.substring(3);
+            const newPath = `/${workspaceData.language}${currentPathWithoutLang}`;
+            router.replace(newPath);
+        }
+    }, [workspaceData, lang, pathname, isUserLoading, isLoadingProfile, isLoadingWorkspace, router]);
 
 
     const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;

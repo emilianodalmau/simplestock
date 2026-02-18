@@ -45,6 +45,7 @@ type Workspace = {
       maxMovementsPerMonth: number;
     };
   };
+  language?: 'es' | 'en' | 'pt';
 };
 
 type Product = { id: string };

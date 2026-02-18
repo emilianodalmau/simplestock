@@ -142,4 +142,5 @@ export type Quote = {
 export type Workspace = {
     id: string;
     name: string;
+    language?: 'es' | 'en' | 'pt';
 }

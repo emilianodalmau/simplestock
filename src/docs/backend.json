@@ -90,6 +90,12 @@
             "type": "string",
             "description": "The URL for the custom logo of the workspace."
         },
+        "language": {
+            "type": "string",
+            "description": "The preferred language for the workspace.",
+            "enum": ["es", "en", "pt"],
+            "default": "es"
+        },
         "subscription": {
           "$ref": "#/entities/Subscription"
         }

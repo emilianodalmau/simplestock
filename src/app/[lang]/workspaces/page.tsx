@@ -114,6 +114,7 @@ type Workspace = {
   name: string;
   ownerId: string;
   subscription: Subscription;
+  language?: 'es' | 'en' | 'pt';
 };
 
 type UserProfile = {
