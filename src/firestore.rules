@@ -54,24 +54,6 @@ service cloud.firestore {
       
       // --- SUBCOLLECTION RULES ---
 
-      // Specific rule for stockMovements to solve the main error
-      match /stockMovements/{movementId} {
-        // LAX list rule. Security relies on the client querying the correct workspace path.
-        allow list: if isSignedIn();
-        // STRICT get rule to read a single document.
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        
-        // Write rules remain strict.
-        allow create: if isSignedIn() && getUserData().workspaceId == workspaceId && 
-          getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'];
-        allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && 
-          getUserData().role in ['administrador', 'editor'];
-        allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && 
-          (getUserData().role == 'administrador' || 
-           (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && 
-            get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid));
-      }
-
       // Specific rule for locations within deposits
       match /deposits/{depositId}/locations/{locationId} {
         allow list: if isSignedIn();
@@ -86,21 +68,36 @@ service cloud.firestore {
       // This uses a wildcard to match any other collection at this level.
       match /{collection}/{docId} {
         
-        // This 'if' ensures this rule only applies to the intended collections,
-        // and not to 'stockMovements' or other special cases again.
+        // This 'if' ensures this rule only applies to the intended collections.
+        // **FIX**: Added 'stockMovements' to this list to resolve the permission error.
         allow list: if isSignedIn() &&
-          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters'];
+          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters', 'stockMovements'];
 
         allow get: if isSignedIn() && getUserData().workspaceId == workspaceId &&
-          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters'];
+          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters', 'stockMovements'];
 
         // Write rules for these collections
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId &&
+        allow create: if isSignedIn() && getUserData().workspaceId == workspaceId &&
           (
-            // Admins/Editors can write to most collections
             (collection in ['categories', 'products', 'suppliers', 'deposits', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
-            // 'vendedor' has specific write permissions
-            (collection in ['clients', 'quotes'] && getUserData().role in ['administrador', 'editor', 'vendedor'])
+            (collection in ['clients', 'quotes'] && getUserData().role in ['administrador', 'editor', 'vendedor']) ||
+            (collection == 'stockMovements' && getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'])
+          );
+        
+        allow update: if isSignedIn() && getUserData().workspaceId == workspaceId &&
+          (
+            (collection in ['categories', 'products', 'suppliers', 'deposits', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
+            (collection in ['clients', 'quotes'] && getUserData().role in ['administrador', 'editor', 'vendedor']) ||
+            (collection == 'stockMovements' && getUserData().role in ['administrador', 'editor'])
+          );
+
+        allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId &&
+          (
+            (collection in ['categories', 'products', 'suppliers', 'deposits', 'clients', 'quotes', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
+            (collection == 'stockMovements' && (
+              getUserData().role == 'administrador' ||
+              (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid)
+            ))
           );
       }
     }
