@@ -352,33 +352,21 @@ function AdjustmentHistory({
   const isJefe = currentUserProfile?.role === 'jefe_deposito';
 
   const adjustmentsQuery = useMemoFirebase(() => {
-    if (!firestore || !workspaceId) {
-      return null;
-    }
-    
-    if (isJefe && !deposits) {
-      return null;
-    }
+    if (!firestore || !workspaceId) return null;
+    if (isJefe && !deposits) return null;
 
     const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
     
-    const filters = [where('type', '==', 'ajuste')];
     let finalQuery;
+    const filters = [where('type', '==', 'ajuste')];
     
     if (isJefe) {
-      const allowedDepositIds = deposits?.map(d => d.id);
-      if (!allowedDepositIds || allowedDepositIds.length === 0) {
-        return null;
-      }
+      const allowedDepositIds = deposits?.map(d => d.id) || [];
+      if (allowedDepositIds.length === 0) return null;
       filters.push(where('depositId', 'in', allowedDepositIds.slice(0, 30)));
     }
     
-    finalQuery = query(
-      collectionRef,
-      ...filters,
-      orderBy('createdAt', 'desc')
-    );
-
+    finalQuery = query(collectionRef, ...filters, orderBy('createdAt', 'desc'));
     return finalQuery;
 
   }, [firestore, workspaceId, deposits, isJefe]);
