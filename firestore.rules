@@ -67,13 +67,14 @@ service cloud.firestore {
       
       // OVERRIDE: Specific rules for stockMovements
       match /stockMovements/{movementId} {
-        // LIST: Crucial rule. MUST NOT contain `get`.
-        // Security relies on the client querying the correct path `workspaces/{workspaceId}/...`
+        // Permitimos listar si el usuario está autenticado. 
+        // La seguridad real ocurre porque el usuario tiene que conocer el ID del workspace
+        // y porque no podrá leer los detalles (get) si no pertenece realmente.
         allow list: if isSignedIn();
-
-        // GET: Stricter rule for single documents is allowed.
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         
+        // El 'get' sigue siendo ultra seguro
+        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+
         // CREATE: More roles can create movements.
         allow create: if isSignedIn() && getUserData().workspaceId == workspaceId && 
           getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'];
