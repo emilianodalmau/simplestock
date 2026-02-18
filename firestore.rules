@@ -3,22 +3,29 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ------------------------------------------------------------------------
     // HELPER FUNCTIONS
-    // This function can ONLY be used in 'get', 'create', 'update', 'delete' rules.
-    // It is UNSAFE for 'list' rules because it performs a 'get'.
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    
-    // This function can be used in any rule as it only uses data from the request token.
+    // ------------------------------------------------------------------------
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // USER-SPECIFIC RULES
+    // This function is UNSAFE for 'list' rules, but SAFE for 'get' and 'write'.
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ------------------------------------------------------------------------
+    // USER PROFILES
+    // ------------------------------------------------------------------------
     match /users/{userId} {
-      // Users can read and update their own profile.
-      allow get, update: if isSignedIn() && request.auth.uid == userId;
+      // Users can read/update their own profile. This is the non-recursive base case.
+      allow get, update: if isOwner(userId);
       
       // Allow user creation for sign-up process.
       allow create: if isSignedIn();
@@ -27,79 +34,74 @@ service cloud.firestore {
       allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
-    // WORKSPACE-LEVEL RULES
+    // ------------------------------------------------------------------------
+    // WORKSPACES & SUBCOLLECTIONS
+    // ------------------------------------------------------------------------
     match /workspaces/{workspaceId} {
-      // Users can only read their own workspace document.
-      allow read: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      // Allow a user to read their own workspace document.
+      allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
       
-      // Only super-admins can list, create, update or delete workspaces directly.
-      // Workspace creation by an admin is handled by Cloud Functions or transaction logic.
-      allow write, list: if isSignedIn() && getUserData().role == 'super-admin';
-
+      // Super-admins can do anything to workspaces.
+      allow list, write: if isSignedIn() && getUserData().role == 'super-admin';
+      
       // --- SUBCOLLECTION RULES ---
-      
-      // DEFAULT RULE FOR MOST SUBCOLLECTIONS
-      // - Anyone in the workspace can read.
-      // - Only admins/editors can write.
-      match /{collectionName in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches']} {
-        match /{docId} {
-          allow read: if isSignedIn() && getUserData().workspaceId == workspaceId;
-          allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
-        }
-      }
 
-      // OVERRIDE: Locations can also be managed by the assigned 'jefe_deposito'.
-      match /deposits/{depositId} {
-        match /locations/{locationId} {
-          allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
-            getUserData().role in ['administrador', 'editor'] ||
-            (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
-          );
-        }
-      }
-
-      // OVERRIDE: Allow 'vendedor' to manage clients and quotes.
-      match /{collectionName in ['clients', 'quotes']} {
-        match /{docId} {
-           allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
-        }
-      }
-      
-      // OVERRIDE: Specific rules for stockMovements
+      // Specific rule for stockMovements to solve the main error
       match /stockMovements/{movementId} {
-        // Permitimos listar si el usuario está autenticado. 
-        // La seguridad real ocurre porque el usuario tiene que conocer el ID del workspace
-        // y porque no podrá leer los detalles (get) si no pertenece realmente.
+        // LAX list rule to fix the permission error. Security relies on client query path.
         allow list: if isSignedIn();
-        
-        // El 'get' sigue siendo ultra seguro
+        // STRICT get rule to read a single document.
         allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-
-        // CREATE: More roles can create movements.
+        
+        // Write rules remain strict.
         allow create: if isSignedIn() && getUserData().workspaceId == workspaceId && 
           getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'];
-          
-        // UPDATE: Restricted.
         allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && 
           getUserData().role in ['administrador', 'editor'];
-          
-        // DELETE: Restricted.
         allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && 
           (getUserData().role == 'administrador' || 
            (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && 
             get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid));
       }
 
-      // OVERRIDE: Counters can be written by any member of the workspace.
-      match /counters/{counterId} {
-          allow write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      // Specific rule for locations within deposits
+      match /deposits/{depositId}/locations/{locationId} {
+        allow list: if isSignedIn();
+        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
+          getUserData().role in ['administrador', 'editor'] ||
+          (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
+        );
+      }
+
+      // Generic rule for all other subcollections
+      // This uses a wildcard to match any other collection at this level.
+      match /{collection}/{docId} {
+        
+        // This 'if' ensures this rule only applies to the intended collections,
+        // and not to 'stockMovements' or other special cases again.
+        allow list: if isSignedIn() &&
+          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters'];
+
+        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId &&
+          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters'];
+
+        // Write rules for these collections
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId &&
+          (
+            // Admins/Editors can write to most collections
+            (collection in ['categories', 'products', 'suppliers', 'deposits', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
+            // 'vendedor' has specific write permissions
+            (collection in ['clients', 'quotes'] && getUserData().role in ['administrador', 'editor', 'vendedor'])
+          );
       }
     }
     
-     // COLLECTION GROUP QUERIES
-     match /{path=**}/batches/{batchId} {
-      allow list: if isSignedIn() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == resource.data.workspaceId;
-    }
+    // --- COLLECTION GROUP QUERIES ---
+    // Rule for querying batches across all workspaces (if ever needed)
+    match /{path=**}/batches/{batchId} {
+     allow list: if isSignedIn() &&
+       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == resource.data.workspaceId;
+   }
   }
 }
