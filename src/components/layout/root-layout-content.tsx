@@ -81,6 +81,7 @@
   type ProductForStockAlert = {
     id: string;
     minStock: number;
+    productType?: 'SIMPLE' | 'COMBO';
   };
 
   type InventoryForStockAlert = {
@@ -183,22 +184,28 @@
     );
     const { data: allInventory, isLoading: isLoadingInventoryForAlert } = useCollection<InventoryForStockAlert>(inventoryQuery);
 
-    const lowStockCount = useMemo(() => {
-        if (!allProducts || !allInventory) return 0;
+    const stockAlertCounts = useMemo(() => {
+        if (!allProducts || !allInventory) return { lowStock: 0, outOfStock: 0 };
 
         const stockMap = new Map<string, number>();
         for (const stockItem of allInventory) {
             stockMap.set(stockItem.productId, (stockMap.get(stockItem.productId) || 0) + stockItem.quantity);
         }
 
-        let count = 0;
+        let lowStock = 0;
+        let outOfStock = 0;
         for (const product of allProducts) {
+            // Stock alerts don't apply to combos
+            if (product.productType === 'COMBO') continue;
+
             const totalStock = stockMap.get(product.id) || 0;
-            if (totalStock <= product.minStock) {
-                count++;
+            if (totalStock === 0) {
+                outOfStock++;
+            } else if (totalStock > 0 && totalStock <= product.minStock) {
+                lowStock++;
             }
         }
-        return count;
+        return { lowStock, outOfStock };
     }, [allProducts, allInventory]);
     // --- Fin de la lógica del badge de inventario ---
 
@@ -317,9 +324,18 @@
                           {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
                       </div>
                   )}
-                   {item.href === '/inventario' && lowStockCount > 0 && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white group-data-[collapsible=icon]:hidden">
-                          {lowStockCount > 99 ? '99+' : lowStockCount}
+                   {item.href === '/inventario' && (stockAlertCounts.lowStock > 0 || stockAlertCounts.outOfStock > 0) && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 group-data-[collapsible=icon]:hidden">
+                        {stockAlertCounts.lowStock > 0 && (
+                           <div className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-yellow-500 px-1 text-[9px] font-bold text-black">
+                               {stockAlertCounts.lowStock > 99 ? '99+' : stockAlertCounts.lowStock}
+                           </div>
+                        )}
+                        {stockAlertCounts.outOfStock > 0 && (
+                           <div className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
+                               {stockAlertCounts.outOfStock > 99 ? '99+' : stockAlertCounts.outOfStock}
+                           </div>
+                        )}
                       </div>
                   )}
                 </SidebarMenuItem>
