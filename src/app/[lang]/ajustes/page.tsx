@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm, useFieldArray, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +11,6 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -151,62 +150,63 @@ function BulkAdjustmentForm({
     }
   }, [isJefeDeposito, deposits]);
 
+  const loadDataForDeposit = useCallback(async () => {
+    if (!selectedDepositId || !collectionPrefix || !firestore) {
+      form.reset({ items: [] });
+      return;
+    }
+    setIsLoadingData(true);
+
+    try {
+      const productsQuery = query(
+        collection(firestore, `${collectionPrefix}/products`),
+        where('isArchived', '==', false),
+        where('depositIds', 'array-contains', selectedDepositId)
+      );
+      const productsSnapshot = await getDocs(productsQuery);
+      const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+
+      const inventoryQuery = query(
+        collection(firestore, `${collectionPrefix}/inventory`),
+        where('depositId', '==', selectedDepositId)
+      );
+      const inventorySnapshot = await getDocs(inventoryQuery);
+      const stockMap = new Map<string, number>();
+      inventorySnapshot.forEach(doc => {
+          const data = doc.data() as InventoryStock;
+          stockMap.set(data.productId, data.quantity);
+      });
+
+      const formItems = allProducts.map(product => ({
+        productId: product.id,
+        productName: product.name,
+        productCode: product.code,
+        categoryId: product.categoryId,
+        productType: product.productType || 'SIMPLE',
+        unit: product.unit,
+        currentStock: stockMap.get(product.id) || 0,
+        actualQuantity: null,
+      }));
+      
+      form.reset({ items: formItems });
+
+    } catch (error) {
+      console.error('Error loading data for adjustment:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No se pudieron cargar los productos para el depósito seleccionado.',
+      });
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [selectedDepositId, collectionPrefix, firestore, form, toast]);
+
 
   useEffect(() => {
-    const loadDataForDeposit = async () => {
-      if (!selectedDepositId || !collectionPrefix || !firestore) {
-        form.reset({ items: [] });
-        return;
-      }
-      setIsLoadingData(true);
-
-      try {
-        const productsQuery = query(
-          collection(firestore, `${collectionPrefix}/products`),
-          where('isArchived', '==', false),
-          where('depositIds', 'array-contains', selectedDepositId)
-        );
-        const productsSnapshot = await getDocs(productsQuery);
-        const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
-
-        const inventoryQuery = query(
-          collection(firestore, `${collectionPrefix}/inventory`),
-          where('depositId', '==', selectedDepositId)
-        );
-        const inventorySnapshot = await getDocs(inventoryQuery);
-        const stockMap = new Map<string, number>();
-        inventorySnapshot.forEach(doc => {
-            const data = doc.data() as InventoryStock;
-            stockMap.set(data.productId, data.quantity);
-        });
-
-        const formItems = allProducts.map(product => ({
-          productId: product.id,
-          productName: product.name,
-          productCode: product.code,
-          categoryId: product.categoryId,
-          productType: product.productType || 'SIMPLE',
-          unit: product.unit,
-          currentStock: stockMap.get(product.id) || 0,
-          actualQuantity: null,
-        }));
-        
-        form.reset({ items: formItems });
-
-      } catch (error) {
-        console.error('Error loading data for adjustment:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: 'No se pudieron cargar los productos para el depósito seleccionado.',
-        });
-      } finally {
-        setIsLoadingData(false);
-      }
-    };
-
     loadDataForDeposit();
-  }, [selectedDepositId, collectionPrefix, firestore, form, toast]);
+  }, [selectedDepositId, loadDataForDeposit]);
+
   
   const fieldIndicesToShow = useMemo(() => {
     return fields
@@ -293,10 +293,7 @@ function BulkAdjustmentForm({
         toast({ title: 'Ajuste completado', description: `${adjustedItems.length} productos fueron ajustados con éxito.` });
         
         // Reload data after successful submission
-         setSelectedDepositId(currentId => {
-            const newId = currentId + ' ';
-            return newId.trim();
-        });
+        loadDataForDeposit();
 
 
     } catch (error: any) {
@@ -344,7 +341,7 @@ function BulkAdjustmentForm({
             </div>
             {selectedDepositId && (
                 <>
-                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap items-center">
                     <Input 
                         placeholder="Buscar por nombre o código..."
                         onChange={(e) => setFilters(f => ({...f, name: e.target.value}))}
@@ -358,6 +355,16 @@ function BulkAdjustmentForm({
                         <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Tipo de producto" /></SelectTrigger>
                         <SelectContent><SelectItem value="all">Todos los tipos</SelectItem><SelectItem value="SIMPLE">Simple</SelectItem><SelectItem value="COMBO">Combo</SelectItem></SelectContent>
                     </Select>
+                     <Button
+                        type="submit"
+                        disabled={isSubmitting || isLoadingData || fieldIndicesToShow.length === 0}
+                        className="w-full sm:w-auto"
+                        >
+                        {isSubmitting && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        )}
+                        Guardar Ajustes
+                    </Button>
                 </div>
                 <div className="rounded-lg border">
                   <Table>
@@ -423,19 +430,6 @@ function BulkAdjustmentForm({
                 </>
             )}
           </CardContent>
-          {selectedDepositId && (
-            <CardFooter>
-                <Button
-                type="submit"
-                disabled={isSubmitting || isLoadingData || fieldIndicesToShow.length === 0}
-                >
-                {isSubmitting && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Guardar Ajustes
-                </Button>
-            </CardFooter>
-           )}
         </form>
       </Form>
     </Card>
@@ -510,9 +504,8 @@ function AdjustmentHistory({
   const isLoading = isLoadingAdjustments || isLoadingDeposits;
 
   const handleExportToExcel = () => {
-    const dataToExport = (adjustments || []).map((adj) => {
-      const item = adj.items[0]; // Adjustments have only one item
-      return {
+    const dataToExport = (adjustments || []).flatMap((adj) =>
+      adj.items.map(item => ({
         'Fecha': format(adj.createdAt.toDate(), 'dd/MM/yyyy HH:mm', {
           locale: es,
         }),
@@ -522,8 +515,8 @@ function AdjustmentHistory({
         'Ajuste': item.quantity,
         'Unidad': item.unit,
         'Realizado Por': adj.actorName,
-      };
-    });
+      }))
+    );
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -597,40 +590,41 @@ function AdjustmentHistory({
                 </TableRow>
               )}
               {!isLoading &&
-                adjustments?.map((adj) => {
-                  const item = adj.items[0]; // Adjustments only have one item
-                  const isPositive = item.quantity > 0;
-                  return (
-                    <TableRow key={adj.id}>
-                      <TableCell className="font-medium">
-                        {format(adj.createdAt.toDate(), 'PPpp', { locale: es })}
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {adj.remitoNumber || '-'}
-                      </TableCell>
-                      <TableCell>{adj.depositName}</TableCell>
-                      <TableCell>{item.productName}</TableCell>
-                      <TableCell
-                        className={`text-right font-bold ${
-                          isPositive ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          {isPositive ? (
-                            <ArrowUp className="h-4 w-4" />
-                          ) : (
-                            <ArrowDown className="h-4 w-4" />
-                          )}
-                          {isPositive ? '+' : ''}
-                          {item.quantity} {item.unit}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {adj.actorName}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                adjustments?.flatMap((adj) => 
+                  adj.items.map((item, index) => {
+                    const isPositive = item.quantity > 0;
+                    return (
+                      <TableRow key={`${adj.id}-${index}`}>
+                        <TableCell className="font-medium">
+                          {format(adj.createdAt.toDate(), 'PPpp', { locale: es })}
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {adj.remitoNumber || '-'}
+                        </TableCell>
+                        <TableCell>{adj.depositName}</TableCell>
+                        <TableCell>{item.productName}</TableCell>
+                        <TableCell
+                          className={`text-right font-bold ${
+                            isPositive ? 'text-green-600' : 'text-red-600'
+                          }`}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            {isPositive ? (
+                              <ArrowUp className="h-4 w-4" />
+                            ) : (
+                              <ArrowDown className="h-4 w-4" />
+                            )}
+                            {isPositive ? '+' : ''}
+                            {item.quantity} {item.unit}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {adj.actorName}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
             </TableBody>
           </Table>
         </div>
