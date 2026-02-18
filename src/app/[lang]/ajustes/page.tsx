@@ -299,30 +299,47 @@ function BulkAdjustmentForm({
 }
 
 // --- Componente AdjustmentHistory ---
-function AdjustmentHistory({ currentUserProfile }: { currentUserProfile?: UserProfile | null }) {
+function AdjustmentHistory({ 
+    currentUserProfile,
+    deposits
+}: { 
+    currentUserProfile?: UserProfile | null,
+    deposits: Deposit[] | null
+}) {
   const firestore = useFirestore();
   
-  // 1. Extraemos el workspaceId de forma segura
   const workspaceId = currentUserProfile?.workspaceId;
+  const isJefe = currentUserProfile?.role === 'jefe_deposito';
 
   const adjustmentsQuery = useMemoFirebase(() => {
-    // 2. BLOQUEO CRÍTICO: Si no hay workspaceId, devolvemos null. 
-    // Esto evita que se intente listar /workspaces/undefined/... que es lo que da error de permisos.
     if (!firestore || !workspaceId) return null;
+    
+    // For 'jefe_deposito', we must have the list of their allowed deposits.
+    if (isJefe && !deposits) return null;
 
     const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
     
-    // 3. Consulta específica y filtrada
+    const filters = [where('type', '==', 'ajuste')];
+    
+    if (isJefe) {
+      const allowedDepositIds = deposits?.map(d => d.id);
+      // If a 'jefe' has no assigned deposits, they can't see any history.
+      if (!allowedDepositIds || allowedDepositIds.length === 0) {
+        return null;
+      }
+      // Firestore 'in' query supports up to 30 elements.
+      filters.push(where('depositId', 'in', allowedDepositIds.slice(0, 30)));
+    }
+    
     return query(
       collectionRef,
-      where('type', '==', 'ajuste'),
+      ...filters,
       orderBy('createdAt', 'desc')
     );
-  }, [firestore, workspaceId]);
+  }, [firestore, workspaceId, deposits, isJefe]);
 
   const { data: adjustments, isLoading, error } = useCollection<StockMovement>(adjustmentsQuery);
 
-  // Debug: Esto te dirá en consola si el error viene de aquí
   if (error) console.error("Error en Historial:", error);
 
   return (
@@ -339,9 +356,19 @@ function AdjustmentHistory({ currentUserProfile }: { currentUserProfile?: UserPr
           </TableHeader>
           <TableBody>
             {isLoading ? <TableRow><TableCell colSpan={3}>Cargando...</TableCell></TableRow> : 
+             adjustments?.length === 0 ? (
+                <TableRow>
+                    <TableCell colSpan={3} className="text-center h-24 text-muted-foreground">
+                        {isJefe && (!deposits || deposits.length === 0) 
+                            ? "No tienes depósitos asignados." 
+                            : "No hay historial de ajustes."
+                        }
+                    </TableCell>
+                </TableRow>
+             ) :
              adjustments?.map(adj => (
               <TableRow key={adj.id}>
-                <TableCell>{format(adj.createdAt?.toDate() || new Date(), 'dd/MM/yy HH:mm')}</TableCell>
+                <TableCell>{adj.createdAt?.toDate ? format(adj.createdAt.toDate(), 'dd/MM/yy HH:mm') : 'Fecha inválida'}</TableCell>
                 <TableCell>{adj.depositName}</TableCell>
                 <TableCell>
                   {adj.items.map((it, i) => <div key={i} className="text-xs">{it.productName}: {it.quantity > 0 ? '+' : ''}{it.quantity}</div>)}
@@ -369,9 +396,10 @@ export default function AjustesPage() {
 
   const { data: deposits, isLoading: isLoadDeps } = useCollection<Deposit>(
     useMemoFirebase(() => {
-      if (!firestore || !colPrefix) return null;
+      if (!firestore || !colPrefix || !profile) return null;
       const ref = collection(firestore, `${colPrefix}/deposits`);
-      return profile?.role === 'jefe_deposito' ? query(ref, where('jefeId', '==', user?.uid)) : ref;
+      // An admin can see all deposits, a jefe only sees their own.
+      return profile?.role === 'jefe_deposito' && user?.uid ? query(ref, where('jefeId', '==', user.uid)) : ref;
     }, [firestore, colPrefix, profile, user])
   );
 
@@ -383,7 +411,7 @@ export default function AjustesPage() {
       <Tabs defaultValue="ajuste">
         <TabsList><TabsTrigger value="ajuste">Ajuste</TabsTrigger><TabsTrigger value="historial">Historial</TabsTrigger></TabsList>
         <TabsContent value="ajuste"><BulkAdjustmentForm currentUserProfile={profile} deposits={deposits} /></TabsContent>
-        <TabsContent value="historial"><AdjustmentHistory currentUserProfile={profile} /></TabsContent>
+        <TabsContent value="historial"><AdjustmentHistory currentUserProfile={profile} deposits={deposits} /></TabsContent>
       </Tabs>
     </div>
   );
