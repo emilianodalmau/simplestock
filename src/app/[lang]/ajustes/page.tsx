@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -110,7 +111,7 @@ function BulkAdjustmentForm({
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
   
   const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(
-    useMemoFirebase(() => (collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null), [collectionPrefix])
+    useMemoFirebase(() => (collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null), [collectionPrefix, firestore])
   );
 
   const form = useForm<BulkAdjustmentFormValues>({
