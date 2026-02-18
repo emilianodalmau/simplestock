@@ -163,7 +163,7 @@ function BulkAdjustmentForm({
       try {
         const productsQuery = query(
           collection(firestore, `${collectionPrefix}/products`),
-          where('isArchived', '!=', true),
+          where('isArchived', '==', false),
           where('depositIds', 'array-contains', selectedDepositId)
         );
         const productsSnapshot = await getDocs(productsQuery);
@@ -708,5 +708,3 @@ export default function AjustesPage() {
     </div>
   );
 }
-
-    
