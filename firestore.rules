@@ -20,22 +20,22 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isSignedIn() && getMyData().get('role', '') == 'super-admin';
+      let myData = getMyData();
+      return myData != null && myData.role == 'super-admin';
     }
     
     function hasWorkspaceRole(workspaceId, role) {
-      let userData = getMyData();
-      return userData != null && userData.get('workspaceId', '') == workspaceId && userData.get('role', '') == role;
+      let myData = getMyData();
+      return myData != null && myData.workspaceId == workspaceId && myData.role == role;
     }
 
     function isWorkspaceAdmin(workspaceId) {
       return hasWorkspaceRole(workspaceId, 'administrador');
     }
 
-    // Checks if the user's document says they belong to the workspace.
-    // This is safe for LIST queries.
     function isMemberOfWorkspace(workspaceId) {
-       return isSignedIn() && getMyData().get('workspaceId', '') == workspaceId;
+       let myData = getMyData();
+       return myData != null && myData.workspaceId == workspaceId;
     }
 
     // Checks membership OR ownership. Ownership check involves a GET, so this
@@ -46,10 +46,11 @@ service cloud.firestore {
     }
 
     function isOrphanAdmin() {
-      let userData = getMyData();
+      let myData = getMyData();
       return isSignedIn()
-             && userData.get('role', '') == 'administrador'
-             && userData.get('workspaceId', null) == null;
+             && myData != null
+             && myData.role == 'administrador'
+             && myData.workspaceId == null;
     }
 
 
@@ -58,20 +59,23 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /users/{userId} {
-      allow get: if isSuperAdmin() 
-                  || isOwner(userId)
+      // FIX: Break recursion. A user can always get their own doc.
+      // Other 'get' calls are not recursive so they can use helpers.
+      allow get: if isOwner(userId)
+                  || isSuperAdmin()
                   || (
-                      isSignedIn()
-                      && resource.data.workspaceId != null
-                      && getMyData().get('workspaceId', null) != null
-                      && resource.data.workspaceId == getMyData().get('workspaceId', null)
+                      // Allows a member of a workspace to get data of another member of the SAME workspace
+                      getMyData() != null
+                      && getMyData().workspaceId != null
+                      && resource.data.workspaceId == getMyData().workspaceId
                      );
 
+      // A user cannot list all users. Only admins can list users within their workspace.
       allow list: if isSuperAdmin() 
                    || (
-                      isWorkspaceAdmin(getMyData().get('workspaceId', null)) &&
+                      isWorkspaceAdmin(getMyData().workspaceId) &&
                       request.query.get('where', [['']])[0][0] == 'workspaceId' &&
-                      request.query.get('where', [['']])[0][2] == getMyData().get('workspaceId', null)
+                      request.query.get('where', [['']])[0][2] == getMyData().workspaceId
                   );
 
       allow create: if (isOwner(userId))
@@ -91,7 +95,8 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
 
     match /workspaces/{workspaceId} {
-        allow get: if isSuperAdmin() || (isSignedIn() && (getMyData().get('workspaceId', '') == workspaceId || resource.data.ownerId == request.auth.uid));
+        // FIX: This rule is now safe because the 'get' in isMemberOfWorkspace is no longer recursive.
+        allow get: if isSuperAdmin() || (isSignedIn() && (isMemberOfWorkspace(workspaceId) || resource.data.ownerId == request.auth.uid));
         allow list: if isSuperAdmin();
         
         allow create: if isSuperAdmin() 
@@ -103,6 +108,8 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     // Subcollections
     // ------------------------------------------------------------------------
+    
+    // FIX: With the recursion in `get /users` fixed, these list rules are now safe and correct.
     
     match /workspaces/{workspaceId}/categories/{docId} { 
         allow get: if isInWorkspace(workspaceId);
@@ -143,7 +150,7 @@ service cloud.firestore {
     match /workspaces/{workspaceId}/counters/{docId} { 
         allow get: if isInWorkspace(workspaceId);
         allow list: if isMemberOfWorkspace(workspaceId);
-        allow write: if isSuperAdmin() || isInWorkspace(workspaceId); 
+        allow write: if isInWorkspace(workspaceId); 
     }
     
     match /workspaces/{workspaceId}/deposits/{depositId} {
@@ -165,11 +172,11 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
-         allow get: if isSignedIn() && isInWorkspace(workspaceId);
+         allow get: if isInWorkspace(workspaceId);
          allow list: if isMemberOfWorkspace(workspaceId);
          
-         allow create: if isSuperAdmin() || isInWorkspace(workspaceId);
-         allow update: if isSuperAdmin() || isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+         allow create: if isInWorkspace(workspaceId);
+         allow update: if isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
          allow delete: if 
             isSuperAdmin() 
             || isWorkspaceAdmin(workspaceId)
@@ -181,7 +188,8 @@ service cloud.firestore {
     }
 
     match /{path=**}/batches/{batchId} {
-      allow list: if request.auth.uid != null;
+      allow list: if isSignedIn() &&
+        getMyData().workspaceId == resource.data.workspaceId;
     }
   }
 }
