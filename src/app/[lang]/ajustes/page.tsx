@@ -248,6 +248,9 @@ function BulkAdjustmentForm({
             const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
             const movementItems = adjustedItems.map((item, index) => {
                 const productDoc = productsInvolved[index];
+                 if (!productDoc.exists()) {
+                    throw new Error(`El producto "${item.productName}" no fue encontrado en la base de datos. Pudo haber sido eliminado.`);
+                }
                 const productData = productDoc.data() as Product;
                 const stockDifference = item.actualQuantity! - item.currentStock;
                 return {
@@ -298,12 +301,11 @@ function BulkAdjustmentForm({
 
     } catch (error: any) {
         console.error('Error procesando el ajuste masivo:', error);
-        const permissionError = new FirestorePermissionError({
-            path: `${collectionPrefix}/inventory`,
-            operation: 'write',
-            requestResourceData: { adjustedItems },
+        toast({
+            variant: 'destructive',
+            title: 'Error al guardar el ajuste',
+            description: error.message || 'No se pudieron guardar los cambios. Revisa los permisos de escritura o los datos ingresados.',
         });
-        errorEmitter.emit('permission-error', permissionError);
     } finally {
         setIsSubmitting(false);
     }
@@ -492,7 +494,7 @@ function AdjustmentHistory({
     return query(
       movementsCollectionRef,
       where('type', '==', 'ajuste'),
-      where('depositId', 'in', assignedDepositIds),
+      where('depositId', 'in', assignedDepositIds.slice(0,10)),
       orderBy('createdAt', 'desc')
     );
     
