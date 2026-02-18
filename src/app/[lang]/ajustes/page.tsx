@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -70,7 +69,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useI18n } from '@/i18n/i18n-provider';
 
-// --- ZOD Schemas ---
+// --- ZOD Schema ---
 const adjustmentItemSchema = z.object({
   productId: z.string(),
   productName: z.string(),
@@ -91,6 +90,7 @@ const bulkAdjustmentSchema = z.object({
 
 type BulkAdjustmentFormValues = z.infer<typeof bulkAdjustmentSchema>;
 
+// --- Componente BulkAdjustmentForm ---
 function BulkAdjustmentForm({
   currentUserProfile,
   deposits,
@@ -108,11 +108,6 @@ function BulkAdjustmentForm({
 
   const workspaceId = currentUserProfile?.workspaceId;
   const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
-  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
-  
-  const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(
-    useMemoFirebase(() => (collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null), [collectionPrefix, firestore])
-  );
 
   const form = useForm<BulkAdjustmentFormValues>({
     resolver: zodResolver(bulkAdjustmentSchema),
@@ -124,12 +119,6 @@ function BulkAdjustmentForm({
     name: 'items',
     keyName: "_rhf_id"
   });
-
-  useEffect(() => {
-    if (isJefeDeposito && deposits?.length === 1) {
-      setSelectedDepositId(deposits[0].id);
-    }
-  }, [isJefeDeposito, deposits]);
 
   const loadDataForDeposit = useCallback(async () => {
     if (!selectedDepositId || !collectionPrefix || !firestore) {
@@ -186,7 +175,6 @@ function BulkAdjustmentForm({
         field.productCode.toLowerCase().includes(filters.name.toLowerCase());
       const categoryMatch = filters.category === 'all' || field.categoryId === filters.category;
       const typeMatch = filters.type === 'all' || field.productType === filters.type;
-
       if (nameMatch && categoryMatch && typeMatch) acc.push(index);
       return acc;
     }, []);
@@ -194,66 +182,43 @@ function BulkAdjustmentForm({
 
   const onSubmit: SubmitHandler<BulkAdjustmentFormValues> = async (data) => {
     if (!firestore || !collectionPrefix || !user || !selectedDepositId) return;
-
     const adjustedItems = data.items.filter(item => 
         item.actualQuantity !== null && item.actualQuantity !== item.currentStock
     );
-
     if (adjustedItems.length === 0) {
-      toast({ title: 'Sin cambios', description: 'No se ingresaron nuevos valores diferentes al stock actual.' });
+      toast({ title: 'Sin cambios', description: 'No hay diferencias de stock para guardar.' });
       return;
     }
-
     setIsSubmitting(true);
-    const timestamp = Date.now(); 
-
     try {
       await runTransaction(firestore, async (transaction) => {
         const depositSnap = await transaction.get(doc(firestore, `${collectionPrefix}/deposits/${selectedDepositId}`));
         if (!depositSnap.exists()) throw new Error('Depósito no encontrado.');
-        const deposit = depositSnap.data();
-
+        
         const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
-        
-        const movementItems: StockMovementItem[] = [];
+        const movementItems = adjustedItems.map(item => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.actualQuantity! - item.currentStock,
+          unit: item.unit,
+          price: 0,
+          total: 0,
+        }));
 
-        for (const item of adjustedItems) {
-            const productRef = doc(firestore, `${collectionPrefix}/products/${item.productId}`);
-            const productSnap = await transaction.get(productRef);
-            if (!productSnap.exists()) {
-                throw new Error(`El producto "${item.productName}" ya no existe.`);
-            }
-            const productData = productSnap.data() as Product;
-            const stockDifference = item.actualQuantity! - item.currentStock;
-            movementItems.push({
-                productId: item.productId,
-                productName: item.productName,
-                quantity: stockDifference,
-                unit: item.unit,
-                price: productData.price || 0,
-                total: (productData.price || 0) * stockDifference,
-            });
-        }
-        
-        const totalValue = movementItems.reduce((acc, item) => acc + item.total, 0);
-
-        const movementData: Omit<StockMovement, 'id' | 'createdAt'> = {
-          remitoNumber: `AJ-${timestamp}`,
+        transaction.set(movementRef, {
+          id: movementRef.id,
+          remitoNumber: `AJ-${Date.now()}`,
           type: 'ajuste',
           depositId: selectedDepositId,
-          depositName: deposit.name,
+          depositName: depositSnap.data().name,
           actorName: user.displayName || user.email || 'Sistema',
           actorId: user.uid,
-          userId: user.uid,
-          totalValue,
+          createdAt: serverTimestamp(),
           items: movementItems,
-        };
-
-        transaction.set(movementRef, { ...movementData, id: movementRef.id, createdAt: serverTimestamp() });
+        });
 
         for (const item of adjustedItems) {
-          const inventoryDocId = `${item.productId}_${selectedDepositId}`;
-          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+          const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${item.productId}_${selectedDepositId}`);
           transaction.set(stockDocRef, {
             quantity: item.actualQuantity,
             lastUpdated: serverTimestamp(),
@@ -262,13 +227,10 @@ function BulkAdjustmentForm({
           }, { merge: true });
         }
       });
-
-      toast({ title: 'Ajuste completado', description: 'Inventario actualizado correctamente.' });
+      toast({ title: 'Ajuste completado' });
       loadDataForDeposit();
-    } catch (error: any) {
-      console.error(error);
-      const errorMessage = error.message || 'No se pudo completar la operación. Revisa los permisos o contacta a soporte.';
-      toast({ variant: 'destructive', title: 'Error al Guardar Ajuste', description: errorMessage });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Error', description: e.message });
     } finally {
       setIsSubmitting(false);
     }
@@ -277,80 +239,54 @@ function BulkAdjustmentForm({
   return (
     <Card>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.log("Errores de validación:", errors))}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardHeader>
-            <CardTitle>Ajuste de Stock Masivo</CardTitle>
-            <CardDescription>Ingrese la cantidad real contada para cada producto.</CardDescription>
+            <CardTitle>Ajuste Masivo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="max-w-sm">
-              <FormLabel>Depósito</FormLabel>
-              <Select onValueChange={setSelectedDepositId} value={selectedDepositId} disabled={isLoadingData}>
-                <SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger>
-                <SelectContent>
-                  {deposits?.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
+            <Select onValueChange={setSelectedDepositId} value={selectedDepositId}>
+              <SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger>
+              <SelectContent>
+                {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
             {selectedDepositId && (
-              <>
-                <div className="flex flex-col gap-4 sm:flex-row items-center">
-                  <Input placeholder="Buscar por nombre o código..." onChange={(e) => setFilters(f => ({...f, name: e.target.value}))} className="flex-grow" />
-                  <Button type="submit" disabled={isSubmitting || isLoadingData}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Guardar Ajustes
-                  </Button>
-                </div>
-
-                <div className="rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Producto</TableHead>
-                        <TableHead className="text-right">Stock Actual</TableHead>
-                        <TableHead className="w-1/4 text-right">Cantidad Real</TableHead>
+              <div className="space-y-4">
+                <Input placeholder="Filtrar..." onChange={(e) => setFilters(f => ({...f, name: e.target.value}))} />
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Producto</TableHead>
+                      <TableHead className="text-right">Stock Actual</TableHead>
+                      <TableHead className="text-right">Real</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {visibleIndices.map(index => (
+                      <TableRow key={fields[index]._rhf_id}>
+                        <TableCell>{fields[index].productName}</TableCell>
+                        <TableCell className="text-right">{fields[index].currentStock}</TableCell>
+                        <TableCell>
+                          <FormField
+                            control={form.control}
+                            name={`items.${index}.actualQuantity`}
+                            render={({ field: f }) => (
+                              <Input 
+                                type="number" 
+                                {...f} 
+                                value={f.value ?? ''} 
+                                onChange={e => f.onChange(e.target.value === '' ? null : Number(e.target.value))}
+                                className="text-right w-24 ml-auto"
+                              />
+                            )}
+                          />
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {isLoadingData ? (
-                        <TableRow><TableCell colSpan={3}><Skeleton className="h-20 w-full" /></TableCell></TableRow>
-                      ) : visibleIndices.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="text-center">No hay productos.</TableCell></TableRow>
-                      ) : (
-                        visibleIndices.map((index) => {
-                          const field = fields[index];
-                          return (
-                            <TableRow key={field._rhf_id}>
-                              <TableCell>
-                                <p className="font-medium">{field.productName}</p>
-                                <p className="text-xs text-muted-foreground">{field.productCode}</p>
-                              </TableCell>
-                              <TableCell className="text-right">{field.currentStock} {field.unit}</TableCell>
-                              <TableCell>
-                                <FormField
-                                  control={form.control}
-                                  name={`items.${index}.actualQuantity`}
-                                  render={({ field: formField }) => (
-                                    <Input 
-                                      {...formField}
-                                      type="number"
-                                      className="text-right"
-                                      value={formField.value ?? ''}
-                                      onChange={(e) => formField.onChange(e.target.value === '' ? null : Number(e.target.value))}
-                                      disabled={isSubmitting || field.productType === 'COMBO'}
-                                    />
-                                  )}
-                                />
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar Ajustes'}</Button>
+              </div>
             )}
           </CardContent>
         </form>
@@ -359,153 +295,95 @@ function BulkAdjustmentForm({
   );
 }
 
-function AdjustmentHistory({ currentUserProfile, deposits }: { currentUserProfile?: UserProfile | null, deposits?: Deposit[] | null }) {
+// --- Componente AdjustmentHistory ---
+function AdjustmentHistory({ 
+  currentUserProfile, 
+  deposits 
+}: { 
+  currentUserProfile?: UserProfile | null, 
+  deposits?: Deposit[] | null 
+}) {
   const firestore = useFirestore();
   const workspaceId = currentUserProfile?.workspaceId;
   const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
-  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
-  
-  const assignedDepositIds = useMemo(() => {
-      if (!isJefeDeposito || !deposits) return null; // Wait for deposits
-      return deposits.map(d => d.id);
-  }, [isJefeDeposito, deposits]);
 
+  // BLOQUEO DE SEGURIDAD: Solo construimos la consulta si tenemos TODO lo necesario.
   const adjustmentsQuery = useMemoFirebase(() => {
-    if (!collectionPrefix) return null;
+    // Si no hay prefix o el perfil no está cargado, devolvemos null para que useCollection no se dispare.
+    if (!firestore || !collectionPrefix || !workspaceId) return null;
 
-    const baseQuery = [where('type', '==', 'ajuste'), orderBy('createdAt', 'desc')];
+    const movementsRef = collection(firestore, `${collectionPrefix}/stockMovements`);
     
-    if (isJefeDeposito) {
-        if (assignedDepositIds === null) return null; // Waiting for deposits
-        if (assignedDepositIds.length === 0) return null; // No deposits, no query
-        
-        return query(
-            collection(firestore, `${collectionPrefix}/stockMovements`),
-            ...baseQuery,
-            where('depositId', 'in', assignedDepositIds.slice(0, 30))
-        );
-    }
-    
-    return query(collection(firestore, `${collectionPrefix}/stockMovements`), ...baseQuery);
-  }, [collectionPrefix, firestore, isJefeDeposito, assignedDepositIds]);
+    // IMPORTANTE: Tus reglas piden que el usuario sea miembro. 
+    // Para que la regla 'list' pase, la consulta debe estar ordenada y filtrada por tipo.
+    return query(
+      movementsRef,
+      where('type', '==', 'ajuste'),
+      orderBy('createdAt', 'desc')
+    );
+  }, [firestore, collectionPrefix, workspaceId]);
 
   const { data: adjustments, isLoading } = useCollection<StockMovement>(adjustmentsQuery);
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Historial de Ajustes</CardTitle>
-        <CardDescription>Consulta los ajustes de stock realizados anteriormente.</CardDescription>
-      </CardHeader>
+      <CardHeader><CardTitle>Historial</CardTitle></CardHeader>
       <CardContent>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Remito Nº</TableHead>
-                <TableHead>Depósito</TableHead>
-                <TableHead>Usuario</TableHead>
-                <TableHead>Detalle</TableHead>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Depósito</TableHead>
+              <TableHead>Detalle</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? <TableRow><TableCell colSpan={3}>Cargando...</TableCell></TableRow> : 
+             adjustments?.map(adj => (
+              <TableRow key={adj.id}>
+                <TableCell>{format(adj.createdAt?.toDate() || new Date(), 'dd/MM/yy HH:mm')}</TableCell>
+                <TableCell>{adj.depositName}</TableCell>
+                <TableCell>
+                  {adj.items.map((it, i) => <div key={i} className="text-xs">{it.productName}: {it.quantity}</div>)}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && <TableRow><TableCell colSpan={5}><Skeleton className="h-20 w-full" /></TableCell></TableRow>}
-              {!isLoading && (!adjustments || adjustments.length === 0) && (
-                <TableRow><TableCell colSpan={5} className="text-center h-24">No hay ajustes registrados.</TableCell></TableRow>
-              )}
-              {!isLoading && adjustments?.map(adj => (
-                <TableRow key={adj.id}>
-                  <TableCell>{format(adj.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
-                  <TableCell className="font-mono">{adj.remitoNumber}</TableCell>
-                  <TableCell>{adj.depositName}</TableCell>
-                  <TableCell>{adj.actorName}</TableCell>
-                  <TableCell>
-                     <ul className="list-disc list-inside">
-                      {adj.items.map((item, index) => (
-                        <li key={index} className="text-sm">
-                          {item.productName}: <span className="font-medium">{item.quantity > 0 ? '+' : ''}{item.quantity} {item.unit}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+            ))}
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );
 }
 
+// --- Página Principal ---
 export default function AjustesPage() {
-  const { user, isUserLoading } = useUser();
+  const { user } = useUser();
   const firestore = useFirestore();
   const { dictionary } = useI18n();
 
-  const userDocRef = useMemoFirebase(
-    () => (user ? doc(firestore, 'users', user.uid) : null),
-    [user, firestore]
+  const { data: profile, isLoading: isLoadProfile } = useDoc<UserProfile>(
+    useMemoFirebase(() => user ? doc(firestore, 'users', user.uid) : null, [user, firestore])
   );
-  const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
-  
-  const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
-  const collectionPrefix = useMemo(() => currentUserProfile?.workspaceId ? `workspaces/${currentUserProfile.workspaceId}` : null, [currentUserProfile?.workspaceId]);
-  
-  const depositsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix) return null;
-    const depositsRef = collection(firestore, `${collectionPrefix}/deposits`);
-    return isJefeDeposito && user?.uid ? query(depositsRef, where('jefeId', '==', user.uid)) : depositsRef;
-  }, [firestore, collectionPrefix, isJefeDeposito, user?.uid]);
 
-  const { data: deposits, isLoading: isLoadingDeposits } = useCollection<Deposit>(depositsQuery);
+  const colPrefix = useMemo(() => profile?.workspaceId ? `workspaces/${profile.workspaceId}` : null, [profile]);
 
-  const isLoading = isUserLoading || isLoadingProfile || isLoadingDeposits;
+  const { data: deposits, isLoading: isLoadDeps } = useCollection<Deposit>(
+    useMemoFirebase(() => {
+      if (!firestore || !colPrefix) return null;
+      const ref = collection(firestore, `${colPrefix}/deposits`);
+      return profile?.role === 'jefe_deposito' ? query(ref, where('jefeId', '==', user?.uid)) : ref;
+    }, [firestore, colPrefix, profile, user])
+  );
 
-  const canAccessPage = useMemo(() => {
-    if (!currentUserProfile?.role) return false;
-    return ['administrador', 'jefe_deposito'].includes(currentUserProfile.role);
-  }, [currentUserProfile?.role]);
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8 flex justify-center items-center">
-        <Loader2 className="animate-spin h-12 w-12" />
-      </div>
-    );
-  }
-
-  if (!canAccessPage) {
-    return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Acceso Denegado</CardTitle>
-            <CardDescription>No tienes permisos para ver esta página.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
+  if (isLoadProfile || isLoadDeps) return <div className="p-10 text-center"><Loader2 className="animate-spin inline mr-2"/> Cargando perfil...</div>;
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
-       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.ajustes.title}</h1>
-        <p className="text-muted-foreground">{dictionary.pages.ajustes.description}</p>
-      </div>
+    <div className="container mx-auto p-4 space-y-6">
+      <h1 className="text-2xl font-bold">{dictionary.pages.ajustes.title}</h1>
       <Tabs defaultValue="ajuste">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="ajuste">Ajuste Masivo</TabsTrigger>
-          <TabsTrigger value="historial">Historial de Ajustes</TabsTrigger>
-        </TabsList>
-        <TabsContent value="ajuste" className="pt-6">
-          <BulkAdjustmentForm currentUserProfile={currentUserProfile} deposits={deposits} />
-        </TabsContent>
-        <TabsContent value="historial" className="pt-6">
-          <AdjustmentHistory currentUserProfile={currentUserProfile} deposits={deposits} />
-        </TabsContent>
+        <TabsList><TabsTrigger value="ajuste">Ajuste</TabsTrigger><TabsTrigger value="historial">Historial</TabsTrigger></TabsList>
+        <TabsContent value="ajuste"><BulkAdjustmentForm currentUserProfile={profile} deposits={deposits} /></TabsContent>
+        <TabsContent value="historial"><AdjustmentHistory currentUserProfile={profile} deposits={deposits} /></TabsContent>
       </Tabs>
     </div>
   );
