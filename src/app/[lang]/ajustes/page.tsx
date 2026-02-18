@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -95,8 +96,8 @@ function BulkAdjustmentForm({
   currentUserProfile,
   deposits,
 }: {
-  currentUserProfile?: UserProfile | null;
-  deposits?: Deposit[] | null;
+  currentUserProfile: UserProfile | null;
+  deposits: Deposit[] | null;
 }) {
   const [selectedDepositId, setSelectedDepositId] = useState<string>('');
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -190,6 +191,7 @@ function BulkAdjustmentForm({
       return;
     }
     setIsSubmitting(true);
+    const timestamp = Date.now(); // Generate timestamp before the transaction
     try {
       await runTransaction(firestore, async (transaction) => {
         const depositSnap = await transaction.get(doc(firestore, `${collectionPrefix}/deposits/${selectedDepositId}`));
@@ -207,7 +209,7 @@ function BulkAdjustmentForm({
 
         transaction.set(movementRef, {
           id: movementRef.id,
-          remitoNumber: `AJ-${Date.now()}`,
+          remitoNumber: `AJ-${timestamp}`, // Use stable timestamp
           type: 'ajuste',
           depositId: selectedDepositId,
           depositName: depositSnap.data().name,
@@ -215,6 +217,7 @@ function BulkAdjustmentForm({
           actorId: user.uid,
           createdAt: serverTimestamp(),
           items: movementItems,
+          totalValue: 0,
         });
 
         for (const item of adjustedItems) {
@@ -296,34 +299,30 @@ function BulkAdjustmentForm({
 }
 
 // --- Componente AdjustmentHistory ---
-function AdjustmentHistory({ 
-  currentUserProfile, 
-  deposits 
-}: { 
-  currentUserProfile?: UserProfile | null, 
-  deposits?: Deposit[] | null 
-}) {
+function AdjustmentHistory({ currentUserProfile }: { currentUserProfile: UserProfile | null }) {
   const firestore = useFirestore();
   const workspaceId = currentUserProfile?.workspaceId;
-  const collectionPrefix = useMemo(() => workspaceId ? `workspaces/${workspaceId}` : null, [workspaceId]);
 
-  // BLOQUEO DE SEGURIDAD: Solo construimos la consulta si tenemos TODO lo necesario.
   const adjustmentsQuery = useMemoFirebase(() => {
-    // Si no hay prefix o el perfil no está cargado, devolvemos null para que useCollection no se dispare.
-    if (!firestore || !collectionPrefix || !workspaceId) return null;
+    // CRITICAL BLOCK: If there is no workspaceId, return null.
+    // This prevents attempting to list /workspaces/undefined/... which causes a permission error.
+    if (!firestore || !workspaceId) return null;
 
-    const movementsRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+    const collectionRef = collection(firestore, `workspaces/${workspaceId}/stockMovements`);
     
-    // IMPORTANTE: Tus reglas piden que el usuario sea miembro. 
-    // Para que la regla 'list' pase, la consulta debe estar ordenada y filtrada por tipo.
+    // Specific and filtered query
     return query(
-      movementsRef,
+      collectionRef,
       where('type', '==', 'ajuste'),
       orderBy('createdAt', 'desc')
     );
-  }, [firestore, collectionPrefix, workspaceId]);
+  }, [firestore, workspaceId]);
 
-  const { data: adjustments, isLoading } = useCollection<StockMovement>(adjustmentsQuery);
+  const { data: adjustments, isLoading, error } = useCollection<StockMovement>(adjustmentsQuery);
+
+  if (error) {
+    console.error("Error en Historial:", error);
+  }
 
   return (
     <Card>
@@ -344,7 +343,7 @@ function AdjustmentHistory({
                 <TableCell>{format(adj.createdAt?.toDate() || new Date(), 'dd/MM/yy HH:mm')}</TableCell>
                 <TableCell>{adj.depositName}</TableCell>
                 <TableCell>
-                  {adj.items.map((it, i) => <div key={i} className="text-xs">{it.productName}: {it.quantity}</div>)}
+                  {adj.items.map((it, i) => <div key={i} className="text-xs">{it.productName}: {it.quantity > 0 ? '+' : ''}{it.quantity}</div>)}
                 </TableCell>
               </TableRow>
             ))}
@@ -383,7 +382,7 @@ export default function AjustesPage() {
       <Tabs defaultValue="ajuste">
         <TabsList><TabsTrigger value="ajuste">Ajuste</TabsTrigger><TabsTrigger value="historial">Historial</TabsTrigger></TabsList>
         <TabsContent value="ajuste"><BulkAdjustmentForm currentUserProfile={profile} deposits={deposits} /></TabsContent>
-        <TabsContent value="historial"><AdjustmentHistory currentUserProfile={profile} deposits={deposits} /></TabsContent>
+        <TabsContent value="historial"><AdjustmentHistory currentUserProfile={profile} /></TabsContent>
       </Tabs>
     </div>
   );

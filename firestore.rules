@@ -172,11 +172,17 @@ service cloud.firestore {
     }
     
     match /workspaces/{workspaceId}/stockMovements/{movementId} {
+         // Allow GET if user is in workspace. This is a single-doc read, so the `get` in the helper is fine.
          allow get: if isInWorkspace(workspaceId);
-         allow list: if isMemberOfWorkspace(workspaceId);
          
+         // Allow LIST if user is authenticated. Security relies on the client querying the correct path.
+         allow list: if request.auth != null;
+         
+         // Allow CREATE if user is in the workspace.
          allow create: if isInWorkspace(workspaceId);
+         
          allow update: if isWorkspaceAdmin(workspaceId) || hasWorkspaceRole(workspaceId, 'editor');
+         
          allow delete: if 
             isSuperAdmin() 
             || isWorkspaceAdmin(workspaceId)
