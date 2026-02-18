@@ -46,6 +46,7 @@ import {
   runTransaction,
   serverTimestamp,
   orderBy,
+  getDocs,
 } from 'firebase/firestore';
 import type {
   Product,
@@ -165,14 +166,14 @@ function BulkAdjustmentForm({
           where('isArchived', '!=', true),
           where('depositIds', 'array-contains', selectedDepositId)
         );
-        const productsSnapshot = await runTransaction(firestore, async t => t.get(productsQuery));
+        const productsSnapshot = await getDocs(productsQuery);
         const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
 
         const inventoryQuery = query(
           collection(firestore, `${collectionPrefix}/inventory`),
           where('depositId', '==', selectedDepositId)
         );
-        const inventorySnapshot = await runTransaction(firestore, async t => t.get(inventoryQuery));
+        const inventorySnapshot = await getDocs(inventoryQuery);
         const stockMap = new Map<string, number>();
         inventorySnapshot.forEach(doc => {
             const data = doc.data() as InventoryStock;
@@ -707,3 +708,5 @@ export default function AjustesPage() {
     </div>
   );
 }
+
+    
