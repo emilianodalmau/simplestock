@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 type UserProfile = {
   role?: 'super-admin' | 'administrador';
@@ -44,12 +45,14 @@ type Workspace = {
     appName?: string;
     logoUrl?: string;
     language?: 'es' | 'en' | 'pt';
+    showStockToRequesters?: boolean;
 }
 
 export default function ConfiguracionPage() {
   // State for form fields
   const [workspaceName, setWorkspaceName] = useState('');
   const [logoPreview, setLogoPreview] = useState<string | null>('');
+  const [showStock, setShowStock] = useState(true);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,6 +90,7 @@ export default function ConfiguracionPage() {
     } else if (isWorkspaceAdmin && workspaceData) {
       setWorkspaceName(workspaceData.name || '');
       setLogoPreview(workspaceData.logoUrl || '');
+      setShowStock(workspaceData.showStockToRequesters ?? true);
       setIsLoading(false);
     }
   }, [isSuperAdmin, isWorkspaceAdmin, workspaceData]);
@@ -122,7 +126,7 @@ export default function ConfiguracionPage() {
     setLogoPreview(null);
   }
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleCustomizationSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
 
@@ -176,6 +180,31 @@ export default function ConfiguracionPage() {
     router.push(newPath);
     router.refresh();
   };
+  
+  const handleShowStockChange = async (checked: boolean) => {
+    if (!isWorkspaceAdmin || !workspaceDocRef) return;
+    setIsSubmitting(true);
+    try {
+        await updateDoc(workspaceDocRef, {
+            showStockToRequesters: checked,
+        });
+        setShowStock(checked);
+        toast({
+            title: 'Configuración guardada',
+            description: 'La visibilidad del stock para solicitantes ha sido actualizada.',
+        });
+    } catch (error) {
+        console.error('Error saving requester setting:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Error al guardar',
+            description: 'No se pudo guardar el cambio en el permiso.',
+        });
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
 
   const finalIsLoading = isLoading || isLoadingProfile || (isWorkspaceAdmin && isLoadingWorkspace);
 
@@ -200,7 +229,7 @@ export default function ConfiguracionPage() {
       </div>
 
       <Card>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleCustomizationSubmit}>
           <CardHeader>
             <CardTitle>Personalización</CardTitle>
             <CardDescription>
@@ -275,6 +304,31 @@ export default function ConfiguracionPage() {
                 <SelectItem value="pt">Português</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Permisos</CardTitle>
+          <CardDescription>
+            Define qué información pueden ver los roles específicos en tu workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                  <Label htmlFor="show-stock" className="text-base">Mostrar stock a solicitantes</Label>
+                  <p className="text-sm text-muted-foreground">
+                      Si está activado, los usuarios con rol "solicitante" verán la cantidad de stock disponible al crear un pedido.
+                  </p>
+              </div>
+              <Switch
+                id="show-stock"
+                checked={showStock}
+                onCheckedChange={handleShowStockChange}
+                disabled={!isWorkspaceAdmin || isSubmitting}
+              />
           </div>
         </CardContent>
       </Card>

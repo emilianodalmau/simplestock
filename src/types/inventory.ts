@@ -143,4 +143,5 @@ export type Workspace = {
     id: string;
     name: string;
     language?: 'es' | 'en' | 'pt';
+    showStockToRequesters?: boolean;
 }

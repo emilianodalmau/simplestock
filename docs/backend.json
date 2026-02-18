@@ -90,6 +90,16 @@
             "type": "string",
             "description": "The URL for the custom logo of the workspace."
         },
+        "showStockToRequesters": {
+          "type": "boolean",
+          "description": "If true, 'solicitante' role users can see available stock. If false, it's hidden."
+        },
+        "language": {
+            "type": "string",
+            "description": "The preferred language for the workspace.",
+            "enum": ["es", "en", "pt"],
+            "default": "es"
+        },
         "subscription": {
           "$ref": "#/entities/Subscription"
         }
@@ -158,92 +168,59 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Product",
       "type": "object",
-      "description": "Represents a product in the inventory.",
+      "description": "Represents a product in the inventory. Can be a simple product or a combo/kit.",
       "properties": {
-        "id": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "barcode": { "type": "string" },
+        "name": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "price": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "minStock": { "type": "number" },
+        "unit": { "type": "string", "enum": ["unidades", "litros", "kilos", "metros", "gramos", "cajas"] },
+        "isArchived": { "type": "boolean" },
+        "depositIds": { "type": "array", "items": { "type": "string" } },
+        "productType": {
           "type": "string",
-          "description": "Unique identifier for the Product entity."
-        },
-        "code": {
-          "type": "string",
-          "description": "A unique, auto-generated code for the product."
-        },
-        "barcode": {
-            "type": "string",
-            "description": "The GTIN or EAN barcode of the product."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the product."
-        },
-        "imageUrl": {
-            "type": "string",
-            "description": "URL for the product's image."
-        },
-        "categoryId": {
-          "type": "string",
-          "description": "Reference to the Category this product belongs to."
-        },
-        "supplierId": {
-          "type": "string",
-          "description": "Reference to the Supplier of this product."
-        },
-        "price": {
-            "type": "number",
-            "description": "The price per unit of the product."
-        },
-        "costPrice": {
-            "type": "number",
-            "description": "The cost price per unit of the product."
-        },
-        "minStock": {
-          "type": "number",
-          "description": "The minimum stock level for the product."
-        },
-        "unit": {
-          "type": "string",
-          "description": "The unit of measurement for the product stock.",
-          "enum": [
-            "unidades",
-            "litros",
-            "kilos",
-            "metros",
-            "gramos",
-            "cajas"
-          ]
+          "description": "Defines if the product is simple (physical stock) or a combo (logical grouping).",
+          "enum": ["SIMPLE", "COMBO"],
+          "default": "SIMPLE"
         },
         "trackingType": {
           "type": "string",
-          "description": "Defines how the product's stock is tracked. NONE for standard quantity, BATCH_AND_EXPIRY for lot and expiration control.",
-          "enum": [
-            "NONE",
-            "BATCH_AND_EXPIRY"
-          ]
+          "description": "For SIMPLE products, defines how stock is tracked.",
+          "enum": ["NONE", "BATCH_AND_EXPIRY"]
         },
-        "isArchived": {
-          "type": "boolean",
-          "description": "If true, the product is archived and not available for new transactions."
-        },
-        "depositIds": {
-            "type": "array",
-            "description": "An array of deposit IDs where this product can be stored.",
-            "items": {
-                "type": "string"
-            }
+        "components": {
+          "type": "array",
+          "description": "If productType is COMBO, this lists the components.",
+          "items": { "$ref": "#/entities/ProductComponent" }
         }
       },
       "required": [
-        "id",
-        "code",
-        "name",
-        "categoryId",
-        "supplierId",
-        "price",
-        "costPrice",
-        "minStock",
-        "unit",
-        "depositIds"
+        "id", "code", "name", "categoryId", "supplierId", "price", "costPrice", 
+        "minStock", "unit", "depositIds", "productType", "trackingType"
       ]
+    },
+     "ProductComponent": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ProductComponent",
+      "type": "object",
+      "description": "Represents a single component within a composite product (kit/combo).",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "The ID of the product that is a component."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The quantity of this component product needed to make one unit of the combo."
+        }
+      },
+      "required": ["productId", "quantity"]
     },
     "Deposit": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -435,6 +412,7 @@
       "description": "Represents a specific batch of a product with quantity and expiration date, stored in a specific deposit.",
       "properties": {
         "id": { "type": "string", "description": "Unique identifier for the Batch document." },
+        "workspaceId": { "type": "string", "description": "Reference to the Workspace." },
         "productId": { "type": "string", "description": "Reference to the Product." },
         "depositId": { "type": "string", "description": "Reference to the Deposit where the batch is stored." },
         "loteId": { "type": "string", "description": "The user-defined identifier for the batch (e.g., lot number)." },
@@ -442,7 +420,7 @@
         "expirationDate": { "type": "string", "format": "date-time", "description": "The expiration date of this batch." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the batch was first created." }
       },
-      "required": ["id", "productId", "depositId", "loteId", "quantity", "expirationDate", "createdAt"]
+      "required": ["id", "workspaceId", "productId", "depositId", "loteId", "quantity", "expirationDate", "createdAt"]
     },
     "StockMovement": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -518,7 +496,9 @@
         "quantity": { "type": "number" },
         "unit": { "type": "string" },
         "price": { "type": "number" },
-        "total": { "type": "number" }
+        "total": { "type": "number" },
+        "loteId": { "type": "string", "description": "The batch/lot identifier, if applicable." },
+        "expirationDate": { "type": "string", "format": "date-time", "description": "The expiration date of the batch, if applicable." }
       },
       "required": ["productId", "productName", "quantity", "unit", "price", "total"]
     },

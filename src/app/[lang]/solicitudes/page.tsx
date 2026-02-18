@@ -56,6 +56,7 @@ import type {
   UserProfile,
   StockMovementItem,
   InventoryStock,
+  Workspace,
 } from '@/types/inventory';
 import { useI18n } from '@/i18n/i18n-provider';
 
@@ -136,6 +137,12 @@ export default function SolicitudesPage() {
     return `workspaces/${workspaceId}`;
   }, [workspaceId]);
 
+  const workspaceDocRef = useMemoFirebase(
+    () => (firestore && workspaceId ? doc(firestore, `workspaces/${workspaceId}`) : null),
+    [firestore, workspaceId]
+  );
+  const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
+
   const productsCollection = useMemoFirebase(
     () =>
       firestore && collectionPrefix
@@ -173,7 +180,8 @@ export default function SolicitudesPage() {
     isLoadingProfile ||
     isLoadingProducts ||
     isLoadingDeposits ||
-    isLoadingInventory;
+    isLoadingInventory ||
+    isLoadingWorkspace;
 
   const form = useForm<RequestFormValues>({
     resolver: zodResolver(requestFormSchema),
@@ -525,13 +533,13 @@ export default function SolicitudesPage() {
                           >
                           <Trash2 className="h-4 w-4" />
                           </Button>
-                          {selectedProductId && (
-                          <div className="col-span-full text-sm text-muted-foreground pt-2">
-                              Stock disponible:{' '}
-                              <span className="font-medium text-foreground">
-                              {availableStock} {productUnit}
-                              </span>
-                          </div>
+                          {selectedProductId && (workspaceData?.showStockToRequesters ?? true) && (
+                            <div className="col-span-full text-sm text-muted-foreground pt-2">
+                                Stock disponible:{' '}
+                                <span className="font-medium text-foreground">
+                                {availableStock} {productUnit}
+                                </span>
+                            </div>
                           )}
                       </div>
                       );
