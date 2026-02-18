@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, useFieldArray, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -27,7 +27,6 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Loader2, FileDown, ArrowDown, ArrowUp } from 'lucide-react';
@@ -54,8 +53,8 @@ import type {
   UserProfile,
   InventoryStock,
   StockMovement,
+  Category,
 } from '@/types/inventory';
-import { ProductComboBox } from '@/components/ui/product-combobox';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -72,50 +71,49 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import { useI18n } from '@/i18n/i18n-provider';
+import { Badge } from '@/components/ui/badge';
 
-const adjustmentSchema = z.object({
-  productId: z.string().min(1, 'Debe seleccionar un producto.'),
-  depositId: z.string().min(1, 'Debe seleccionar un depósito.'),
-  actualQuantity: z.coerce
-    .number()
-    .min(0, 'La cantidad no puede ser negativa.'),
+// --- ZOD Schemas ---
+const adjustmentItemSchema = z.object({
+  productId: z.string(),
+  productName: z.string(),
+  productCode: z.string(),
+  categoryId: z.string(),
+  productType: z.enum(['SIMPLE', 'COMBO']),
+  unit: z.string(),
+  currentStock: z.number(),
+  // Use z.preprocess to handle empty string from input and convert to null
+  actualQuantity: z.preprocess(
+    (val) => (val === '' ? null : val),
+    z.number().min(0, 'La cantidad no puede ser negativa.').nullable()
+  ),
 });
 
-type AdjustmentFormValues = z.infer<typeof adjustmentSchema>;
+const bulkAdjustmentSchema = z.object({
+  items: z.array(adjustmentItemSchema),
+});
 
-// --- Componente para el formulario de nuevo ajuste ---
-function NewAdjustmentForm({
+type BulkAdjustmentFormValues = z.infer<typeof bulkAdjustmentSchema>;
+
+// --- Componente para el formulario de ajuste masivo ---
+function BulkAdjustmentForm({
   currentUserProfile,
 }: {
   currentUserProfile?: UserProfile | null;
 }) {
+  const [selectedDepositId, setSelectedDepositId] = useState<string>('');
+  const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [filters, setFilters] = useState({ name: '', category: 'all', type: 'all' });
   const { toast } = useToast();
-  const [currentStock, setCurrentStock] = useState<number | null>(null);
-  const [isLoadingStock, setIsLoadingStock] = useState(false);
-
   const firestore = useFirestore();
   const { user } = useUser();
 
   const workspaceId = currentUserProfile?.workspaceId;
-
   const collectionPrefix = useMemo(() => {
     if (!workspaceId) return null;
     return `workspaces/${workspaceId}`;
   }, [workspaceId]);
-
-  const productsCollection = useMemoFirebase(
-    () =>
-      firestore && collectionPrefix
-        ? query(
-            collection(firestore, `${collectionPrefix}/products`),
-            where('isArchived', '!=', true)
-          )
-        : null,
-    [firestore, collectionPrefix]
-  );
-  const { data: products, isLoading: isLoadingProducts } =
-    useCollection<Product>(productsCollection);
 
   const isJefeDeposito = currentUserProfile?.role === 'jefe_deposito';
 
@@ -123,285 +121,326 @@ function NewAdjustmentForm({
     if (!firestore || !collectionPrefix) return null;
     const depositsRef = collection(firestore, `${collectionPrefix}/deposits`);
     if (isJefeDeposito && user?.uid) {
-      // For 'jefe_deposito', filter deposits where they are the 'jefeId'.
       return query(depositsRef, where('jefeId', '==', user.uid));
     }
-    // For admins, return all deposits.
     return depositsRef;
   }, [firestore, collectionPrefix, isJefeDeposito, user?.uid]);
-  
   const { data: deposits, isLoading: isLoadingDeposits } =
     useCollection<Deposit>(depositsQuery);
+    
+  const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(
+    useMemoFirebase(() => (collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null), [collectionPrefix])
+  );
 
-
-  const form = useForm<AdjustmentFormValues>({
-    resolver: zodResolver(adjustmentSchema),
+  const form = useForm<BulkAdjustmentFormValues>({
+    resolver: zodResolver(bulkAdjustmentSchema),
     defaultValues: {
-      productId: '',
-      depositId: '',
-      actualQuantity: 0,
+      items: [],
     },
   });
 
-  const selectedProductId = form.watch('productId');
-  const selectedDepositId = form.watch('depositId');
-
+  const { fields } = useFieldArray({
+    control: form.control,
+    name: 'items',
+  });
+  
   useEffect(() => {
-    // If the user is a 'jefe' and their single assigned deposit has loaded,
-    // automatically select it in the form.
     if (isJefeDeposito && deposits?.length === 1) {
-      form.setValue('depositId', deposits[0].id, { shouldValidate: true });
+        setSelectedDepositId(deposits[0].id);
     }
-  }, [isJefeDeposito, deposits, form]);
+  }, [isJefeDeposito, deposits]);
 
 
   useEffect(() => {
-    const fetchCurrentStock = async () => {
-      if (selectedProductId && selectedDepositId && firestore && collectionPrefix) {
-        setIsLoadingStock(true);
-        setCurrentStock(null);
-        try {
-          const inventoryDocId = `${selectedProductId}_${selectedDepositId}`;
-          const stockDocRef = doc(
-            firestore,
-            `${collectionPrefix}/inventory/${inventoryDocId}`
-          );
-          await runTransaction(firestore, async (transaction) => {
-            const stockDoc = await transaction.get(stockDocRef);
-            if (stockDoc.exists()) {
-              setCurrentStock(stockDoc.data().quantity);
-            } else {
-              setCurrentStock(0);
-            }
-          });
-        } catch (error) {
-          console.error('Error al obtener el stock:', error);
-          setCurrentStock(null);
-          toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'No se pudo obtener el stock actual.',
-          });
-        } finally {
-          setIsLoadingStock(false);
-        }
-      } else {
-        setCurrentStock(null);
+    const loadDataForDeposit = async () => {
+      if (!selectedDepositId || !collectionPrefix || !firestore) {
+        form.reset({ items: [] });
+        return;
+      }
+      setIsLoadingData(true);
+
+      try {
+        const productsQuery = query(
+          collection(firestore, `${collectionPrefix}/products`),
+          where('isArchived', '!=', true),
+          where('depositIds', 'array-contains', selectedDepositId)
+        );
+        const productsSnapshot = await runTransaction(firestore, async t => t.get(productsQuery));
+        const allProducts = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+
+        const inventoryQuery = query(
+          collection(firestore, `${collectionPrefix}/inventory`),
+          where('depositId', '==', selectedDepositId)
+        );
+        const inventorySnapshot = await runTransaction(firestore, async t => t.get(inventoryQuery));
+        const stockMap = new Map<string, number>();
+        inventorySnapshot.forEach(doc => {
+            const data = doc.data() as InventoryStock;
+            stockMap.set(data.productId, data.quantity);
+        });
+
+        const formItems = allProducts.map(product => ({
+          productId: product.id,
+          productName: product.name,
+          productCode: product.code,
+          categoryId: product.categoryId,
+          productType: product.productType || 'SIMPLE',
+          unit: product.unit,
+          currentStock: stockMap.get(product.id) || 0,
+          actualQuantity: null,
+        }));
+        
+        form.reset({ items: formItems });
+
+      } catch (error) {
+        console.error('Error loading data for adjustment:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'No se pudieron cargar los productos para el depósito seleccionado.',
+        });
+      } finally {
+        setIsLoadingData(false);
       }
     };
 
-    fetchCurrentStock();
-  }, [selectedProductId, selectedDepositId, firestore, collectionPrefix, toast]);
+    loadDataForDeposit();
+  }, [selectedDepositId, collectionPrefix, firestore, form, toast]);
+  
+  const fieldIndicesToShow = useMemo(() => {
+    return fields
+        .map((field, index) => ({...field, originalIndex: index}))
+        .filter(field => {
+            const nameMatch = filters.name === '' ||
+                field.productName.toLowerCase().includes(filters.name.toLowerCase()) ||
+                field.productCode.toLowerCase().includes(filters.name.toLowerCase());
+            const categoryMatch = filters.category === 'all' || field.categoryId === filters.category;
+            const typeMatch = filters.type === 'all' || field.productType === filters.type;
+            return nameMatch && categoryMatch && typeMatch;
+        })
+        .map(field => field.originalIndex);
+}, [fields, filters]);
 
-  const onSubmit: SubmitHandler<AdjustmentFormValues> = async (data) => {
-    if (!firestore || !collectionPrefix || currentStock === null || !user)
-      return;
-    setIsSubmitting(true);
+  const onSubmit: SubmitHandler<BulkAdjustmentFormValues> = async (data) => {
+    if (!firestore || !collectionPrefix || !user || !selectedDepositId) return;
 
-    const { productId, depositId, actualQuantity } = data;
-    const stockDifference = actualQuantity - currentStock;
+    const adjustedItems = data.items.filter(item => 
+        item.actualQuantity !== null && item.actualQuantity !== item.currentStock
+    );
 
-    if (stockDifference === 0) {
-      toast({
-        title: 'Sin Cambios',
-        description:
-          'La cantidad real es igual al stock del sistema. No se realizó ningún ajuste.',
-      });
-      setIsSubmitting(false);
+    if (adjustedItems.length === 0) {
+      toast({ title: 'Sin cambios', description: 'No se ingresaron nuevos valores en el conteo.' });
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      await runTransaction(firestore, async (transaction) => {
-        const product = products?.find((p) => p.id === productId);
-        const deposit = deposits?.find((d) => d.id === depositId);
+        await runTransaction(firestore, async (transaction) => {
+            const deposit = deposits?.find(d => d.id === selectedDepositId);
+            if (!deposit) throw new Error('Depósito no encontrado.');
 
-        if (!product || !deposit) {
-          throw new Error('Producto o depósito no encontrado.');
-        }
+            const productsInvolved = await Promise.all(
+                adjustedItems.map(item => transaction.get(doc(firestore, `${collectionPrefix}/products/${item.productId}`)))
+            );
 
-        // 1. Update Inventory Stock
-        const inventoryDocId = `${productId}_${depositId}`;
-        const stockDocRef = doc(
-          firestore,
-          `${collectionPrefix}/inventory/${inventoryDocId}`
-        );
-        transaction.set(
-          stockDocRef,
-          {
-            quantity: actualQuantity,
-            lastUpdated: serverTimestamp(),
-            productId: productId,
-            depositId: depositId,
-          },
-          { merge: true }
-        );
+            // 1. Create one single Stock Movement for the entire adjustment
+            const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
+            const movementItems = adjustedItems.map((item, index) => {
+                const productDoc = productsInvolved[index];
+                const productData = productDoc.data() as Product;
+                const stockDifference = item.actualQuantity! - item.currentStock;
+                return {
+                    productId: item.productId,
+                    productName: item.productName,
+                    quantity: stockDifference,
+                    unit: item.unit,
+                    price: productData?.price || 0,
+                    total: (productData?.price || 0) * stockDifference,
+                };
+            });
 
-        // 2. Create Stock Movement for Auditing
-        const movementRef = doc(
-          collection(firestore, `${collectionPrefix}/stockMovements`)
-        );
-        const movementData = {
-          id: movementRef.id,
-          remitoNumber: `AJ-${Date.now()}`,
-          type: 'ajuste' as const,
-          depositId: depositId,
-          depositName: deposit.name,
-          actorName: `Ajuste manual por ${user.displayName || user.email}`,
-          actorId: user.uid,
-          createdAt: serverTimestamp(),
-          userId: user.uid,
-          totalValue: product.price * stockDifference,
-          items: [
-            {
-              productId: productId,
-              productName: product.name,
-              quantity: stockDifference,
-              unit: product.unit,
-              price: product.price,
-              total: product.price * stockDifference,
-            },
-          ],
-        };
-        transaction.set(movementRef, movementData);
-      });
+            const totalValue = movementItems.reduce((acc, item) => acc + item.total, 0);
 
-      toast({
-        title: 'Ajuste Registrado',
-        description: `Se registró un ajuste de ${stockDifference} ${
-          products?.find((p) => p.id === productId)?.unit || 'unidades'
-        } para el producto seleccionado.`,
-      });
+            const movementData = {
+                id: movementRef.id,
+                remitoNumber: `AJ-${Date.now()}`,
+                type: 'ajuste' as const,
+                depositId: selectedDepositId,
+                depositName: deposit.name,
+                actorName: `Ajuste masivo por ${user.displayName || user.email}`,
+                actorId: user.uid,
+                createdAt: serverTimestamp(),
+                userId: user.uid,
+                totalValue: totalValue,
+                items: movementItems,
+            };
+            transaction.set(movementRef, movementData);
 
-      form.reset({
-        productId: '',
-        depositId: isJefeDeposito ? deposits?.[0]?.id || '' : '',
-        actualQuantity: 0,
-      });
-      setCurrentStock(null);
+            // 2. Update the inventory stock for each adjusted item
+            for (const item of adjustedItems) {
+                const inventoryDocId = `${item.productId}_${selectedDepositId}`;
+                const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+                transaction.set(stockDocRef, {
+                    quantity: item.actualQuantity,
+                    lastUpdated: serverTimestamp(),
+                    productId: item.productId,
+                    depositId: selectedDepositId,
+                }, { merge: true });
+            }
+        });
+
+        toast({ title: 'Ajuste completado', description: `${adjustedItems.length} productos fueron ajustados con éxito.` });
+        
+        // Reload data after successful submission
+         setSelectedDepositId(currentId => {
+            const newId = currentId + ' ';
+            return newId.trim();
+        });
+
+
     } catch (error: any) {
-      console.error('Error procesando el ajuste:', error);
-      const permissionError = new FirestorePermissionError({
-        path: `${collectionPrefix}/inventory/${productId}_${depositId}`,
-        operation: 'write',
-        requestResourceData: { quantity: actualQuantity },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+        console.error('Error procesando el ajuste masivo:', error);
+        const permissionError = new FirestorePermissionError({
+            path: `${collectionPrefix}/inventory`,
+            operation: 'write',
+            requestResourceData: { adjustedItems },
+        });
+        errorEmitter.emit('permission-error', permissionError);
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
   };
 
   return (
-    <Card className="max-w-4xl mx-auto">
+    <Card>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardHeader>
-            <CardTitle>Nuevo Ajuste de Stock</CardTitle>
+            <CardTitle>Ajuste de Stock Masivo</CardTitle>
             <CardDescription>
-              Selecciona el producto y el depósito, y luego ingresa la cantidad
-              contada.
+              Selecciona un depósito para ver sus productos. Luego, ingresa la cantidad real contada para cada uno y guarda los cambios.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="depositId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Depósito</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      disabled={isLoadingDeposits || isJefeDeposito}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={isJefeDeposito && deposits?.length === 0 ? "No tienes depósitos asignados" : "Selecciona un depósito"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
+            <div className="max-w-sm">
+                <FormLabel>Depósito</FormLabel>
+                <Select
+                    onValueChange={setSelectedDepositId}
+                    value={selectedDepositId}
+                    disabled={isLoadingDeposits || isJefeDeposito && deposits?.length === 1}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder={isJefeDeposito && deposits?.length === 0 ? "No tienes depósitos asignados" : "Selecciona un depósito"} />
+                    </SelectTrigger>
+                    <SelectContent>
                         {deposits?.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
+                        <SelectItem key={d.id} value={d.id}>
                             {d.name}
-                          </SelectItem>
+                        </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="productId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Producto</FormLabel>
-                    <ProductComboBox
-                      products={products || []}
-                      value={field.value}
-                      onChange={field.onChange}
-                      disabled={isLoadingProducts || !selectedDepositId}
-                      noStockMessage={
-                        !selectedDepositId
-                          ? 'Selecciona un depósito'
-                          : 'Selecciona un producto'
-                      }
-                    />
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    </SelectContent>
+                </Select>
             </div>
-
-            {(isLoadingStock || currentStock !== null) && (
-              <div className="p-4 bg-secondary rounded-md text-center">
-                <p className="font-medium">Stock Actual en Sistema:</p>
-                {isLoadingStock ? (
-                  <Loader2 className="h-6 w-6 animate-spin inline-block mt-1" />
-                ) : (
-                  <span className="text-lg font-bold">{currentStock}</span>
-                )}
-              </div>
-            )}
-
-            <FormField
-              control={form.control}
-              name="actualQuantity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cantidad Real Contada</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      placeholder="Ingresa la cantidad física"
-                      {...field}
-                      disabled={currentStock === null || isLoadingStock}
+            {selectedDepositId && (
+                <>
+                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                    <Input 
+                        placeholder="Buscar por nombre o código..."
+                        onChange={(e) => setFilters(f => ({...f, name: e.target.value}))}
+                        className="flex-grow"
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <Select value={filters.category} onValueChange={(value) => setFilters(f => ({...f, category: value}))} disabled={isLoadingCategories}>
+                        <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">Todas las categorías</SelectItem>{categories?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={filters.type} onValueChange={(value) => setFilters(f => ({...f, type: value}))}>
+                        <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Tipo de producto" /></SelectTrigger>
+                        <SelectContent><SelectItem value="all">Todos los tipos</SelectItem><SelectItem value="SIMPLE">Simple</SelectItem><SelectItem value="COMBO">Combo</SelectItem></SelectContent>
+                    </Select>
+                </div>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-2/5">Producto</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead className="text-right">Stock Actual</TableHead>
+                        <TableHead className="w-1/4 text-right">Cantidad Real Contada</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoadingData ? (
+                        [...Array(5)].map((_, i) => (
+                            <TableRow key={i}>
+                                <TableCell><Skeleton className="h-5 w-full" /></TableCell>
+                                <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                                <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
+                                <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                            </TableRow>
+                        ))
+                      ) : fieldIndicesToShow.length === 0 ? (
+                        <TableRow>
+                            <TableCell colSpan={4} className="text-center h-24">No hay productos que coincidan con los filtros en este depósito.</TableCell>
+                        </TableRow>
+                      ) : (
+                        fields.map((field, index) => (
+                           fieldIndicesToShow.includes(index) && (
+                            <TableRow key={field.id}>
+                                <TableCell>
+                                    <p className="font-medium">{field.productName}</p>
+                                    <p className="text-sm text-muted-foreground font-mono">{field.productCode}</p>
+                                </TableCell>
+                                <TableCell>
+                                    <Badge variant={field.productType === 'COMBO' ? 'outline' : 'secondary'}>{field.productType}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
+                                    {field.currentStock} {field.unit}
+                                </TableCell>
+                                <TableCell>
+                                    <FormField
+                                        control={form.control}
+                                        name={`items.${index}.actualQuantity`}
+                                        render={({ field: formField }) => (
+                                            <Input 
+                                                type="number" 
+                                                placeholder="Contado..." 
+                                                className="text-right" 
+                                                {...formField} 
+                                                value={formField.value ?? ''}
+                                                disabled={isSubmitting || field.productType === 'COMBO'}
+                                            />
+                                        )}
+                                    />
+                                </TableCell>
+                            </TableRow>
+                           )
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                </>
+            )}
           </CardContent>
-          <CardFooter>
-            <Button
-              type="submit"
-              disabled={isSubmitting || currentStock === null || isLoadingStock}
-            >
-              {isSubmitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Registrar Ajuste
-            </Button>
-          </CardFooter>
+          {selectedDepositId && (
+            <CardFooter>
+                <Button
+                type="submit"
+                disabled={isSubmitting || isLoadingData || fieldIndicesToShow.length === 0}
+                >
+                {isSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Guardar Ajustes
+                </Button>
+            </CardFooter>
+           )}
         </form>
       </Form>
     </Card>
   );
 }
+
 
 // --- Componente para el historial de ajustes ---
 function AdjustmentHistory({
@@ -655,11 +694,11 @@ export default function AjustesPage() {
 
       <Tabs defaultValue="create">
         <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
-          <TabsTrigger value="create">Nuevo Ajuste</TabsTrigger>
+          <TabsTrigger value="create">Nuevo Ajuste Masivo</TabsTrigger>
           <TabsTrigger value="history">Historial de Ajustes</TabsTrigger>
         </TabsList>
         <TabsContent value="create" className="pt-6">
-          <NewAdjustmentForm currentUserProfile={currentUserProfile} />
+          <BulkAdjustmentForm currentUserProfile={currentUserProfile} />
         </TabsContent>
         <TabsContent value="history" className="pt-6">
           <AdjustmentHistory currentUserProfile={currentUserProfile} />
