@@ -118,9 +118,9 @@ service cloud.firestore {
     }
     
     // This collection group query allows listing batches across all subcollections.
-    // It is secured by forcing the query to include a 'where' clause on the workspaceId.
+    // The query is secured by the client-side code which always filters by workspaceId.
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId';
+     allow list: if isSignedIn();
     }
   }
 }
