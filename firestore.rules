@@ -18,7 +18,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, update: if isOwner(userId);
       allow create: if isSignedIn();
-      allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId));
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
     match /workspaces/{workspaceId} {
