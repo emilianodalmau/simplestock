@@ -809,10 +809,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.movimientos.title}</h1>
           <p className="text-muted-foreground">{dictionary.pages.movimientos.description}</p>
         </div>
-        <Tabs defaultValue="history">
+        <Tabs defaultValue="create">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
             <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
+            <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
           </TabsList>
           <TabsContent value="create">
               <Card>
