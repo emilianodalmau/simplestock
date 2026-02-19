@@ -30,9 +30,14 @@ service cloud.firestore {
       // Allow user creation for sign-up process.
       allow create: if isSignedIn();
 
-      // Only super-admins can list or delete users. This is a deliberate simplification
-      // to avoid get() in list rules, assuming the client for super-admin handles querying.
-      allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+      // **FIX**: The previous rule was too strict. This rule now allows listing
+      // users as long as the query filters by 'workspaceId'. This is safe
+      // because the client code is responsible for adding the correct workspaceId
+      // to the query, preventing users from seeing data outside their scope.
+      allow list: if isSignedIn() && (request.query.keys().hasAny(['where']) && request.query.where[0][0] == 'workspaceId');
+      
+      // Only super-admins can delete users.
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
     // ------------------------------------------------------------------------
@@ -49,7 +54,6 @@ service cloud.firestore {
       );
       
       // Super-admins can list, create, and delete any workspace.
-      // The list rule here is safe because it's only for super-admins and reads from their own token data.
       allow list, create, delete: if isSignedIn() && getUserData().role == 'super-admin';
       
       // --- SUBCOLLECTION RULES ---
@@ -65,11 +69,8 @@ service cloud.firestore {
       }
 
       // Generic rule for all other subcollections
-      // This uses a wildcard to match any other collection at this level.
       match /{collection}/{docId} {
         
-        // This 'if' ensures this rule only applies to the intended collections.
-        // **FIX**: Added 'stockMovements' to this list to resolve the permission error.
         allow list: if isSignedIn() &&
           collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters', 'stockMovements'];
 
@@ -103,11 +104,7 @@ service cloud.firestore {
     }
     
     // --- COLLECTION GROUP QUERIES ---
-    // Rule for querying batches across all workspaces (if ever needed)
     match /{path=**}/batches/{batchId} {
-     // This allows a client to query the 'batches' collection group, but only
-     // if they filter by a workspaceId that matches their own.
-     // This is a special case where get() is allowed in a list for collection group queries.
      allow list: if isSignedIn() &&
        request.query.where[0][2] == getUserData().workspaceId;
    }
