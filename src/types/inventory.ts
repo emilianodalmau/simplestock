@@ -17,6 +17,7 @@ export type Product = {
   trackingType: 'NONE' | 'BATCH_AND_EXPIRY';
   isArchived?: boolean;
   depositIds?: string[];
+  preferredLocations?: { [key: string]: string };
   createdAt: any; // Allow both Timestamp and string for flexibility
   categoryId: string;
   supplierId: string;

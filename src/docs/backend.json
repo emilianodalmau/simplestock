@@ -90,6 +90,10 @@
             "type": "string",
             "description": "The URL for the custom logo of the workspace."
         },
+        "showStockToRequesters": {
+          "type": "boolean",
+          "description": "If true, 'solicitante' role users can see available stock. If false, it's hidden."
+        },
         "language": {
             "type": "string",
             "description": "The preferred language for the workspace.",
@@ -179,6 +183,11 @@
         "unit": { "type": "string", "enum": ["unidades", "litros", "kilos", "metros", "gramos", "cajas"] },
         "isArchived": { "type": "boolean" },
         "depositIds": { "type": "array", "items": { "type": "string" } },
+        "preferredLocations": {
+            "type": "object",
+            "description": "A map where keys are deposit IDs and values are the preferred location ID within that deposit for the product.",
+            "additionalProperties": { "type": "string" }
+        },
         "productType": {
           "type": "string",
           "description": "Defines if the product is simple (physical stock) or a combo (logical grouping).",

@@ -97,6 +97,7 @@ import { BarcodeScanner } from '@/components/barcode-scanner';
 import { getProductInfoFromBarcode } from '@/lib/actions';
 import { useI18n } from '@/i18n/i18n-provider';
 import { ProductComboBox } from '@/components/ui/product-combobox';
+import type { Location } from '@/types/inventory';
 
 const unitTypes = [
   'unidades',
@@ -121,6 +122,7 @@ const formSchema = z.object({
   unit: z.enum(unitTypes).optional(),
   depositIds: z.array(z.string()).optional(),
   trackingType: z.enum(['NONE', 'BATCH_AND_EXPIRY']).optional(),
+  preferredLocations: z.record(z.string()).optional(),
   // Campo para combo
   components: z.array(z.object({
     productId: z.string().min(1, { message: "Debes seleccionar un producto." }),
@@ -182,6 +184,7 @@ type Product = {
   trackingType: 'NONE' | 'BATCH_AND_EXPIRY';
   isArchived?: boolean;
   depositIds?: string[];
+  preferredLocations?: { [key: string]: string };
   createdAt: any; // Used for client-side sorting
 };
 
@@ -239,6 +242,9 @@ export default function ProductosPage() {
   // State for barcode scanner
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isFetchingBarcode, setIsFetchingBarcode] = useState(false);
+
+  const [allLocations, setAllLocations] = useState<(Location & { depositId: string })[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true);
   
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -288,6 +294,43 @@ export default function ProductosPage() {
   const depositOptions: Option[] = useMemo(() => {
     return deposits?.map(d => ({ value: d.id, label: d.name })) || [];
   }, [deposits]);
+
+  useEffect(() => {
+    if (!firestore || !collectionPrefix || !deposits) return;
+    
+    const fetchLocations = async () => {
+        setIsLoadingLocations(true);
+        const locationsData: (Location & { depositId: string })[] = [];
+        // Use Promise.all to fetch locations for all deposits in parallel
+        const promises = deposits.map(async (deposit) => {
+            const locsQuery = query(collection(firestore, `${collectionPrefix}/deposits/${deposit.id}/locations`));
+            const locsSnapshot = await getDocs(locsQuery);
+            locsSnapshot.forEach(doc => {
+                locationsData.push({ depositId: deposit.id, ...doc.data(), id: doc.id } as Location & { depositId: string });
+            });
+        });
+
+        await Promise.all(promises);
+        setAllLocations(locationsData);
+        setIsLoadingLocations(false);
+    };
+
+    if (deposits.length > 0) {
+        fetchLocations();
+    } else {
+        setIsLoadingLocations(false);
+    }
+}, [firestore, collectionPrefix, deposits]);
+
+const locationsByDeposit = useMemo(() => {
+    return allLocations.reduce((acc, loc) => {
+        if (!acc[loc.depositId]) {
+            acc[loc.depositId] = [];
+        }
+        acc[loc.depositId].push(loc);
+        return acc;
+    }, {} as Record<string, Location[]>);
+}, [allLocations]);
 
   const fetchProducts = async (direction: 'next' | 'prev' | 'first' = 'first') => {
     if (!collectionPrefix) return;
@@ -382,6 +425,7 @@ export default function ProductosPage() {
       depositIds: [],
       trackingType: 'NONE',
       components: [],
+      preferredLocations: {},
     },
   });
   
@@ -406,6 +450,7 @@ export default function ProductosPage() {
         minStock: editingProduct.minStock || 0,
         costPrice: editingProduct.costPrice || 0,
         components: editingProduct.components || [],
+        preferredLocations: editingProduct.preferredLocations || {},
       });
       setEditImagePreview(editingProduct.imageUrl || null);
       setEditImageFile(null);
@@ -482,6 +527,7 @@ export default function ProductosPage() {
           unit: 'unidades',
           depositIds: [],
           trackingType: 'NONE',
+          preferredLocations: {},
         };
       } else {
         productData = {
@@ -512,6 +558,7 @@ export default function ProductosPage() {
         minStock: 0,
         depositIds: [],
         components: [],
+        preferredLocations: {},
       });
       setImageFile(null);
       setImagePreview(null);
@@ -558,6 +605,7 @@ export default function ProductosPage() {
           unit: 'unidades',
           depositIds: [],
           trackingType: 'NONE',
+          preferredLocations: {},
         };
       } else { // SIMPLE
         productData = { ...data };
@@ -751,6 +799,7 @@ export default function ProductosPage() {
             createdAt: serverTimestamp(),
             trackingType: 'NONE', // Default tracking type for imports
             productType: 'SIMPLE',
+            preferredLocations: {},
           });
           productsCreated++;
         }
@@ -797,7 +846,7 @@ export default function ProductosPage() {
     return suppliers?.find((s) => s.id === supplierId)?.name || 'N/A';
   };
 
-  const isLoading = isLoadingProducts || isLoadingCategories || isLoadingSuppliers || isLoadingDeposits;
+  const isLoading = isLoadingProducts || isLoadingCategories || isLoadingSuppliers || isLoadingDeposits || isLoadingLocations;
   
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
@@ -821,6 +870,43 @@ export default function ProductosPage() {
   
   const productType = createForm.watch('productType');
   const editProductType = editForm.watch('productType');
+
+  const createWatchedDepositIds = createForm.watch('depositIds') || [];
+  useEffect(() => {
+      const currentPreferred = createForm.getValues('preferredLocations') || {};
+      const newPreferred: Record<string, string> = {};
+      let changed = false;
+      createWatchedDepositIds.forEach(depId => {
+          if (currentPreferred[depId]) {
+              newPreferred[depId] = currentPreferred[depId];
+          }
+      });
+      if (Object.keys(currentPreferred).length !== Object.keys(newPreferred).length) {
+        changed = true;
+      }
+      if (changed) {
+        createForm.setValue('preferredLocations', newPreferred, { shouldValidate: false });
+      }
+  }, [createWatchedDepositIds, createForm]);
+
+  const editWatchedDepositIds = editForm.watch('depositIds') || [];
+  useEffect(() => {
+      const currentPreferred = editForm.getValues('preferredLocations') || {};
+      const newPreferred: Record<string, string> = {};
+      let changed = false;
+      editWatchedDepositIds.forEach(depId => {
+          if (currentPreferred[depId]) {
+              newPreferred[depId] = currentPreferred[depId];
+          }
+      });
+       if (Object.keys(currentPreferred).length !== Object.keys(newPreferred).length) {
+        changed = true;
+      }
+      if (changed) {
+        editForm.setValue('preferredLocations', newPreferred, { shouldValidate: false });
+      }
+  }, [editWatchedDepositIds, editForm]);
+
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8">
@@ -1052,7 +1138,7 @@ export default function ProductosPage() {
                             control={createForm.control}
                             name="depositIds"
                             render={({ field }) => (
-                                <FormItem className="flex flex-col">
+                                <FormItem className="flex flex-col lg:col-span-3">
                                     <FormLabel>Depósitos Asignados</FormLabel>
                                     <MultiSelect 
                                         options={depositOptions}
@@ -1063,6 +1149,36 @@ export default function ProductosPage() {
                                 </FormItem>
                             )}
                             />
+                             {createWatchedDepositIds.length > 0 && (
+                                <div className="space-y-4 lg:col-span-3 p-4 border rounded-md">
+                                    <FormLabel>Ubicaciones Preferidas (Opcional)</FormLabel>
+                                    {isLoadingLocations ? <Loader2 className="animate-spin" /> : createWatchedDepositIds.map(depId => {
+                                        const deposit = deposits?.find(d => d.id === depId);
+                                        const locationsForDep = locationsByDeposit[depId];
+                                        if (!deposit || !locationsForDep || locationsForDep.length === 0) return null;
+                                        
+                                        return (
+                                            <FormField
+                                                key={depId}
+                                                control={createForm.control}
+                                                name={`preferredLocations.${depId}`}
+                                                render={({ field }) => (
+                                                    <FormItem className="grid grid-cols-3 items-center">
+                                                        <FormLabel className="font-normal">{deposit.name}</FormLabel>
+                                                        <Select onValueChange={field.onChange} value={field.value || 'none'}>
+                                                            <FormControl><SelectTrigger className="col-span-2"><SelectValue placeholder="Sin ubicación preferida" /></SelectTrigger></FormControl>
+                                                            <SelectContent>
+                                                                <SelectItem value="none">Sin ubicación preferida</SelectItem>
+                                                                {locationsForDep.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name} ({loc.code})</SelectItem>)}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        )
+                                    })}
+                                </div>
+                             )}
                             <FormField
                             control={createForm.control}
                             name="unit"
@@ -1672,7 +1788,7 @@ export default function ProductosPage() {
                 control={editForm.control}
                 name="depositIds"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className="flex flex-col md:col-span-2">
                       <FormLabel>Depósitos Asignados</FormLabel>
                       <MultiSelect 
                           options={depositOptions}
@@ -1683,6 +1799,36 @@ export default function ProductosPage() {
                   </FormItem>
                 )}
               />
+               {editWatchedDepositIds.length > 0 && (
+                <div className="space-y-4 md:col-span-2 p-4 border rounded-md">
+                    <FormLabel>Ubicaciones Preferidas (Opcional)</FormLabel>
+                     {isLoadingLocations ? <Loader2 className="animate-spin" /> : editWatchedDepositIds.map(depId => {
+                        const deposit = deposits?.find(d => d.id === depId);
+                        const locationsForDep = locationsByDeposit[depId];
+                        if (!deposit || !locationsForDep || locationsForDep.length === 0) return null;
+                        
+                        return (
+                            <FormField
+                                key={depId}
+                                control={editForm.control}
+                                name={`preferredLocations.${depId}`}
+                                render={({ field }) => (
+                                    <FormItem className="grid grid-cols-3 items-center">
+                                        <FormLabel className="font-normal">{deposit.name}</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value || 'none'}>
+                                            <FormControl><SelectTrigger className="col-span-2"><SelectValue placeholder="Sin ubicación preferida" /></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="none">Sin ubicación preferida</SelectItem>
+                                                {locationsForDep.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name} ({loc.code})</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </FormItem>
+                                )}
+                            />
+                        )
+                    })}
+                </div>
+                )}
               <FormField
                 control={editForm.control}
                 name="unit"
