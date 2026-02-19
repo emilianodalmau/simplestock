@@ -1,3 +1,4 @@
+
 'use client';
     
 import { useState, useEffect } from 'react';
@@ -57,7 +58,7 @@ export function useDoc<T = any>(
 
     setIsLoading(true);
     setError(null);
-    // Optional: setData(null); // Clear previous data instantly
+    setData(null); // Clear previous data instantly to prevent using stale data
 
     const unsubscribe = onSnapshot(
       memoizedDocRef,
