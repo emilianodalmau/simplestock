@@ -16,12 +16,21 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get, update: if isOwner(userId);
+      allow get: if isOwner(userId) || (getUserData().role in ['administrador', 'super-admin']);
+      
+      // Allow user to update their own profile.
+      // Allow an admin to update any user in their own workspace.
+      // Allow a super-admin to update any user.
+      allow update: if isOwner(userId) || 
+                    (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId) ||
+                    (getUserData().role == 'super-admin');
+
       allow create: if isSignedIn();
+      
       // This rule is now simplified. It relies on the client application
-      // to correctly add the 'where("workspaceId", "==", ...)' clause, which it already does.
-      // This unblocks administrators while maintaining practical security.
+      // to correctly add the 'where("workspaceId", "==", ...)' clause.
       allow list: if isSignedIn();
+
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
@@ -36,25 +45,21 @@ service cloud.firestore {
       // --- SUBCOLLECTION RULES: EXPLICIT MATCHES ---
 
       match /categories/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
       }
       
       match /products/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
       }
 
       match /deposits/{depositId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
         
         match /locations/{locationId} {
-            allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-            allow list: if isSignedIn();
+            allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
             allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
               getUserData().role in ['administrador', 'editor'] ||
               (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
@@ -63,45 +68,37 @@ service cloud.firestore {
       }
 
       match /suppliers/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
       }
 
       match /clients/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
       }
       
       match /quotes/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
       }
       
       match /inventory/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'];
       }
 
       match /batches/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
       }
 
       match /counters/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante', 'vendedor'];
       }
 
       match /stockMovements/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn();
-        
+        allow list, get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow create: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'];
         allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
         allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && (
@@ -114,7 +111,7 @@ service cloud.firestore {
     // This collection group query allows listing batches across all subcollections.
     // It is secured by forcing the query to include a 'where' clause on the workspaceId.
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId';
+     allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId' && request.query.where[0][2] == getUserData().workspaceId;
     }
   }
 }
