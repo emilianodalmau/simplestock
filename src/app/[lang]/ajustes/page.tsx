@@ -160,6 +160,8 @@ function BulkAdjustmentForm({
         actualQuantity: null,
       }));
       
+      formItems.sort((a, b) => a.productName.localeCompare(b.productName));
+      
       replace(formItems);
     } catch (error) {
       console.error(error);
