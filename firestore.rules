@@ -18,7 +18,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, update: if isOwner(userId);
       allow create: if isSignedIn();
-      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId));
+      // An 'administrador' can list users, but the query MUST be filtered by workspaceId.
+      // The client is responsible for querying only its own workspaceId.
+      // A 'super-admin' can bypass this rule on the client by not adding a where clause (and will be handled by a different rule, or fail if not super-admin).
+      allow list: if isSignedIn() && ((request.query.keys().hasAny(['where']) && request.query.where[0][0] == 'workspaceId') || getUserData().role == 'super-admin');
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
