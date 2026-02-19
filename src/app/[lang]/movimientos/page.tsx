@@ -60,7 +60,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, CalendarIcon, FileDown, FileText } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, CalendarIcon, FileDown, FileText, ScanLine } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -893,6 +893,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     </CardContent>
                     <CardFooter className="flex items-center gap-4 flex-wrap">
                       <Button type="button" variant="outline" onClick={() => append({productId: '', quantity: 1})} disabled={!selectedDepositId} className="w-auto"><PlusCircle className="mr-2 h-4 w-4" />Añadir Producto</Button>
+                      <Button type="button" variant="outline" onClick={() => setIsScannerOpen(true)} disabled={!selectedDepositId} className="w-auto"><ScanLine className="mr-2 h-4 w-4" />Escanear Producto</Button>
                       <Button type="submit" disabled={isSubmitting} className="w-auto">{isSubmitting && (<Loader2 className="mr-2 h-4 w-4 animate-spin" />)}Registrar Remito</Button>
                     </CardFooter>
                   </form>
@@ -966,6 +967,39 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           </TabsContent>
         </Tabs>
       </div>
+
+      <BarcodeScanner 
+        isOpen={isScannerOpen} 
+        onClose={() => setIsScannerOpen(false)} 
+        onScanSuccess={handleScanSuccess}
+      />
+      
+      <Dialog open={!!scannedProduct} onOpenChange={() => setScannedProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Producto Escaneado: {scannedProduct?.name}</DialogTitle>
+            <DialogDescription>
+              Ingresa la cantidad que deseas agregar al remito.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+             <div className="space-y-1">
+                <Label htmlFor="quantity">Cantidad</Label>
+                <Input 
+                    id="quantity" 
+                    type="number"
+                    value={scannedQuantity}
+                    onChange={(e) => setScannedQuantity(Number(e.target.value))}
+                    min={1}
+                />
+             </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScannedProduct(null)}>Cancelar</Button>
+            <Button onClick={handleAddScannedProduct}>Agregar al Remito</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -993,3 +1027,5 @@ export default function MovimientosPage() {
 
   return <MovimientosContent currentUserProfile={currentUserProfile} />;
 }
+
+    
