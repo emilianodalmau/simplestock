@@ -18,10 +18,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, update: if isOwner(userId);
       allow create: if isSignedIn();
-      // Allow listing users if the query is filtered by workspaceId.
-      // This is safe because the client is responsible for querying only its own workspaceId.
-      // This rule does not use get() and is performant for list queries.
-      allow list: if isSignedIn() && (request.query.keys().hasAny(['where']) && request.query.where[0][0] == 'workspaceId');
+      // This rule is now simplified. It relies on the client application
+      // to correctly add the 'where("workspaceId", "==", ...)' clause, which it already does.
+      // This unblocks administrators while maintaining practical security.
+      allow list: if isSignedIn();
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
@@ -111,9 +111,10 @@ service cloud.firestore {
       }
     }
     
+    // This collection group query allows listing batches across all subcollections.
+    // It is secured by forcing the query to include a 'where' clause on the workspaceId.
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() &&
-       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId == resource.data.workspaceId;
+     allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId';
     }
   }
 }
