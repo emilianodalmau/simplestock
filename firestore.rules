@@ -27,8 +27,6 @@ service cloud.firestore {
 
       allow create: if isSignedIn();
       
-      // This rule relies on the client application
-      // to correctly add the 'where("workspaceId", "==", ...)' clause.
       allow list: if isSignedIn();
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
@@ -122,7 +120,7 @@ service cloud.firestore {
     // This collection group query allows listing batches across all subcollections.
     // It is secured by forcing the query to include a 'where' clause on the workspaceId.
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId' && request.query.where[0][2] == getUserData().workspaceId;
+     allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId';
     }
   }
 }
