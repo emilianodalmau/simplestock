@@ -24,19 +24,12 @@ service cloud.firestore {
     // USER PROFILES
     // ------------------------------------------------------------------------
     match /users/{userId} {
-      // Users can read/update their own profile.
-      allow get, update: if isOwner(userId);
+      allow get, update: if isOwner(userId) || (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId) || (getUserData().role == 'super-admin');
       
-      // Allow user creation for sign-up process.
       allow create: if isSignedIn();
-
-      // **FIX**: The previous rule was too strict. This rule now allows listing
-      // users as long as the query filters by 'workspaceId'. This is safe
-      // because the client code is responsible for adding the correct workspaceId
-      // to the query, preventing users from seeing data outside their scope.
-      allow list: if isSignedIn() && (request.query.keys().hasAny(['where']) && request.query.where[0][0] == 'workspaceId');
       
-      // Only super-admins can delete users.
+      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId));
+      
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
@@ -44,62 +37,74 @@ service cloud.firestore {
     // WORKSPACES & SUBCOLLECTIONS
     // ------------------------------------------------------------------------
     match /workspaces/{workspaceId} {
-      // Allow a user to read their own workspace document.
       allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
       
-      // An admin can update their own workspace. A super-admin can update any.
-      allow update: if isSignedIn() && (
-        (getUserData().role == 'administrador' && getUserData().workspaceId == workspaceId) ||
-        getUserData().role == 'super-admin'
-      );
+      allow update: if isSignedIn() && ((getUserData().role == 'administrador' && getUserData().workspaceId == workspaceId) || getUserData().role == 'super-admin');
       
-      // Super-admins can list, create, and delete any workspace.
       allow list, create, delete: if isSignedIn() && getUserData().role == 'super-admin';
       
-      // --- SUBCOLLECTION RULES ---
-
-      // Specific rule for locations within deposits
-      match /deposits/{depositId}/locations/{locationId} {
-        allow list: if isSignedIn();
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
-          getUserData().role in ['administrador', 'editor'] ||
-          (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
-        );
+      match /categories/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      }
+      
+      match /products/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
       }
 
-      // Generic rule for all other subcollections
-      match /{collection}/{docId} {
+      match /deposits/{depositId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
         
-        allow list: if isSignedIn() &&
-          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters', 'stockMovements'];
+        match /locations/{locationId} {
+            allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+            allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
+              getUserData().role in ['administrador', 'editor'] ||
+              (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
+            );
+        }
+      }
 
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId &&
-          collection in ['categories', 'products', 'suppliers', 'clients', 'deposits', 'quotes', 'inventory', 'batches', 'counters', 'stockMovements'];
+      match /suppliers/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      }
 
-        // Write rules for these collections
-        allow create: if isSignedIn() && getUserData().workspaceId == workspaceId &&
-          (
-            (collection in ['categories', 'products', 'suppliers', 'deposits', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
-            (collection in ['clients', 'quotes'] && getUserData().role in ['administrador', 'editor', 'vendedor']) ||
-            (collection == 'stockMovements' && getUserData().role in ['administrador', 'editor', 'jefe_deposito', 'solicitante'])
-          );
-        
-        allow update: if isSignedIn() && getUserData().workspaceId == workspaceId &&
-          (
-            (collection in ['categories', 'products', 'suppliers', 'deposits', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
-            (collection in ['clients', 'quotes'] && getUserData().role in ['administrador', 'editor', 'vendedor']) ||
-            (collection == 'stockMovements' && getUserData().role in ['administrador', 'editor'])
-          );
+      match /clients/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
+      }
+      
+      match /quotes/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
+      }
+      
+      match /inventory/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      }
 
-        allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId &&
-          (
-            (collection in ['categories', 'products', 'suppliers', 'deposits', 'clients', 'quotes', 'inventory', 'batches', 'counters'] && getUserData().role in ['administrador', 'editor']) ||
-            (collection == 'stockMovements' && (
-              getUserData().role == 'administrador' ||
-              (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid)
-            ))
-          );
+      match /batches/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
+      }
+
+      match /counters/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      }
+
+      match /stockMovements/{docId} {
+        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow create: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
+        allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && (
+            getUserData().role == 'administrador' ||
+            (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid)
+        );
       }
     }
     

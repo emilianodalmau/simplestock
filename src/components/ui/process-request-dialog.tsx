@@ -216,12 +216,9 @@ export function ProcessRequestDialog({
         });
 
         // --- 3. WRITE PHASE ---
-        // After this point, no more transaction.get() calls are allowed.
-
-        // Update counter
+        
         transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
-        // Update stock for each item
         for (let i = 0; i < itemsToDeliver.length; i++) {
           const item = itemsToDeliver[i];
           const stockRef = stockRefs[i];
@@ -233,7 +230,6 @@ export function ProcessRequestDialog({
           }, { merge: true });
         }
         
-        // Create the new remito de salida
         const newMovementRef = doc(collection(firestore, collectionPrefix, 'stockMovements'));
         transaction.set(newMovementRef, {
             id: newMovementRef.id,
@@ -251,11 +247,14 @@ export function ProcessRequestDialog({
             processedFromRequestId: request.id,
         });
 
-        // Delete the original request
-        transaction.delete(originalRequestRef);
+        // Update the original request status instead of deleting it
+        transaction.update(originalRequestRef, {
+            status: 'procesado',
+            processedAt: serverTimestamp(),
+            processedBy: user.uid,
+        });
       });
 
-      // If transaction completes successfully
       toast({
           title: 'Remito Generado',
           description: 'El remito de salida ha sido creado y el stock actualizado.',
@@ -264,10 +263,9 @@ export function ProcessRequestDialog({
 
     } catch (error: any) {
         console.error("Error en la transacción:", error);
-        // Emit the contextual error instead of using console.error
         const permissionError = new FirestorePermissionError({
-            path: collectionPrefix, // This path is now for general context, the real error is in the transaction
-            operation: 'write', // 'write' is a good generic for transactions
+            path: collectionPrefix,
+            operation: 'write',
             requestResourceData: {
                 message: error.message,
                 originalRequestId: request.id,

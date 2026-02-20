@@ -482,6 +482,24 @@
         "totalValue": {
           "type": "number",
           "description": "The total monetary value of the movement."
+        },
+        "status": {
+            "type": "string",
+            "description": "The status of the movement, particularly for requests.",
+            "enum": ["pendiente", "procesado", "cancelado"]
+        },
+        "processedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp of when the request was processed."
+        },
+        "processedBy": {
+            "type": "string",
+            "description": "User ID of who processed the request."
+        },
+        "processedFromRequestId": {
+            "type": "string",
+            "description": "If this movement was generated from a request, this is the ID of the original request document."
         }
       },
       "required": ["id", "type", "depositId", "createdAt", "userId", "items", "totalValue"]

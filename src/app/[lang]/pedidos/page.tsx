@@ -15,8 +15,6 @@ import {
   query,
   where,
   orderBy,
-  startAt,
-  endAt,
 } from 'firebase/firestore';
 import {
   Card,
@@ -101,28 +99,24 @@ export default function PedidosPage() {
       `${collectionPrefix}/stockMovements`
     );
     
-    // Base query for "Solicitudes" - MUST include orderBy on the field with range filter
+    // Query for pending requests
     const baseQuery = [
-      orderBy('remitoNumber'),
-      startAt('S-'),
-      endAt('S-uf8ff')
+      where('status', '==', 'pendiente')
     ];
 
     if (currentUserProfile?.role === 'jefe_deposito') {
         if (assignedDepositIds === null) return null; 
         if (assignedDepositIds.length === 0) return null; 
-
-        // Correct Query for 'jefe_deposito': Filter by their deposits AND by remitoNumber prefix.
-        // This requires a composite index.
+        // Add deposit filter for 'jefe_deposito'
         return query(
             movementsCollectionRef,
-            where('depositId', 'in', assignedDepositIds.slice(0, 30)),
-            ...baseQuery
+            ...baseQuery,
+            where('depositId', 'in', assignedDepositIds.slice(0, 30))
         );
     }
     
-    // Admin can see all requests
-    return query(movementsCollectionRef, ...baseQuery);
+    // Admin can see all pending requests
+    return query(movementsCollectionRef, ...baseQuery, orderBy('createdAt', 'desc'));
 
   }, [firestore, collectionPrefix, canAccessPage, currentUserProfile, assignedDepositIds]);
 
@@ -251,11 +245,6 @@ export default function PedidosPage() {
                   )}
                   {!isLoadingRequests &&
                     (requests || [])
-                      .sort(
-                        (a, b) =>
-                          b.createdAt.toDate().getTime() -
-                          a.createdAt.toDate().getTime()
-                      )
                       .map((req) => (
                         <TableRow key={req.id}>
                           <TableCell className="font-medium">

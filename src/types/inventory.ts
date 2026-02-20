@@ -77,6 +77,10 @@ export type StockMovement = {
   createdAt: any; 
   items: StockMovementItem[];
   totalValue: number;
+  status?: 'pendiente' | 'procesado' | 'cancelado';
+  processedAt?: any;
+  processedBy?: string;
+  processedFromRequestId?: string;
 };
 
 
