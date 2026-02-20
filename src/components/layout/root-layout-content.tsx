@@ -259,7 +259,7 @@
       return allMenuItems.filter(item => item.roles.includes(userRole));
     }, [currentUserProfile?.role, dictionary]);
 
-    const hideSidebar = !pathname.startsWith(`/${lang}/`) || [`/${lang}/login`, `/${lang}/signup`, `/${lang}`].includes(pathname) || pathname === `/${lang}/precios` || pathname === `/${lang}/faq`;
+    const hideSidebar = !pathname.startsWith(`/${lang}/`) || [`/${lang}/login`, `/${lang}/signup`, `/${lang}`].includes(pathname) || pathname === `/${lang}/precios`;
     
     if (isLoading) {
       return (
