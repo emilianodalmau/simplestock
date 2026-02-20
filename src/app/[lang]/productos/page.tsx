@@ -450,12 +450,12 @@ const locationsByDeposit = useMemo(() => {
       if (data.productType === 'COMBO') {
         productData = {
           name: data.name,
-          barcode: data.barcode,
+          barcode: data.barcode || '',
           categoryId: data.categoryId,
           supplierId: data.supplierId,
           price: data.price,
           productType: 'COMBO',
-          components: data.components,
+          components: data.components || [],
           imageUrl: finalImageUrl,
           code: productCode,
           isArchived: false,
@@ -470,13 +470,23 @@ const locationsByDeposit = useMemo(() => {
         };
       } else {
         productData = {
-            ...data,
+            name: data.name,
+            barcode: data.barcode || '',
+            categoryId: data.categoryId,
+            supplierId: data.supplierId,
+            price: data.price,
+            productType: 'SIMPLE',
+            costPrice: data.costPrice || 0,
+            minStock: data.minStock || 0,
+            unit: data.unit,
+            depositIds: data.depositIds || [],
+            trackingType: data.trackingType,
+            preferredLocations: data.preferredLocations || {},
             imageUrl: finalImageUrl,
             code: productCode,
             isArchived: false,
             createdAt: serverTimestamp(),
         };
-        delete productData.components;
       }
       
       if (productData.preferredLocations) {
@@ -540,14 +550,13 @@ const locationsByDeposit = useMemo(() => {
       if (data.productType === 'COMBO') {
         productData = {
           name: data.name,
-          barcode: data.barcode,
+          barcode: data.barcode || '',
           categoryId: data.categoryId,
           supplierId: data.supplierId,
           price: data.price,
           productType: 'COMBO',
-          components: data.components,
+          components: data.components || [],
           imageUrl: finalImageUrl,
-          // Default values for fields not applicable to combos
           costPrice: 0,
           minStock: 0,
           unit: 'unidades',
@@ -556,8 +565,20 @@ const locationsByDeposit = useMemo(() => {
           preferredLocations: {},
         };
       } else { // SIMPLE
-        productData = { ...data };
-        delete productData.components;
+        productData = {
+            name: data.name,
+            barcode: data.barcode || '',
+            categoryId: data.categoryId,
+            supplierId: data.supplierId,
+            price: data.price,
+            productType: 'SIMPLE',
+            costPrice: data.costPrice || 0,
+            minStock: data.minStock || 0,
+            unit: data.unit,
+            depositIds: data.depositIds || [],
+            trackingType: data.trackingType,
+            preferredLocations: data.preferredLocations || {},
+        };
       }
       productData.imageUrl = finalImageUrl;
       productData.updatedAt = serverTimestamp();
