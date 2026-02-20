@@ -90,6 +90,11 @@
     quantity: number;
   };
 
+  type FeedbackTicket = {
+    id: string;
+    status: 'nuevo' | 'visto' | 'en-progreso' | 'resuelto' | 'cerrado';
+  };
+
   function AppLayout({
     children,
     globalSettings,
@@ -180,6 +185,14 @@
     );
     const { data: allInventory, isLoading: isLoadingInventoryForAlert } = useCollection<InventoryForStockAlert>(inventoryQuery);
 
+    const feedbackTicketsQuery = useMemoFirebase(() => {
+        if (!firestore || !isSuperAdmin) return null;
+        return query(collection(firestore, 'feedback'), where('status', 'in', ['nuevo', 'visto', 'en-progreso']));
+    }, [firestore, isSuperAdmin]);
+
+    const { data: feedbackTickets, isLoading: isLoadingFeedback } = useCollection<FeedbackTicket>(feedbackTicketsQuery);
+
+
     const stockAlertCounts = useMemo(() => {
         if (!allProducts || !allInventory) return { lowStock: 0, outOfStock: 0 };
 
@@ -203,6 +216,22 @@
         return { lowStock, outOfStock };
     }, [allProducts, allInventory]);
     
+    const feedbackAlertCounts = useMemo(() => {
+        if (!feedbackTickets) return { newCount: 0, inProgressCount: 0 };
+
+        let newCount = 0;
+        let inProgressCount = 0;
+
+        for (const ticket of feedbackTickets) {
+            if (ticket.status === 'nuevo') {
+                newCount++;
+            } else if (ticket.status === 'visto' || ticket.status === 'en-progreso') {
+                inProgressCount++;
+            }
+        }
+        return { newCount, inProgressCount };
+    }, [feedbackTickets]);
+    
     useEffect(() => {
         if (isUserLoading || isLoadingProfile || isLoadingWorkspace) return;
         
@@ -214,7 +243,7 @@
     }, [workspaceData, lang, pathname, isUserLoading, isLoadingProfile, isLoadingWorkspace, router]);
 
 
-    const isLoading = isUserLoading || isLoadingProfile || (isSuperAdmin ? false : isLoadingWorkspace) || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;
+    const isLoading = isUserLoading || isLoadingProfile || (isSuperAdmin ? isLoadingFeedback : isLoadingWorkspace) || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;
     
     const handleLogout = async () => {
       if (auth) {
@@ -332,6 +361,20 @@
                         )}
                       </div>
                   )}
+                  {item.href === '/super-admin/feedback' && (feedbackAlertCounts.newCount > 0 || feedbackAlertCounts.inProgressCount > 0) && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 group-data-[collapsible=icon]:hidden">
+                        {feedbackAlertCounts.newCount > 0 && (
+                           <div className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
+                               {feedbackAlertCounts.newCount > 99 ? '99+' : feedbackAlertCounts.newCount}
+                           </div>
+                        )}
+                        {feedbackAlertCounts.inProgressCount > 0 && (
+                           <div className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-yellow-500 px-1 text-[9px] font-bold text-black">
+                               {feedbackAlertCounts.inProgressCount > 99 ? '99+' : feedbackAlertCounts.inProgressCount}
+                           </div>
+                        )}
+                      </div>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
@@ -394,4 +437,3 @@
       </FirebaseClientProvider>
     );
   }
-
