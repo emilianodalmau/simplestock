@@ -61,7 +61,49 @@
     },
     "faq": {
       "title": "Perguntas Frequentes (FAQ)",
-      "description": "Encontre respostas para as dúvidas mais comuns sobre o uso do aplicativo."
+      "description": "Encontre respostas para as dúvidas mais comuns sobre o uso do aplicativo.",
+      "faqs": [
+        {
+          "question": "Qual é a diferença entre as funções de usuário?",
+          "answer": "As funções determinam o que cada usuário pode fazer. Administrador: controle total do workspace, incluindo gerenciamento de usuários e assinatura. Editor: pode criar e modificar produtos, armazéns, etc., mas não pode gerenciar usuários ou faturamento. Vendedor: pode gerenciar clientes e criar orçamentos. Gerente de Armazém: gerencia movimentos e ajustes de seus armazéns designados e processa pedidos. Solicitante: só pode criar solicitações de produtos. Visualizador: só pode visualizar as informações, não pode modificar nada."
+        },
+        {
+          "question": "Como convido um novo usuário para o meu workspace?",
+          "answer": "Se você for um 'Administrador', vá para a seção 'Usuários'. Lá você encontrará um botão para 'Convidar Usuário'. Você precisará inserir o e-mail e as informações básicas dele. Uma conta será criada com uma senha temporária e a função padrão de 'Solicitante', que você pode alterar mais tarde."
+        },
+        {
+          "question": "Como funciona o inventário para 'Combos' ou 'Kits'?",
+          "answer": "Os Combos não têm estoque próprio. Seu estoque 'disponível' é calculado automaticamente em tempo real com base no estoque de seus componentes. Por exemplo, se um combo requer 2 unidades do Produto A e 1 do Produto B, e você tem 10 de A e 3 de B, o sistema calculará que você pode montar no máximo 3 combos."
+        },
+        {
+          "question": "Como funciona o rastreamento por 'Lote e Vencimento'?",
+          "answer": "Ao ativar esta opção em um produto, toda vez que você registrar uma 'Entrada', o sistema solicitará um número de lote e uma data de vencimento. Ao registrar uma 'Saída', o sistema deduzirá automaticamente do lote mais próximo do vencimento (método FIFO/PEPS), ou permitirá que você selecione manualmente de quais lotes deduzir."
+        },
+        {
+          "question": "O que é uma 'Localização Preferencial' e como é usada?",
+          "answer": "Na página 'Produtos', você pode designar uma localização específica dentro de um armazém como a 'preferida' para aquele item. Isso serve como um guia ou lembrete para a equipe do armazém sobre onde aquele produto idealmente deveria ser guardado, facilitando a ordem e a rapidez nas operações."
+        },
+        {
+          "question": "Qual é a diferença entre 'Solicitações' e 'Pedidos'?",
+          "answer": "É um processo de duas etapas. Um usuário com a função 'Solicitante' cria uma 'Solicitação' de produtos no portal de Solicitações. Esta solicitação aparece na página 'Pedidos' para que um 'Gerente de Armazém' ou 'Administrador' a revise. Ao 'Processar o Pedido', o sistema verifica o estoque real, permite ajustar as quantidades a serem entregues e, finalmente, gera uma nota de saída, deduzindo o estoque do inventário."
+        },
+        {
+          "question": "Como posso importar meus produtos de um arquivo Excel?",
+          "answer": "Na página 'Produtos', clique no botão 'Exportar Modelo'. Isso fará o download de um modelo de Excel com as colunas necessárias e planilhas de ajuda com suas categorias e fornecedores. Preencha a planilha 'Modelo' com seus produtos e, em seguida, use o botão 'Importar Produtos' para carregá-los no sistema."
+        },
+        {
+          "question": "O que o 'Custo Total do Inventário' no Painel de Controle representa?",
+          "answer": "Este número representa o capital total que você tem imobilizado em seu estoque. É calculado multiplicando a quantidade de cada produto em inventário pelo seu 'Custo Unitário' (o preço que você pagou por ele) e somando todos os resultados. Não inclui o valor dos combos, apenas dos produtos simples com estoque físico."
+        },
+        {
+          "question": "O que acontece se eu atingir o limite do meu plano?",
+          "answer": "Quando você atinge um limite do seu plano (por exemplo, o número máximo de produtos), o aplicativo exibirá uma notificação e não permitirá que você crie mais itens desse tipo. Para continuar crescendo, você pode atualizar seu plano na seção 'Assinatura'."
+        },
+        {
+          "question": "Como posso alterar o idioma ou o logotipo do meu workspace?",
+          "answer": "Se você for um 'Administrador', pode ir para a seção 'Configurações'. Lá você encontrará opções para alterar o nome e carregar um logotipo para o seu workspace, bem como para selecionar o idioma preferido para todos os usuários da sua equipe."
+        }
+      ]
     },
     "inventario": {
       "title": "Inventário Geral",

@@ -61,7 +61,49 @@
     },
     "faq": {
       "title": "Frequently Asked Questions (FAQ)",
-      "description": "Find answers to the most common questions about using the application."
+      "description": "Find answers to the most common questions about using the application.",
+      "faqs": [
+        {
+          "question": "What is the difference between user roles?",
+          "answer": "Roles determine what each user can do. Administrator: full control of the workspace, including user and subscription management. Editor: can create and modify products, warehouses, etc., but cannot manage users or billing. Salesperson: can manage clients and create quotes. Warehouse Manager: manages movements and adjustments for their assigned warehouses and processes orders. Requester: can only create product requests. Viewer: can only view information, cannot modify anything."
+        },
+        {
+          "question": "How do I invite a new user to my workspace?",
+          "answer": "If you are an 'Administrator', go to the 'Users' section. There you will find a button to 'Invite User'. You will need to enter their email and basic information. An account will be created for them with a temporary password and the default role of 'Requester', which you can change later."
+        },
+        {
+          "question": "How does inventory work for 'Combos' or 'Kits'?",
+          "answer": "Combos do not have their own stock. Their 'available' stock is calculated automatically in real-time based on the stock of their components. For example, if a combo requires 2 units of Product A and 1 of Product B, and you have 10 of A and 3 of B, the system will calculate that you can assemble a maximum of 3 combos."
+        },
+        {
+          "question": "How does 'Batch and Expiration' tracking work?",
+          "answer": "When you enable this option on a product, every time you record an 'Entry', the system will ask for a lot number and an expiration date. When you record an 'Exit', the system will automatically deduct from the lot closest to expiring (FIFO/FEFO method), or allow you to manually select which lots to deduct from."
+        },
+        {
+          "question": "What is a 'Preferred Location' and how is it used?",
+          "answer": "On the 'Products' page, you can assign a specific location within a warehouse as the 'preferred' one for that item. This serves as a guide or reminder for warehouse staff on where that product should ideally be stored, facilitating order and speed in operations."
+        },
+        {
+          "question": "What is the difference between 'Requests' and 'Orders'?",
+          "answer": "It is a two-step process. A user with the 'Requester' role creates a product 'Request' from the Requests portal. This request appears on the 'Orders' page for a 'Warehouse Manager' or 'Administrator' to review. When 'Processing the Order', the system checks the actual stock, allows adjusting the quantities to be delivered, and finally generates an exit slip, deducting the stock from the inventory."
+        },
+        {
+          "question": "How can I import my products from an Excel file?",
+          "answer": "On the 'Products' page, click the 'Export Template' button. This will download an Excel template with the necessary columns and helper sheets with your categories and suppliers. Fill in the 'Modelo' (Template) sheet with your products and then use the 'Import Products' button to upload them to the system."
+        },
+        {
+          "question": "What does the 'Total Inventory Cost' on the Dashboard represent?",
+          "answer": "This figure represents the total capital you have tied up in your stock. It is calculated by multiplying the quantity of each product in inventory by its 'Unit Cost' (the price you paid for it), and summing all the results. It does not include the value of combos, only simple products with physical stock."
+        },
+        {
+          "question": "What happens if I reach my plan's limit?",
+          "answer": "When you reach a limit of your plan (e.g., the maximum number of products), the application will show you a notification and will not allow you to create more items of that type. To continue growing, you can upgrade your plan from the 'Subscription' section."
+        },
+        {
+          "question": "How can I change the language or logo of my workspace?",
+          "answer": "If you are an 'Administrator', you can go to the 'Settings' section. There you will find options to change the name and upload a logo for your workspace, as well as to select the preferred language for all users on your team."
+        }
+      ]
     },
     "inventario": {
       "title": "General Inventory",

@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -15,8 +14,6 @@ import {
 import {
   collection,
   addDoc,
-  updateDoc,
-  deleteDoc,
   doc,
   serverTimestamp,
   runTransaction,
@@ -39,33 +36,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useI18n } from '@/i18n/i18n-provider';
 import type { UserProfile, Workspace } from '@/types/inventory';
 
-
-const faqs = [
-    {
-        question: '¿Cuál es la diferencia entre los roles de usuario?',
-        answer: 'Los roles determinan qué puede hacer cada usuario. Administrador: control total del workspace. Editor: puede crear y modificar productos, depósitos, etc., pero no gestionar usuarios ni facturación. Visualizador: solo puede ver la información, no puede modificar nada. Jefe de Depósito: gestiona los movimientos y ajustes de los depósitos que tiene asignados. Solicitante: solo puede crear solicitudes de productos.'
-    },
-    {
-        question: '¿Cómo funciona el inventario? ¿Se actualiza solo?',
-        answer: 'Sí. El stock de tu inventario se actualiza automáticamente cada vez que registras un movimiento (entrada, salida) o un ajuste. La página de Inventario te muestra la cantidad total de cada producto en tiempo real, sumando el stock de todos tus depósitos (o del depósito que filtres).'
-    },
-    {
-        question: '¿Qué es un "ajuste" de stock?',
-        answer: 'Un ajuste es una corrección manual del stock. Se usa cuando la cantidad física de un producto no coincide con la que figura en el sistema (por ejemplo, por roturas, pérdidas o errores de conteo). Un ajuste crea un movimiento para registrar esa diferencia y auditar el cambio.'
-    },
-    {
-        question: '¿Puedo importar mis productos desde un archivo?',
-        answer: '¡Sí! En la página de Productos, puedes descargar una plantilla de Excel. Completa esa plantilla con tus productos y luego usa la opción "Importar Productos" para cargarlos todos de una sola vez. Esto te ahorrará mucho tiempo si tienes muchos artículos.'
-    },
-    {
-        question: '¿Qué pasa si alcanzo el límite de mi plan?',
-        answer: 'Cuando alcanzas un límite de tu plan (por ejemplo, el número máximo de productos), la aplicación te mostrará una notificación y no te permitirá crear más elementos de ese tipo. Para seguir creciendo, puedes mejorar tu plan desde la sección "Suscripción".'
-    },
-    {
-        question: '¿Cómo funcionan las "Solicitudes" y los "Pedidos"?',
-        answer: 'Un "Solicitante" crea una "Solicitud" de productos desde el stock de un depósito. Esta solicitud aparece en la página de "Pedidos" para que un "Jefe de Depósito" o "Administrador" la revise. Al "Procesar el Pedido", se genera un remito de salida y se descuenta el stock, completando el ciclo.'
-    }
-];
 
 const sections = [
   'General', 'Dashboard', 'Inventario', 'Movimientos', 'Ajustes', 'Productos', 'Categorías', 'Proveedores', 'Clientes', 'Depósitos', 'Ubicaciones', 'Usuarios', 'Suscripción', 'Configuración', 'Otro'
@@ -237,6 +207,8 @@ function FeedbackForm() {
 
 export default function FAQPage() {
   const { dictionary } = useI18n();
+  const faqs = dictionary.pages.faq.faqs || [];
+  
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
       <div>
@@ -253,7 +225,7 @@ export default function FAQPage() {
         </CardHeader>
         <CardContent>
             <Accordion type="single" collapsible className="w-full">
-                {faqs.map((faq, index) => (
+                {faqs.map((faq: { question: string; answer: string }, index: number) => (
                     <AccordionItem value={`item-${index}`} key={index}>
                         <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
                         <AccordionContent className="text-base text-muted-foreground">
