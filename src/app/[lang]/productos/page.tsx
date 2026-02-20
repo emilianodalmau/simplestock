@@ -479,6 +479,16 @@ const locationsByDeposit = useMemo(() => {
         delete productData.components;
       }
       
+      if (productData.preferredLocations) {
+        const cleanedLocations: Record<string, string> = {};
+        for (const depId in productData.preferredLocations) {
+          if (productData.preferredLocations[depId] && productData.preferredLocations[depId] !== 'none') {
+            cleanedLocations[depId] = productData.preferredLocations[depId];
+          }
+        }
+        productData.preferredLocations = cleanedLocations;
+      }
+      
       await addDoc(collection(firestore, `${collectionPrefix}/products`), productData);
 
       toast({
@@ -551,6 +561,16 @@ const locationsByDeposit = useMemo(() => {
       }
       productData.imageUrl = finalImageUrl;
       productData.updatedAt = serverTimestamp();
+
+      if (productData.preferredLocations) {
+        const cleanedLocations: Record<string, string> = {};
+        for (const depId in productData.preferredLocations) {
+          if (productData.preferredLocations[depId] && productData.preferredLocations[depId] !== 'none') {
+            cleanedLocations[depId] = productData.preferredLocations[depId];
+          }
+        }
+        productData.preferredLocations = cleanedLocations;
+      }
 
 
       const productRef = doc(firestore, `${collectionPrefix}/products`, editingProduct.id);
