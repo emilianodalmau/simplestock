@@ -1,60 +1,43 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { useAuth, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { useEffect } from 'react';
+import { useAuth, useUser } from '@/firebase';
 import { signOut } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useI18n } from '@/i18n/i18n-provider';
-
-type UserProfile = {
-  firstName?: string;
-  lastName?: string;
-};
+import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function Home() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
-  const firestore = useFirestore();
   const router = useRouter();
   const { dictionary, lang } = useI18n();
 
-  const userDocRef = useMemoFirebase(
-    () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
-    [firestore, user]
-  );
-  const { data: userProfile } = useDoc<UserProfile>(userDocRef);
-
-  const handleLogout = async () => {
-    if (auth) {
-      await signOut(auth);
-      router.push(`/${lang}/login`); // Redirect to login page after logout
+  useEffect(() => {
+    if (!isUserLoading && auth && user) {
+      signOut(auth).then(() => {
+        router.push(`/${lang}/login`);
+      });
     }
-  };
-  
-  const displayName = userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : (user?.displayName || user?.email);
+  }, [user, isUserLoading, auth, router, lang]);
 
+  if (isUserLoading || user) {
+    return (
+      <div className="container mx-auto flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <p>Cerrando sesión...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
       <div className="w-full max-w-4xl">
-        {isUserLoading ? (
-          <div className="text-center">
-            <p>Cargando...</p>
-          </div>
-        ) : user ? (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p>
-              Parece que has iniciado sesión como {displayName}. Si tienes
-              problemas para acceder, puedes forzar el cierre de sesión aquí.
-            </p>
-            <Button onClick={handleLogout} variant="destructive">
-              Cerrar Sesión
-            </Button>
-          </div>
-        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div className="flex justify-center">
               <Image 
@@ -85,7 +68,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-        )}
       </div>
     </div>
   );
