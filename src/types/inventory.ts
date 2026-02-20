@@ -156,7 +156,8 @@ export type FeedbackTicket = {
     userEmail: string;
     subject: string;
     message: string;
-    type: 'consulta' | 'error' | 'sugerencia';
+    type: 'error' | 'sugerencia' | 'upgrade' | 'consulta';
+    impact: 'bloqueante' | 'idea';
     section: 'General' | 'Dashboard' | 'Inventario' | 'Movimientos' | 'Ajustes' | 'Productos' | 'Categorías' | 'Proveedores' | 'Clientes' | 'Depósitos' | 'Ubicaciones' | 'Usuarios' | 'Suscripción' | 'Configuración' | 'Otro';
     imageUrl?: string;
     status: 'nuevo' | 'visto' | 'en-progreso' | 'resuelto' | 'cerrado';
@@ -172,4 +173,3 @@ export type FeedbackReply = {
     createdAt: any;
     isSuperAdminReply: boolean;
 };
-

@@ -72,7 +72,8 @@ const sections = [
 ] as const;
 
 const feedbackFormSchema = z.object({
-    type: z.enum(['consulta', 'error', 'sugerencia']),
+    type: z.enum(['error', 'sugerencia', 'upgrade', 'consulta']),
+    impact: z.enum(['bloqueante', 'idea']),
     section: z.enum(sections),
     subject: z.string().min(5, "El asunto debe tener al menos 5 caracteres.").max(100, "El asunto no puede superar los 100 caracteres."),
     message: z.string().min(20, "El mensaje debe tener al menos 20 caracteres.").max(1500, "El mensaje no puede superar los 1500 caracteres."),
@@ -102,6 +103,7 @@ function FeedbackForm() {
         resolver: zodResolver(feedbackFormSchema),
         defaultValues: {
             type: 'consulta',
+            impact: 'idea',
             section: 'General',
             subject: '',
             message: '',
@@ -139,6 +141,7 @@ function FeedbackForm() {
                     userName: `${currentUserProfile.firstName} ${currentUserProfile.lastName}`,
                     userEmail: currentUserProfile.email,
                     type: data.type,
+                    impact: data.impact,
                     section: data.section,
                     subject: data.subject,
                     message: data.message,
@@ -162,7 +165,6 @@ function FeedbackForm() {
         }
     };
     
-    // Do not render the form for guests or super admins
     if (!user || !currentUserProfile || currentUserProfile.role === 'super-admin') {
         return null;
     }
@@ -189,12 +191,19 @@ function FeedbackForm() {
                         <CardDescription>Envíanos una consulta, sugerencia o reporta un error. Te responderemos a la brevedad.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <FormField control={form.control} name="type" render={({ field }) => (
                                 <FormItem><FormLabel>Tipo de Mensaje</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent>
-                                    <SelectItem value="consulta">Tengo una consulta</SelectItem>
-                                    <SelectItem value="error">Quiero reportar un error</SelectItem>
-                                    <SelectItem value="sugerencia">Tengo una sugerencia</SelectItem>
+                                    <SelectItem value="error">Reportar Error</SelectItem>
+                                    <SelectItem value="sugerencia">Sugerir Mejora</SelectItem>
+                                    <SelectItem value="upgrade">Pedir Upgrade de Plan</SelectItem>
+                                    <SelectItem value="consulta">Consulta de Uso</SelectItem>
+                                </SelectContent></Select><FormMessage /></FormItem>
+                            )}/>
+                            <FormField control={form.control} name="impact" render={({ field }) => (
+                                <FormItem><FormLabel>Impacto</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent>
+                                    <SelectItem value="bloqueante">Esto detiene mi trabajo</SelectItem>
+                                    <SelectItem value="idea">Es solo una idea / consulta</SelectItem>
                                 </SelectContent></Select><FormMessage /></FormItem>
                             )}/>
                             <FormField control={form.control} name="section" render={({ field }) => (

@@ -186,7 +186,7 @@
         "depositIds": { "type": "array", "items": { "type": "string" } },
         "productType": {
           "type": "string",
-          "description": "Defines if the product is simple (physical stock) or a combo (logical grouping).",
+          "description": "Defines if the product is simple (physical stock) or a logical grouping.",
           "enum": ["SIMPLE", "COMBO"],
           "default": "SIMPLE"
         },
@@ -545,14 +545,15 @@
         "userEmail": { "type": "string", "format": "email" },
         "subject": { "type": "string" },
         "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["consulta", "error", "sugerencia"] },
+        "type": { "type": "string", "enum": ["error", "sugerencia", "upgrade", "consulta"] },
+        "impact": { "type": "string", "enum": ["bloqueante", "idea"], "description": "Describes the impact of the feedback for the user." },
         "section": { "type": "string", "enum": ["General", "Dashboard", "Inventario", "Movimientos", "Ajustes", "Productos", "Categorías", "Proveedores", "Clientes", "Depósitos", "Ubicaciones", "Usuarios", "Suscripción", "Configuración", "Otro"] },
         "imageUrl": { "type": "string", "description": "Optional URL of an image attached to the ticket." },
         "status": { "type": "string", "enum": ["nuevo", "visto", "en-progreso", "resuelto", "cerrado"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "ticketNumber", "workspaceId", "workspaceName", "userId", "userName", "userEmail", "subject", "message", "type", "section", "status", "createdAt"]
+      "required": ["id", "ticketNumber", "workspaceId", "workspaceName", "userId", "userName", "userEmail", "subject", "message", "type", "section", "impact", "status", "createdAt"]
     },
     "FeedbackReply": {
       "title": "Feedback Reply",
@@ -642,4 +643,3 @@
     }
   }
 }
-
