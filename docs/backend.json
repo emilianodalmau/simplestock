@@ -49,7 +49,8 @@
             "editor",
             "visualizador",
             "jefe_deposito",
-            "solicitante"
+            "solicitante",
+            "vendedor"
           ]
         },
         "disabled": {
@@ -529,6 +530,41 @@
         }
       },
       "required": ["lastNumber"]
+    },
+    "FeedbackTicket": {
+      "title": "Feedback Ticket",
+      "type": "object",
+      "description": "Represents a feedback ticket submitted by a user.",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketNumber": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "workspaceName": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string", "format": "email" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["consulta", "error", "sugerencia"] },
+        "status": { "type": "string", "enum": ["nuevo", "visto", "en-progreso", "resuelto", "cerrado"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ticketNumber", "workspaceId", "workspaceName", "userId", "userName", "userEmail", "subject", "message", "type", "status", "createdAt"]
+    },
+    "FeedbackReply": {
+      "title": "Feedback Reply",
+      "type": "object",
+      "description": "Represents a reply within a feedback ticket thread.",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isSuperAdminReply": { "type": "boolean" }
+      },
+      "required": ["id", "userId", "userName", "message", "createdAt"]
     }
   },
   "auth": {
@@ -589,6 +625,18 @@
     "/workspaces/{workspaceId}/counters/{counterId}": {
       "schema": { "$ref": "#/entities/Counter" },
       "description": "Stores atomic counters for a specific workspace."
+    },
+    "/feedback/{ticketId}": {
+      "schema": { "$ref": "#/entities/FeedbackTicket" },
+      "description": "Stores feedback tickets submitted by users across all workspaces."
+    },
+    "/feedback/{ticketId}/replies/{replyId}": {
+      "schema": { "$ref": "#/entities/FeedbackReply" },
+      "description": "Stores replies within a specific feedback ticket."
+    },
+    "/counters/feedbackCounter": {
+        "schema": { "$ref": "#/entities/Counter" },
+        "description": "Atomic counter for generating unique feedback ticket numbers."
     }
   }
 }

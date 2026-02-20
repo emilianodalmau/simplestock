@@ -1,5 +1,4 @@
 
-
 export type Product = {
   id: string;
   name: string;
@@ -65,7 +64,6 @@ export type StockMovementItem = {
   expirationDate?: any;
 };
 
-// This type is adjusted to handle both server (string) and client (Date object) representations
 export type StockMovement = {
   id: string;
   remitoNumber?: string;
@@ -75,7 +73,7 @@ export type StockMovement = {
   actorName?: string;
   actorId?: string;
   userId: string;
-  createdAt: any; // Allow both Timestamp and string for flexibility
+  createdAt: any; 
   items: StockMovementItem[];
   totalValue: number;
 };
@@ -95,8 +93,8 @@ export type Batch = {
   depositId: string;
   quantity: number;
   loteId: string;
-  expirationDate: any; // For Firebase Timestamp
-  createdAt: any; // For Firebase Timestamp
+  expirationDate: any; 
+  createdAt: any; 
 };
 
 export type RequestItem = {
@@ -146,3 +144,28 @@ export type Workspace = {
     language?: 'es' | 'en' | 'pt';
     showStockToRequesters?: boolean;
 }
+
+export type FeedbackTicket = {
+    id: string;
+    ticketNumber: string;
+    workspaceId: string;
+    workspaceName: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    subject: string;
+    message: string;
+    type: 'consulta' | 'error' | 'sugerencia';
+    status: 'nuevo' | 'visto' | 'en-progreso' | 'resuelto' | 'cerrado';
+    createdAt: any;
+    updatedAt: any;
+};
+
+export type FeedbackReply = {
+    id: string;
+    userId: string;
+    userName: string;
+    message: string;
+    createdAt: any;
+    isSuperAdminReply: boolean;
+};

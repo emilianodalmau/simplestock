@@ -46,6 +46,7 @@
     FileText,
     MapPin,
     AlertTriangle,
+    MessageSquare,
   } from 'lucide-react';
   import Link from 'next/link';
   import { usePathname, useRouter } from 'next/navigation';
@@ -103,24 +104,22 @@
     const router = useRouter();
     const { dictionary, lang } = useI18n();
 
-    // 1. Cargar Perfil de Usuario
     const userDocRef = useMemoFirebase(
       () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
       [firestore, user]
     );
     const { data: currentUserProfile, isLoading: isLoadingProfile } = useDoc<UserProfile>(userDocRef);
     
-    // 2. Cargar datos del Workspace si existen
     const workspaceDocRef = useMemoFirebase(
       () => (firestore && currentUserProfile?.workspaceId ? doc(firestore, 'workspaces', currentUserProfile.workspaceId) : null),
       [firestore, currentUserProfile?.workspaceId]
     );
     const { data: workspaceData, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceDocRef);
 
-    // --- Lógica para el badge de notificaciones de pedidos ---
     const userRole = currentUserProfile?.role;
     const isJefeDeposito = userRole === 'jefe_deposito';
     const isAdmin = userRole === 'administrador';
+    const isSuperAdmin = userRole === 'super-admin';
     const workspaceId = currentUserProfile?.workspaceId;
     const collectionPrefix = useMemo(() => (workspaceId ? `workspaces/${workspaceId}` : null), [workspaceId]);
 
@@ -168,10 +167,7 @@
 
     const { data: pendingRequests } = useCollection(pendingRequestsQuery);
     const pendingRequestsCount = pendingRequests?.length ?? 0;
-    // --- Fin de la lógica del badge ---
-
-
-    // --- Lógica para el badge de alerta de inventario ---
+    
     const productsQuery = useMemoFirebase(() =>
         collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true)) : null,
     [collectionPrefix, firestore]
@@ -195,7 +191,6 @@
         let lowStock = 0;
         let outOfStock = 0;
         for (const product of allProducts) {
-            // Stock alerts don't apply to combos
             if (product.productType === 'COMBO') continue;
 
             const totalStock = stockMap.get(product.id) || 0;
@@ -207,9 +202,7 @@
         }
         return { lowStock, outOfStock };
     }, [allProducts, allInventory]);
-    // --- Fin de la lógica del badge de inventario ---
-
-    // Redirect to workspace language if it differs from URL
+    
     useEffect(() => {
         if (isUserLoading || isLoadingProfile || isLoadingWorkspace) return;
         
@@ -221,7 +214,7 @@
     }, [workspaceData, lang, pathname, isUserLoading, isLoadingProfile, isLoadingWorkspace, router]);
 
 
-    const isLoading = isUserLoading || isLoadingProfile || isLoadingWorkspace || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;
+    const isLoading = isUserLoading || isLoadingProfile || (isSuperAdmin ? false : isLoadingWorkspace) || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;
     
     const handleLogout = async () => {
       if (auth) {
@@ -232,6 +225,7 @@
     
     const getMenuItems = (dict: any) => [
       { href: '/super-admin', label: dict.sidebar.superAdmin, icon: Shield, roles: ['super-admin'] },
+      { href: '/super-admin/feedback', label: 'Feedback', icon: MessageSquare, roles: ['super-admin'] },
       { href: '/workspaces', label: dict.sidebar.workspaces, icon: Building2, roles: ['super-admin'] },
       { href: '/dashboard', label: dict.sidebar.dashboard, icon: Home, roles: ['administrador'] },
       { href: '/pedidos', label: dict.sidebar.orders, icon: FileCheck, roles: ['administrador', 'jefe_deposito'] },

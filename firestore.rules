@@ -18,9 +18,6 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwner(userId) || (getUserData().role in ['administrador', 'super-admin']);
       
-      // Allow user to update their own profile.
-      // Allow an admin to update any user in their own workspace.
-      // Allow a super-admin to update any user.
       allow update: if isOwner(userId) || 
                     (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId) ||
                     (getUserData().role == 'super-admin');
@@ -32,6 +29,19 @@ service cloud.firestore {
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
+    match /feedback/{ticketId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.workspaceId == getUserData().workspaceId;
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || getUserData().role == 'super-admin');
+      allow update: if isSignedIn() && getUserData().role == 'super-admin';
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
+      allow list: if isSignedIn() && getUserData().role == 'super-admin';
+
+      match /replies/{replyId} {
+        allow create: if isSignedIn() && (get(/databases/$(database)/documents/feedback/$(ticketId)).data.userId == request.auth.uid || getUserData().role == 'super-admin');
+        allow list, get: if isSignedIn() && (get(/databases/$(database)/documents/feedback/$(ticketId)).data.userId == request.auth.uid || getUserData().role == 'super-admin');
+      }
+    }
+
     match /workspaces/{workspaceId} {
       allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
       allow update: if isSignedIn() && (
@@ -40,8 +50,6 @@ service cloud.firestore {
       );
       allow list, create, delete: if isSignedIn() && getUserData().role == 'super-admin';
       
-      // --- SUBCOLLECTION RULES: EXPLICIT MATCHES ---
-
       match /categories/{docId} {
         allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow list: if isSignedIn();
@@ -117,8 +125,6 @@ service cloud.firestore {
       }
     }
     
-    // This collection group query allows listing batches across all subcollections.
-    // The query is secured by the client-side code which always filters by workspaceId.
     match /{path=**}/batches/{batchId} {
      allow list: if isSignedIn();
     }
