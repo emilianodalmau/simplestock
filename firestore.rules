@@ -24,7 +24,8 @@ service cloud.firestore {
 
       allow create: if isSignedIn();
       
-      allow list: if isSignedIn();
+      // Allow listing users only when filtered by workspaceId for security.
+      allow list: if isSignedIn() && request.query.where[0][0] == 'workspaceId';
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
