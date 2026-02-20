@@ -1,4 +1,5 @@
 
+
 export type Product = {
   id: string;
   name: string;
@@ -156,6 +157,8 @@ export type FeedbackTicket = {
     subject: string;
     message: string;
     type: 'consulta' | 'error' | 'sugerencia';
+    section: 'General' | 'Dashboard' | 'Inventario' | 'Movimientos' | 'Ajustes' | 'Productos' | 'Categorías' | 'Proveedores' | 'Clientes' | 'Depósitos' | 'Ubicaciones' | 'Usuarios' | 'Suscripción' | 'Configuración' | 'Otro';
+    imageUrl?: string;
     status: 'nuevo' | 'visto' | 'en-progreso' | 'resuelto' | 'cerrado';
     createdAt: any;
     updatedAt: any;
@@ -169,3 +172,4 @@ export type FeedbackReply = {
     createdAt: any;
     isSuperAdminReply: boolean;
 };
+

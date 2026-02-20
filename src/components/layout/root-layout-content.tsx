@@ -253,7 +253,7 @@
       return allMenuItems.filter(item => item.roles.includes(userRole));
     }, [currentUserProfile?.role, dictionary]);
 
-    const hideSidebar = !pathname.startsWith(`/${lang}/`) || [`/${lang}/login`, `/${lang}/signup`, `/${lang}`].includes(pathname) || pathname === `/${lang}/precios`;
+    const hideSidebar = !pathname.startsWith(`/${lang}/`) || [`/${lang}/login`, `/${lang}/signup`, `/${lang}`, `/${lang}/precios`].includes(pathname);
     
     if (isLoading) {
       return (
@@ -394,3 +394,4 @@
       </FirebaseClientProvider>
     );
   }
+

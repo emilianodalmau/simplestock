@@ -27,7 +27,7 @@ service cloud.firestore {
       // A super-admin can list all users. An admin can only list if filtering by their workspaceId.
       allow list: if isSignedIn() && 
                     (getUserData().role == 'super-admin' || 
-                     (getUserData().role == 'administrador' && 'where' in request.query && request.query.where[0][0] == 'workspaceId'));
+                     (getUserData().role == 'administrador' && request.query.keys().hasAny(['where']) && request.query.where[0][0] == 'workspaceId'));
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
@@ -43,6 +43,10 @@ service cloud.firestore {
         allow create: if isSignedIn() && (get(/databases/$(database)/documents/feedback/$(ticketId)).data.userId == request.auth.uid || getUserData().role == 'super-admin');
         allow list, get: if isSignedIn() && (get(/databases/$(database)/documents/feedback/$(ticketId)).data.userId == request.auth.uid || getUserData().role == 'super-admin');
       }
+    }
+    
+    match /counters/feedbackCounter {
+      allow read, write: if isSignedIn();
     }
 
     match /workspaces/{workspaceId} {
@@ -133,3 +137,4 @@ service cloud.firestore {
     }
   }
 }
+
