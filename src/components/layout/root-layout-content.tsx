@@ -103,16 +103,6 @@
     const router = useRouter();
     const { dictionary, lang } = useI18n();
 
-    useEffect(() => {
-      const performLogout = async () => {
-        if (auth && auth.currentUser) {
-          await signOut(auth);
-          router.push(`/${lang}/login`);
-        }
-      };
-      performLogout();
-    }, []); // Empty dependency array ensures this runs only once when the component mounts.
-
     // 1. Cargar Perfil de Usuario
     const userDocRef = useMemoFirebase(
       () => (firestore && user ? doc(firestore, 'users', user.uid) : null),
