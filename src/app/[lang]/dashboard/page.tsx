@@ -22,6 +22,7 @@ import type {
   Category,
   Deposit,
   Supplier,
+  StockMovement,
 } from '@/types/inventory';
 import { useI18n } from '@/i18n/i18n-provider';
 
@@ -101,6 +102,13 @@ export default function DashboardPage() {
         : null,
     [collectionPrefix, firestore]
   );
+  const movementsQuery = useMemoFirebase(
+    () =>
+      collectionPrefix
+        ? query(collection(firestore, `${collectionPrefix}/stockMovements`), limit(1))
+        : null,
+    [collectionPrefix, firestore]
+  );
 
 
   const { data: suppliers, isLoading: isLoadingSuppliers } =
@@ -113,6 +121,8 @@ export default function DashboardPage() {
     useCollection<Product>(productsQuery);
   const { data: inventory, isLoading: isLoadingInventory } =
     useCollection<InventoryStock>(inventoryQuery);
+  const { data: movements, isLoading: isLoadingMovements } =
+    useCollection<StockMovement>(movementsQuery);
 
   const isLoading =
     isUserLoading ||
@@ -121,7 +131,8 @@ export default function DashboardPage() {
     isLoadingCategories ||
     isLoadingDeposits ||
     isLoadingProducts ||
-    isLoadingInventory;
+    isLoadingInventory ||
+    isLoadingMovements;
 
   const needsToCreateWorkspace = useMemo(() => {
     if (!isLoadingProfile && currentUserProfile) {
@@ -169,8 +180,16 @@ export default function DashboardPage() {
         href: '/productos',
         ctaText: 'Ir a Productos',
       },
+       {
+        id: 'movements',
+        title: 'Registra tu primer Movimiento de Stock',
+        description: 'Haz una entrada de stock para tus nuevos productos para empezar a operar.',
+        isCompleted: (movements?.length ?? 0) > 0,
+        href: '/movimientos',
+        ctaText: 'Ir a Movimientos',
+      },
     ],
-    [suppliers, categories, deposits, products]
+    [suppliers, categories, deposits, products, movements]
   );
 
   const allStepsCompleted = checklistSteps.every((step) => step.isCompleted);
