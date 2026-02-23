@@ -11,7 +11,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // This function is UNSAFE for 'list' rules, but SAFE for 'get' and 'write'.
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -24,12 +23,21 @@ service cloud.firestore {
     // USER PROFILES
     // ------------------------------------------------------------------------
     match /users/{userId} {
-      allow get, update: if isOwner(userId) || (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId) || (getUserData().role == 'super-admin');
+      // A user can get their own document, or a super-admin can get any.
+      allow get: if isOwner(userId) || getUserData().role == 'super-admin';
       
+      // A user can update their own doc, an admin can update users in their workspace, or a super-admin can update any.
+      allow update: if isOwner(userId) || 
+                    (getUserData().role == 'super-admin') ||
+                    (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId);
+
       allow create: if isSignedIn();
       
-      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || (getUserData().role == 'administrador' && request.query.keys().hasAny(['where']) && request.query.where[0][2] == getUserData().workspaceId));
-      
+      // A super-admin can list all users. An admin can only list if filtering by their own workspaceId.
+      allow list: if isSignedIn() && 
+                    (getUserData().role == 'super-admin' || 
+                     (getUserData().role == 'administrador' && request.query.where[0][0] == 'workspaceId' && request.query.where[0][2] == getUserData().workspaceId));
+
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
