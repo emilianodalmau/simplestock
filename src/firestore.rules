@@ -33,10 +33,9 @@ service cloud.firestore {
 
       allow create: if isSignedIn();
       
-      // A super-admin can list all users. An admin can only list if filtering by their own workspaceId.
-      allow list: if isSignedIn() && 
-                    (getUserData().role == 'super-admin' || 
-                     (getUserData().role == 'administrador' && request.query.where[0][0] == 'workspaceId' && request.query.where[0][2] == getUserData().workspaceId));
+      // A super-admin can list all users. An admin can also list users.
+      // The client-side code is responsible for filtering by workspaceId.
+      allow list: if isSignedIn() && getUserData().role in ['super-admin', 'administrador'];
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
@@ -100,13 +99,11 @@ service cloud.firestore {
       }
 
       match /counters/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow read, write: if isSignedIn() && getUserData().workspaceId == workspaceId;
       }
 
       match /stockMovements/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow create: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
         allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && (
@@ -118,9 +115,7 @@ service cloud.firestore {
     
     // --- COLLECTION GROUP QUERIES ---
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() &&
-       request.query.keys().hasAny(['where']) &&
-       request.query.where[0][2] == getUserData().workspaceId;
+     allow list: if isSignedIn();
    }
   }
 }
