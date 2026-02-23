@@ -28,7 +28,7 @@ service cloud.firestore {
       
       allow create: if isSignedIn();
       
-      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId));
+      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || (getUserData().role == 'administrador' && request.query.keys().hasAny(['where']) && request.query.where[0][2] == getUserData().workspaceId));
       
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
@@ -111,6 +111,7 @@ service cloud.firestore {
     // --- COLLECTION GROUP QUERIES ---
     match /{path=**}/batches/{batchId} {
      allow list: if isSignedIn() &&
+       request.query.keys().hasAny(['where']) &&
        request.query.where[0][2] == getUserData().workspaceId;
    }
   }
