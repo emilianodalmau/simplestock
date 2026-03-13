@@ -2,12 +2,139 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // WARNING: TEMPORARY DEBUGGING RULE - NOT FOR PRODUCTION
-    // This rule allows any authenticated user to read and write to the entire database.
-    // It is used to diagnose if permission errors are originating from complex
-    // rule logic or from the client-side queries.
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ------------------------------------------------------------------------
+    // HELPER FUNCTIONS
+    // ------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
     }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ------------------------------------------------------------------------
+    // USER PROFILES
+    // ------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isOwner(userId) || getUserData().role == 'super-admin';
+      
+      allow update: if isOwner(userId) || 
+                    (getUserData().role == 'super-admin') ||
+                    (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId);
+
+      allow create: if isSignedIn();
+      
+      allow list: if isSignedIn() && (
+                      (getUserData().role == 'super-admin') ||
+                      (getUserData().role == 'administrador' && request.query.where[2] == getUserData().workspaceId)
+                    );
+
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
+    }
+
+    // ------------------------------------------------------------------------
+    // WORKSPACES & SUBCOLLECTIONS
+    // ------------------------------------------------------------------------
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      
+      allow create: if isSignedIn() && 
+                    (
+                      (getUserData().role == 'administrador' && getUserData().workspaceId == null && request.resource.data.ownerId == request.auth.uid) ||
+                      (getUserData().role == 'super-admin')
+                    );
+      
+      allow update: if isSignedIn() && ((getUserData().role == 'administrador' && getUserData().workspaceId == workspaceId) || getUserData().role == 'super-admin');
+      
+      allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+      
+      match /categories/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      }
+      
+      match /products/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      }
+
+      match /deposits/{depositId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+        
+        match /locations/{locationId} {
+            allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+            allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
+              getUserData().role in ['administrador', 'editor'] ||
+              (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
+            );
+        }
+      }
+
+      match /suppliers/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      }
+
+      match /clients/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
+      }
+      
+      match /quotes/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
+      }
+      
+      match /inventory/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      }
+
+      match /batches/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
+      }
+
+      match /counters/{docId} {
+        allow read, write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      }
+
+      match /stockMovements/{docId} {
+        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow create: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
+        allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && (
+            getUserData().role == 'administrador' ||
+            (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid)
+        );
+      }
+    }
+    
+     match /feedback/{ticketId} {
+        allow read, create, update: if isSignedIn();
+        allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+
+        match /replies/{replyId} {
+             allow read, create, update: if isSignedIn();
+             allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+        }
+    }
+
+    match /counters/feedbackCounter {
+        allow read, write: if isSignedIn();
+    }
+    
+    // --- COLLECTION GROUP QUERIES ---
+    match /{path=**}/batches/{batchId} {
+     allow list: if isSignedIn() && request.query.where[0][2] == getUserData().workspaceId;
+   }
   }
 }

@@ -1,4 +1,3 @@
-
 'use client';
 
   import {
@@ -147,24 +146,18 @@
 
         const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
         
-        const baseQuery = [
-          orderBy('remitoNumber'),
-          startAt('S-'),
-          endAt('S-uf8ff')
-        ];
-
         if (isJefeDeposito) {
             if (assignedDepositIds === null) return null; 
             if (assignedDepositIds.length === 0) return null; 
             return query(
                 movementsCollectionRef,
-                where('depositId', 'in', assignedDepositIds.slice(0, 30)),
-                ...baseQuery
+                where('status', '==', 'pendiente'),
+                where('depositId', 'in', assignedDepositIds.slice(0, 30))
             );
         }
         
         if (isAdmin) {
-            return query(movementsCollectionRef, ...baseQuery);
+            return query(movementsCollectionRef, where('status', '==', 'pendiente'));
         }
         
         return null;

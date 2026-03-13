@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -122,7 +121,8 @@ export default function PedidosPage() {
     
     // Admin sees ALL requests regardless of status
     if (currentUserProfile?.role === 'administrador') {
-        return query(movementsCollectionRef, where('type', '==', 'salida'), orderBy('createdAt', 'desc'));
+        // This is a more accurate query for "all requests"
+        return query(movementsCollectionRef, where('status', 'in', ['pendiente', 'procesado', 'cancelado']), orderBy('createdAt', 'desc'));
     }
 
     return null;
@@ -313,4 +313,3 @@ export default function PedidosPage() {
     </>
   );
 }
-
