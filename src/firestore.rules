@@ -23,19 +23,18 @@ service cloud.firestore {
     // USER PROFILES
     // ------------------------------------------------------------------------
     match /users/{userId} {
-      // A user can get their own document, or a super-admin can get any.
       allow get: if isOwner(userId) || getUserData().role == 'super-admin';
       
-      // A user can update their own doc, an admin can update users in their workspace, or a super-admin can update any.
       allow update: if isOwner(userId) || 
                     (getUserData().role == 'super-admin') ||
                     (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId);
 
       allow create: if isSignedIn();
       
-      // A super-admin can list all users. An admin can also list users.
-      // The client-side code is responsible for filtering by workspaceId.
-      allow list: if isSignedIn() && getUserData().role in ['super-admin', 'administrador'];
+      allow list: if isSignedIn() && (
+                      (getUserData().role == 'super-admin') ||
+                      (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId)
+                    );
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
@@ -46,9 +45,15 @@ service cloud.firestore {
     match /workspaces/{workspaceId} {
       allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
       
+      allow create: if isSignedIn() && 
+                    (
+                      (getUserData().role == 'administrador' && getUserData().workspaceId == null && request.resource.data.ownerId == request.auth.uid) ||
+                      (getUserData().role == 'super-admin')
+                    );
+      
       allow update: if isSignedIn() && ((getUserData().role == 'administrador' && getUserData().workspaceId == workspaceId) || getUserData().role == 'super-admin');
       
-      allow list, create, delete: if isSignedIn() && getUserData().role == 'super-admin';
+      allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
       
       match /categories/{docId} {
         allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
@@ -113,9 +118,23 @@ service cloud.firestore {
       }
     }
     
+     match /feedback/{ticketId} {
+        allow read, create, update: if isSignedIn();
+        allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+
+        match /replies/{replyId} {
+             allow read, create, update: if isSignedIn();
+             allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
+        }
+    }
+
+    match /counters/feedbackCounter {
+        allow read, write: if isSignedIn();
+    }
+    
     // --- COLLECTION GROUP QUERIES ---
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn();
+     allow list: if isSignedIn() && request.query.where[0][2] == getUserData().workspaceId;
    }
   }
 }

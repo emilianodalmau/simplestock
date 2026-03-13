@@ -38,6 +38,7 @@ import { es } from 'date-fns/locale';
 import { ProcessRequestDialog } from '@/components/ui/process-request-dialog';
 import type { StockMovement, InventoryStock, Product, Deposit } from '@/types/inventory';
 import { useI18n } from '@/i18n/i18n-provider';
+import { Badge } from '@/components/ui/badge';
 
 
 // --- Data Types ---
@@ -46,6 +47,13 @@ type UserProfile = {
   role?: 'administrador' | 'jefe_deposito';
   workspaceId?: string;
 };
+
+const statusConfig = {
+  pendiente: { label: 'Pendiente', color: 'bg-yellow-500 text-black' },
+  procesado: { label: 'Procesado', color: 'bg-green-500 text-white' },
+  cancelado: { label: 'Cancelado', color: 'bg-red-500 text-white' },
+};
+
 
 // --- Main Page Component ---
 export default function PedidosPage() {
@@ -60,6 +68,8 @@ export default function PedidosPage() {
   );
   const { data: currentUserProfile, isLoading: isLoadingProfile } =
     useDoc<UserProfile>(currentUserDocRef);
+
+  const isAdmin = currentUserProfile?.role === 'administrador';
 
   const canAccessPage = useMemo(() => {
     if (!currentUserProfile) return false;
@@ -98,25 +108,24 @@ export default function PedidosPage() {
       firestore,
       `${collectionPrefix}/stockMovements`
     );
-    
-    // Query for pending requests
-    const baseQuery = [
-      where('status', '==', 'pendiente')
-    ];
 
     if (currentUserProfile?.role === 'jefe_deposito') {
         if (assignedDepositIds === null) return null; 
         if (assignedDepositIds.length === 0) return null; 
-        // Add deposit filter for 'jefe_deposito'
+        // Jefe de depósito only sees PENDING requests for their depots.
         return query(
             movementsCollectionRef,
-            ...baseQuery,
+            where('status', '==', 'pendiente'),
             where('depositId', 'in', assignedDepositIds.slice(0, 30))
         );
     }
     
-    // Admin can see all pending requests
-    return query(movementsCollectionRef, ...baseQuery, orderBy('createdAt', 'desc'));
+    // Admin sees ALL requests regardless of status
+    if (currentUserProfile?.role === 'administrador') {
+        return query(movementsCollectionRef, where('type', '==', 'salida'), orderBy('createdAt', 'desc'));
+    }
+
+    return null;
 
   }, [firestore, collectionPrefix, canAccessPage, currentUserProfile, assignedDepositIds]);
 
@@ -185,16 +194,16 @@ export default function PedidosPage() {
     <>
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.pedidos.title}</h1>
+          <h1 className="text-3xl font-bold tracking-tight font-headline">{isAdmin ? "Gestión de Pedidos" : dictionary.pages.pedidos.title}</h1>
           <p className="text-muted-foreground">
-            {dictionary.pages.pedidos.description}
+            {isAdmin ? "Revisa, procesa o consulta el estado de todas las solicitudes." : dictionary.pages.pedidos.description}
           </p>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Lista de Solicitudes</CardTitle>
+            <CardTitle>{isAdmin ? 'Listado de Todas las Solicitudes' : 'Lista de Solicitudes'}</CardTitle>
             <CardDescription>
-              Revisa cada solicitud y procésala para generar un remito de salida.
+              {isAdmin ? 'Aquí se muestran todas las solicitudes: pendientes, procesadas y canceladas.' : 'Revisa cada solicitud y procésala para generar un remito de salida.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -206,6 +215,7 @@ export default function PedidosPage() {
                     <TableHead>Solicitud Nº</TableHead>
                     <TableHead>Solicitante</TableHead>
                     <TableHead>Depósito</TableHead>
+                    {isAdmin && <TableHead>Estado</TableHead>}
                     <TableHead>Nº de Items</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -226,6 +236,7 @@ export default function PedidosPage() {
                         <TableCell>
                           <Skeleton className="h-4 w-24" />
                         </TableCell>
+                         {isAdmin && <TableCell><Skeleton className="h-6 w-20" /></TableCell>}
                         <TableCell>
                           <Skeleton className="h-4 w-10" />
                         </TableCell>
@@ -236,7 +247,7 @@ export default function PedidosPage() {
                     ))}
                   {!isLoadingRequests && requests?.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24">
+                      <TableCell colSpan={isAdmin ? 7 : 6} className="text-center h-24">
                         {currentUserProfile?.role === 'jefe_deposito' && assignedDepositIds?.length === 0
                           ? 'No tienes un depósito asignado para ver pedidos.'
                           : 'No hay pedidos pendientes.'}
@@ -245,7 +256,11 @@ export default function PedidosPage() {
                   )}
                   {!isLoadingRequests &&
                     (requests || [])
-                      .map((req) => (
+                      .map((req) => {
+                        const status = req.status || 'pendiente';
+                        const config = statusConfig[status as keyof typeof statusConfig] || { label: 'Desconocido', color: 'bg-gray-400' };
+
+                        return (
                         <TableRow key={req.id}>
                           <TableCell className="font-medium">
                             {format(req.createdAt.toDate(), 'PPpp', {
@@ -257,14 +272,26 @@ export default function PedidosPage() {
                           </TableCell>
                           <TableCell>{req.actorName || '-'}</TableCell>
                           <TableCell>{req.depositName}</TableCell>
+                           {isAdmin && (
+                              <TableCell>
+                                <Badge className={config.color}>{config.label}</Badge>
+                              </TableCell>
+                            )}
                           <TableCell>{req.items.length}</TableCell>
                           <TableCell className="text-right">
-                            <Button variant="outline" size="sm" onClick={() => setSelectedRequest(req)}>
-                              Procesar Pedido
-                            </Button>
+                             {status === 'pendiente' ? (
+                                <Button variant="outline" size="sm" onClick={() => setSelectedRequest(req)}>
+                                  Procesar Pedido
+                                </Button>
+                              ) : (
+                                <Button variant="ghost" size="sm" disabled>
+                                  Procesado
+                                </Button>
+                              )}
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                    })}
                 </TableBody>
               </Table>
             </div>
@@ -286,3 +313,4 @@ export default function PedidosPage() {
     </>
   );
 }
+
