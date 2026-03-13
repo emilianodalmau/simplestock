@@ -156,6 +156,8 @@
             );
         }
         
+        // This is a much more efficient query for the layout badge.
+        // It avoids complex orderBy clauses that require indexes.
         if (isAdmin) {
             return query(movementsCollectionRef, where('status', '==', 'pendiente'));
         }

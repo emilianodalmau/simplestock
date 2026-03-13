@@ -121,7 +121,8 @@ export default function PedidosPage() {
     
     // Admin sees ALL requests regardless of status
     if (currentUserProfile?.role === 'administrador') {
-        // This is a more accurate query for "all requests"
+        // This query fetches all documents that have a 'status' field, which is more
+        // accurate for what constitutes a "request" in the system.
         return query(movementsCollectionRef, where('status', 'in', ['pendiente', 'procesado', 'cancelado']), orderBy('createdAt', 'desc'));
     }
 

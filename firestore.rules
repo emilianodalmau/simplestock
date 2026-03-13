@@ -23,13 +23,20 @@ service cloud.firestore {
     // USER PROFILES
     // ------------------------------------------------------------------------
     match /users/{userId} {
-      // PERMISSIVE RULE FOR ADMIN/SUPER-ADMIN: Full access for management
-      allow read, write: if isSignedIn() && getUserData().role in ['super-admin', 'administrador'];
+      allow get: if isOwner(userId) || getUserData().role == 'super-admin';
+      
+      allow update: if isOwner(userId) || 
+                    (getUserData().role == 'super-admin') ||
+                    (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId);
 
-      // Keep original rules for other roles (owner can read/update self, anyone can create)
-      allow get: if isOwner(userId);
-      allow update: if isOwner(userId);
       allow create: if isSignedIn();
+      
+      allow list: if isSignedIn() && (
+                      (getUserData().role == 'super-admin') ||
+                      (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId)
+                    );
+
+      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
 
     // ------------------------------------------------------------------------
@@ -59,13 +66,8 @@ service cloud.firestore {
       }
 
       match /deposits/{depositId} {
-        // PERMISSIVE RULE FOR ADMIN & EDITOR: Full read/write access within their workspace
-        allow read, write: if isSignedIn() && 
-                             getUserData().workspaceId == workspaceId && 
-                             getUserData().role in ['administrador', 'editor'];
-        
-        // Add back read-only access for other roles in the workspace
         allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
         
         match /locations/{locationId} {
             allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
@@ -105,7 +107,7 @@ service cloud.firestore {
         allow read, write: if isSignedIn() && getUserData().workspaceId == workspaceId;
       }
 
-      match /stockMovements/{movementId} {
+      match /stockMovements/{docId} {
         allow read, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow create: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
