@@ -31,10 +31,8 @@ service cloud.firestore {
 
       allow create: if isSignedIn();
       
-      allow list: if isSignedIn() && (
-                      (getUserData().role == 'super-admin') ||
-                      (getUserData().role == 'administrador' && request.query.where[0][2] == getUserData().workspaceId)
-                    );
+      // Administrators can list users (client-side filters by workspaceId). Super-admins can list all.
+      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || getUserData().role == 'administrador');
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
     }
