@@ -31,7 +31,8 @@ service cloud.firestore {
 
       allow create: if isSignedIn();
       
-      // Administrators can list users (client-side filters by workspaceId). Super-admins can list all.
+      // Administrators and Super Admins can list users.
+      // The client-side query is responsible for filtering by workspaceId for administrators.
       allow list: if isSignedIn() && (getUserData().role == 'super-admin' || getUserData().role == 'administrador');
 
       allow delete: if isSignedIn() && getUserData().role == 'super-admin';
@@ -106,7 +107,8 @@ service cloud.firestore {
       }
 
       match /stockMovements/{docId} {
-        allow read, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
+        allow list: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow create: if isSignedIn() && getUserData().workspaceId == workspaceId;
         allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
         allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && (
@@ -132,7 +134,10 @@ service cloud.firestore {
     
     // --- COLLECTION GROUP QUERIES ---
     match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() && request.query.where[0][2] == getUserData().workspaceId;
+     allow list: if isSignedIn() && (
+       getUserData().role == 'administrador' ||
+       request.query.where[0][2] == getUserData().workspaceId
+      );
    }
   }
 }
