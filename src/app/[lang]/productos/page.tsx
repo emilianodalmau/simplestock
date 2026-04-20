@@ -485,6 +485,7 @@ const locationsByDeposit = useMemo(() => {
             imageUrl: finalImageUrl,
             code: productCode,
             isArchived: false,
+            totalStock: 0,
             createdAt: serverTimestamp(),
         };
       }
@@ -499,7 +500,17 @@ const locationsByDeposit = useMemo(() => {
         productData.preferredLocations = cleanedLocations;
       }
       
-      await addDoc(collection(firestore, `${collectionPrefix}/products`), productData);
+      await runTransaction(firestore, async (transaction) => {
+        const productRef = doc(collection(firestore, `${collectionPrefix}/products`));
+        transaction.set(productRef, productData);
+
+        // Update stats document
+        const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+        transaction.set(statsRef, {
+            outOfStockCount: increment(1),
+            lastUpdated: serverTimestamp(),
+        }, { merge: true });
+      });
 
       toast({
         title: 'Producto Creado',
@@ -595,7 +606,37 @@ const locationsByDeposit = useMemo(() => {
 
 
       const productRef = doc(firestore, `${collectionPrefix}/products`, editingProduct.id);
-      await updateDoc(productRef, productData);
+      
+      await runTransaction(firestore, async (transaction) => {
+        const productSnap = await transaction.get(productRef);
+        if (!productSnap.exists()) throw new Error("Producto no encontrado");
+        
+        const oldData = productSnap.data() as Product;
+        const oldMinStock = oldData.minStock || 0;
+        const totalStock = oldData.totalStock || 0;
+        const newMinStock = data.productType === 'SIMPLE' ? (data.minStock || 0) : 0;
+
+        let lowStockDelta = 0;
+        
+        // Only track transitions for SIMPLE products in stats
+        if (totalStock > 0) {
+            const wasLow = totalStock < oldMinStock;
+            const isNowLow = totalStock < newMinStock;
+            
+            if (!wasLow && isNowLow) lowStockDelta = 1;
+            else if (wasLow && !isNowLow) lowStockDelta = -1;
+        }
+
+        transaction.update(productRef, productData);
+
+        if (lowStockDelta !== 0) {
+            const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+            transaction.set(statsRef, {
+                lowStockCount: increment(lowStockDelta),
+                lastUpdated: serverTimestamp(),
+            }, { merge: true });
+        }
+      });
 
       toast({
         title: 'Producto Actualizado',
@@ -617,9 +658,34 @@ const locationsByDeposit = useMemo(() => {
   const handleArchiveProduct = async (productId: string) => {
     if (!firestore || !collectionPrefix) return;
     try {
-      await updateDoc(doc(firestore, `${collectionPrefix}/products`, productId), {
-        isArchived: true
+      await runTransaction(firestore, async (transaction) => {
+        const productRef = doc(firestore, `${collectionPrefix}/products`, productId);
+        const productSnap = await transaction.get(productRef);
+        if (!productSnap.exists()) return;
+
+        const productData = productSnap.data() as Product;
+        const totalStock = productData.totalStock || 0;
+        const minStock = productData.minStock || 0;
+
+        transaction.update(productRef, { isArchived: true, updatedAt: serverTimestamp() });
+
+        // Decrement stats if the archived product was triggering an alert
+        let lowStockDelta = 0;
+        let outOfStockDelta = 0;
+
+        if (totalStock <= 0) outOfStockDelta = -1;
+        else if (totalStock < minStock) lowStockDelta = -1;
+
+        if (lowStockDelta !== 0 || outOfStockDelta !== 0) {
+            const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+            transaction.set(statsRef, {
+                lowStockCount: increment(lowStockDelta),
+                outOfStockCount: increment(outOfStockDelta),
+                lastUpdated: serverTimestamp(),
+            }, { merge: true });
+        }
       });
+      
       toast({
         title: 'Producto Archivado',
         description: 'El producto ha sido archivado y no aparecerá en nuevas transacciones.',
@@ -637,14 +703,36 @@ const locationsByDeposit = useMemo(() => {
   const handleBulkArchive = async () => {
     if (!firestore || !collectionPrefix || selectedProducts.length === 0) return;
     
-    const batch = writeBatch(firestore);
-    selectedProducts.forEach(productId => {
-        const productRef = doc(firestore, `${collectionPrefix}/products`, productId);
-        batch.update(productRef, { isArchived: true });
-    });
-
     try {
-        await batch.commit();
+        await runTransaction(firestore, async (transaction) => {
+            let lowStockDelta = 0;
+            let outOfStockDelta = 0;
+
+            for (const productId of selectedProducts) {
+                const productRef = doc(firestore, `${collectionPrefix}/products`, productId);
+                const productSnap = await transaction.get(productRef);
+                if (!productSnap.exists()) continue;
+
+                const productData = productSnap.data() as Product;
+                const totalStock = productData.totalStock || 0;
+                const minStock = productData.minStock || 0;
+
+                transaction.update(productRef, { isArchived: true, updatedAt: serverTimestamp() });
+
+                if (totalStock <= 0) outOfStockDelta -= 1;
+                else if (totalStock < minStock) lowStockDelta -= 1;
+            }
+
+            if (lowStockDelta !== 0 || outOfStockDelta !== 0) {
+                const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+                transaction.set(statsRef, {
+                    lowStockCount: increment(lowStockDelta),
+                    outOfStockCount: increment(outOfStockDelta),
+                    lastUpdated: serverTimestamp(),
+                }, { merge: true });
+            }
+        });
+
         toast({
             title: 'Archivado Masivo Exitoso',
             description: `${selectedProducts.length} productos han sido archivados.`
@@ -772,6 +860,7 @@ const locationsByDeposit = useMemo(() => {
             depositIds: depositIds,
             code: generateProductCode(row.nombre),
             isArchived: false,
+            totalStock: 0,
             createdAt: serverTimestamp(),
             trackingType: 'NONE', // Default tracking type for imports
             productType: 'SIMPLE',
@@ -780,11 +869,18 @@ const locationsByDeposit = useMemo(() => {
           productsCreated++;
         }
         
+        // Update stats document in the same batch
+        const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+        batch.set(statsRef, {
+            outOfStockCount: increment(productsCreated),
+            lastUpdated: serverTimestamp(),
+        }, { merge: true });
+
         await batch.commit();
 
         toast({
           title: 'Importación Completa',
-          description: `Se han creado ${productsCreated} productos nuevos.`,
+          description: `Se han creado ${productsCreated} productos nuevos. El estado "Sin Stock" ha sido actualizado.`,
         });
 
       } catch (error: any) {

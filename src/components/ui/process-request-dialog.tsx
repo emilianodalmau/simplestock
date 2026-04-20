@@ -219,9 +219,39 @@ export function ProcessRequestDialog({
         
         transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
 
+        // Track stats updates
+        let lowStockDelta = 0;
+        let outOfStockDelta = 0;
+
         for (let i = 0; i < itemsToDeliver.length; i++) {
           const item = itemsToDeliver[i];
           const stockRef = stockRefs[i];
+          const productRef = doc(firestore, collectionPrefix, 'products', item.productId);
+          const productSnap = await transaction.get(productRef);
+          const productData = productSnap.data();
+          const minStock = productData?.minStock || 0;
+          const oldTotalStock = productData?.totalStock || 0;
+
+          const newTotalStock = oldTotalStock - item.toDeliver;
+
+          // Update Product
+          transaction.update(productRef, {
+            totalStock: newTotalStock,
+            updatedAt: serverTimestamp()
+          });
+
+          // Evaluate stock alert transitions
+          const wasOut = oldTotalStock <= 0;
+          const isNowOut = newTotalStock <= 0;
+          if (wasOut && !isNowOut) outOfStockDelta -= 1;
+          if (!wasOut && isNowOut) outOfStockDelta += 1;
+
+          const wasLow = oldTotalStock > 0 && oldTotalStock < minStock;
+          const isNowLow = newTotalStock > 0 && newTotalStock < minStock;
+          if (wasLow && !isNowLow) lowStockDelta -= 1;
+          if (!wasLow && isNowLow) lowStockDelta += 1;
+
+          // Update Inventory
           transaction.set(stockRef, {
             quantity: increment(-item.toDeliver),
             lastUpdated: serverTimestamp(),
@@ -247,12 +277,21 @@ export function ProcessRequestDialog({
             processedFromRequestId: request.id,
         });
 
-        // Update the original request status instead of deleting it
+        // Update the original request status
         transaction.update(originalRequestRef, {
             status: 'procesado',
             processedAt: serverTimestamp(),
             processedBy: user.uid,
         });
+
+        // Update stats document
+        const statsRef = doc(firestore, collectionPrefix, 'metadata', 'stats');
+        transaction.set(statsRef, {
+            pendingRequestsCount: increment(-1),
+            lowStockCount: increment(lowStockDelta),
+            outOfStockCount: increment(outOfStockDelta),
+            lastUpdated: serverTimestamp(),
+        }, { merge: true });
       });
 
       toast({

@@ -22,7 +22,9 @@ export type Product = {
   categoryId: string;
   supplierId: string;
   minStock: number;
+  totalStock?: number;
 };
+
 
 export type Deposit = {
   id: string;
@@ -178,3 +180,11 @@ export type FeedbackReply = {
     createdAt: any;
     isSuperAdminReply: boolean;
 };
+
+export type WorkspaceStats = {
+    lowStockCount: number;
+    outOfStockCount: number;
+    pendingRequestsCount: number;
+    lastUpdated: any;
+};
+

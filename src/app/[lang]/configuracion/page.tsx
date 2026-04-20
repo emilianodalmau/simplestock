@@ -15,7 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { updateSettings } from '@/lib/settings';
 import Image from 'next/image';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { syncWorkspaceStats } from '@/lib/stats-sync';
+
 import { useToast } from '@/hooks/use-toast';
 import {
   useFirestore,
@@ -55,6 +57,8 @@ export default function ConfiguracionPage() {
   const [showStock, setShowStock] = useState(true);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const { user: currentUser } = useUser();
@@ -79,6 +83,7 @@ export default function ConfiguracionPage() {
 
   const isSuperAdmin = currentUserProfile?.role === 'super-admin';
   const isWorkspaceAdmin = currentUserProfile?.role === 'administrador';
+  const workspaceId = currentUserProfile?.workspaceId;
 
   // Effect to populate form when data loads
   useEffect(() => {
@@ -206,7 +211,30 @@ export default function ConfiguracionPage() {
   };
 
 
+  const handleSyncStats = async () => {
+    if (!isWorkspaceAdmin || !workspaceId || !firestore) return;
+    setIsSyncing(true);
+    try {
+      await syncWorkspaceStats(firestore, workspaceId);
+      toast({
+        title: 'Estadísticas sincronizadas',
+        description: 'El resumen de stock y pedidos ha sido actualizado correctamente.',
+      });
+    } catch (error) {
+      console.error('Error syncing stats:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error de sincronización',
+        description: 'No se pudieron actualizar las estadísticas.',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+
   const finalIsLoading = isLoading || isLoadingProfile || (isWorkspaceAdmin && isLoadingWorkspace);
+
 
   if (finalIsLoading) {
     return (
@@ -333,6 +361,38 @@ export default function ConfiguracionPage() {
         </CardContent>
       </Card>
 
+      {(isWorkspaceAdmin || isSuperAdmin) && (
+        <Card className="border-amber-200 bg-amber-50/30">
+          <CardHeader>
+            <CardTitle className="text-amber-800">Mantenimiento y Optimización</CardTitle>
+            <CardDescription className="text-amber-600">
+              Sincroniza los contadores del sistema si notas que las insignias de stock o pedidos no coinciden con la realidad.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-sm text-amber-700">
+                Esta acción recalcula todos los alertas de stock bajo, productos sin stock y pedidos pendientes.
+              </div>
+              <Button 
+                variant="outline" 
+                className="border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
+                onClick={handleSyncStats}
+                disabled={isSyncing}
+              >
+                {isSyncing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Sincronizar Estadísticas
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
     </div>
+
   );
 }

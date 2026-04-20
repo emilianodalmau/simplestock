@@ -166,19 +166,6 @@
     }, [firestore, collectionPrefix, isAdmin, isJefeDeposito, assignedDepositIds]);
 
     const { data: pendingRequests } = useCollection(pendingRequestsQuery);
-    const pendingRequestsCount = pendingRequests?.length ?? 0;
-    
-    const productsQuery = useMemoFirebase(() =>
-        collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true)) : null,
-    [collectionPrefix, firestore]
-    );
-    const { data: allProducts, isLoading: isLoadingProductsForAlert } = useCollection<ProductForStockAlert>(productsQuery);
-
-    const inventoryQuery = useMemoFirebase(() =>
-        collectionPrefix ? collection(firestore, `${collectionPrefix}/inventory`) : null,
-    [collectionPrefix, firestore]
-    );
-    const { data: allInventory, isLoading: isLoadingInventoryForAlert } = useCollection<InventoryForStockAlert>(inventoryQuery);
 
     const feedbackTicketsQuery = useMemoFirebase(() => {
         if (!firestore || !isSuperAdmin) return null;
@@ -187,29 +174,24 @@
 
     const { data: feedbackTickets, isLoading: isLoadingFeedback } = useCollection<FeedbackTicket>(feedbackTicketsQuery);
 
+    const statsDocRef = useMemoFirebase(
+      () => (firestore && collectionPrefix ? doc(firestore, `${collectionPrefix}/metadata`, 'stats') : null),
+      [firestore, collectionPrefix]
+    );
+    const { data: workspaceStats } = useDoc<any>(statsDocRef);
+
+    const pendingCount = useMemo(() => {
+        if (isAdmin) return workspaceStats?.pendingRequestsCount ?? 0;
+        if (isJefeDeposito) return pendingRequests?.length ?? 0;
+        return 0;
+    }, [isAdmin, isJefeDeposito, workspaceStats, pendingRequests]);
 
     const stockAlertCounts = useMemo(() => {
-        if (!allProducts || !allInventory) return { lowStock: 0, outOfStock: 0 };
-
-        const stockMap = new Map<string, number>();
-        for (const stockItem of allInventory) {
-            stockMap.set(stockItem.productId, (stockMap.get(stockItem.productId) || 0) + stockItem.quantity);
-        }
-
-        let lowStock = 0;
-        let outOfStock = 0;
-        for (const product of allProducts) {
-            if (product.productType === 'COMBO') continue;
-
-            const totalStock = stockMap.get(product.id) || 0;
-            if (totalStock === 0) {
-                outOfStock++;
-            } else if (totalStock > 0 && totalStock <= product.minStock) {
-                lowStock++;
-            }
-        }
-        return { lowStock, outOfStock };
-    }, [allProducts, allInventory]);
+        return {
+            lowStock: workspaceStats?.lowStockCount ?? 0,
+            outOfStock: workspaceStats?.outOfStockCount ?? 0
+        };
+    }, [workspaceStats]);
     
     const feedbackAlertCounts = useMemo(() => {
         if (!feedbackTickets) return { newCount: 0, inProgressCount: 0 };
@@ -238,7 +220,7 @@
     }, [workspaceData, lang, pathname, isUserLoading, isLoadingProfile, isLoadingWorkspace, router]);
 
 
-    const isLoading = isUserLoading || isLoadingProfile || (isSuperAdmin ? isLoadingFeedback : isLoadingWorkspace) || (isJefeDeposito && isLoadingDeposits) || isLoadingProductsForAlert || isLoadingInventoryForAlert;
+    const isLoading = isUserLoading || isLoadingProfile || (isSuperAdmin ? isLoadingFeedback : isLoadingWorkspace) || (isJefeDeposito && isLoadingDeposits);
     
     const handleLogout = async () => {
       if (auth) {
@@ -337,9 +319,9 @@
                       <span>{item.label}</span>
                     </Link>
                   </SidebarMenuButton>
-                   {item.href === '/pedidos' && pendingRequestsCount > 0 && (
+                   {item.href === '/pedidos' && pendingCount > 0 && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white group-data-[collapsible=icon]:hidden">
-                          {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
+                          {pendingCount > 99 ? '99+' : pendingCount}
                       </div>
                   )}
                    {item.href === '/inventario' && (stockAlertCounts.lowStock > 0 || stockAlertCounts.outOfStock > 0) && (

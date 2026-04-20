@@ -38,7 +38,6 @@ import {
   useUser,
   useDoc,
 } from '@/firebase';
-import {
   collection,
   doc,
   query,
@@ -47,6 +46,7 @@ import {
   serverTimestamp,
   orderBy,
   getDocs,
+  increment,
 } from 'firebase/firestore';
 import type {
   Product,
@@ -215,7 +215,7 @@ function BulkAdjustmentForm({
 
         transaction.set(movementRef, {
           id: movementRef.id,
-          remitoNumber: `AJ-${timestamp}`, // Use stable timestamp
+          remitoNumber: `AJ-${timestamp}`,
           type: 'ajuste',
           depositId: selectedDepositId,
           depositName: depositSnap.data().name,
@@ -227,7 +227,38 @@ function BulkAdjustmentForm({
           observation: data.observation || '',
         });
 
+        // Track stats updates
+        let lowStockDelta = 0;
+        let outOfStockDelta = 0;
+
         for (const item of adjustedItems) {
+          const productRef = doc(firestore, `${collectionPrefix}/products`, item.productId);
+          const productSnap = await transaction.get(productRef);
+          const productData = productSnap.data();
+          const minStock = productData?.minStock || 0;
+          const oldTotalStock = productData?.totalStock || 0;
+          
+          const delta = item.actualQuantity! - item.currentStock;
+          const newTotalStock = oldTotalStock + delta;
+
+          // Update Product totalStock
+          transaction.update(productRef, { 
+            totalStock: newTotalStock,
+            updatedAt: serverTimestamp()
+          });
+
+          // Evaluate state changes for stats
+          const wasOut = oldTotalStock <= 0;
+          const isNowOut = newTotalStock <= 0;
+          if (wasOut && !isNowOut) outOfStockDelta -= 1;
+          if (!wasOut && isNowOut) outOfStockDelta += 1;
+
+          const wasLow = oldTotalStock > 0 && oldTotalStock < minStock;
+          const isNowLow = newTotalStock > 0 && newTotalStock < minStock;
+          if (wasLow && !isNowLow) lowStockDelta -= 1;
+          if (!wasLow && isNowLow) lowStockDelta += 1;
+
+          // Update Inventory
           const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${item.productId}_${selectedDepositId}`);
           transaction.set(stockDocRef, {
             quantity: item.actualQuantity,
@@ -236,7 +267,18 @@ function BulkAdjustmentForm({
             depositId: selectedDepositId,
           }, { merge: true });
         }
+
+        // Apply stats changes
+        if (lowStockDelta !== 0 || outOfStockDelta !== 0) {
+          const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+          transaction.set(statsRef, {
+            lowStockCount: increment(lowStockDelta),
+            outOfStockCount: increment(outOfStockDelta),
+            lastUpdated: serverTimestamp(),
+          }, { merge: true });
+        }
       });
+
       toast({ title: 'Ajuste completado' });
       loadDataForDeposit();
     } catch (e: any) {

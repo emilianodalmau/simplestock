@@ -12,7 +12,6 @@ import {
   useUser,
   useDoc,
 } from '@/firebase';
-import {
   collection,
   runTransaction,
   doc,
@@ -20,6 +19,7 @@ import {
   query,
   where,
   orderBy,
+  increment,
 } from 'firebase/firestore';
 import {
   Card,
@@ -446,6 +446,13 @@ export default function SolicitudesPage() {
           items: movementItemsForDoc,
           totalValue: totalValue,
         });
+
+        // Update stats document
+        const statsRef = doc(firestore, `${collectionPrefix}/metadata`, 'stats');
+        transaction.set(statsRef, {
+            pendingRequestsCount: increment(1),
+            lastUpdated: serverTimestamp(),
+        }, { merge: true });
       });
 
       toast({
