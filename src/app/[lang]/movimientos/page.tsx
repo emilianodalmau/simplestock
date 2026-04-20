@@ -856,13 +856,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
     return <MovementPageSkeleton />;
   }
 
-  if (!canManageMovements) {
-    return (
-        <div className="container mx-auto p-4 sm:p-6 md:p-8">
-            <Card><CardHeader><CardTitle>Acceso Denegado</CardTitle><CardDescription>No tienes permisos para ver esta página.</CardDescription></CardHeader></Card>
-        </div>
-    );
-  }
+  // Removed restrictve check that blocked non-managers from the entire page
+  // if (!canManageMovements) { ... }
 
   return (
     <>
@@ -883,12 +878,13 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           <h1 className="text-3xl font-bold tracking-tight font-headline">{dictionary.pages.movimientos.title}</h1>
           <p className="text-muted-foreground">{dictionary.pages.movimientos.description}</p>
         </div>
-        <Tabs defaultValue="create">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>
+        <Tabs defaultValue={canManageMovements ? "create" : "history"}>
+          <TabsList className={`grid w-full ${canManageMovements ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {canManageMovements && <TabsTrigger value="create">Registrar Nuevo Remito</TabsTrigger>}
             <TabsTrigger value="history">Historial de Remitos</TabsTrigger>
           </TabsList>
-          <TabsContent value="create">
+          {canManageMovements && (
+            <TabsContent value="create">
               <Card>
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -977,11 +973,18 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 </Form>
               </Card>
           </TabsContent>
+          )}
           <TabsContent value="history">
             <Card>
               <CardHeader>
                 <CardTitle>Historial de Movimientos</CardTitle>
-                {isJefeDeposito ? <CardDescription>Solo se muestran los movimientos de tus depósitos asignados.</CardDescription> : <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>}
+                {isJefeDeposito ? (
+                  <CardDescription>Solo se muestran los movimientos de tus depósitos asignados.</CardDescription>
+                ) : isSolicitante ? (
+                  <CardDescription>Solo se muestran los movimientos registrados por ti.</CardDescription>
+                ) : (
+                  <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
@@ -1014,7 +1017,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     <TableHeader>
                       <TableRow>
                         <TableHead>Fecha</TableHead><TableHead>Remito Nº</TableHead><TableHead>Tipo</TableHead><TableHead>Depósito</TableHead><TableHead>Origen/Destino</TableHead><TableHead>Observación</TableHead><TableHead>Productos</TableHead><TableHead className='text-right'>Valor Total</TableHead>
-                        {canManageMovements && (<TableHead className="text-right">Acciones</TableHead>)}
+                        {(canManageMovements || isSolicitante) && (<TableHead className="text-right">Acciones</TableHead>)}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1027,7 +1030,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                         </TableRow>
                       ) : (filteredMovements || [])?.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={canManageMovements ? 9 : 8} className="text-center h-24">
+                          <TableCell colSpan={(canManageMovements || isSolicitante) ? 9 : 8} className="text-center h-24">
                             {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0) 
                               ? "No tienes depósitos asignados para ver movimientos." 
                               : "No se encontraron movimientos con los filtros aplicados."}
@@ -1043,7 +1046,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                               <TableCell className="max-w-[200px] truncate" title={mov.observation}>{mov.observation || '-'}</TableCell>
                               <TableCell>{mov.items.length}</TableCell>
                               <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
-                              {canManageMovements && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
+                              {(canManageMovements || isSolicitante) && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
                           </TableRow>
                         ))
                       )}
