@@ -119,18 +119,20 @@ export function ProcessRequestDialog({
         }
     });
 
-    return request.items.map(item => {
-      const product = productMap.get(item.productId);
-      const inStock = stockMap.get(item.productId) || 0;
-      return {
-        productId: item.productId,
-        productName: item.productName,
-        requested: item.quantity,
-        inStock: inStock,
-        unit: item.unit,
-        toDeliver: Math.min(item.quantity, inStock), // Default to requested qty or what's in stock
-      };
-    });
+    return request.items
+      .map(item => {
+        const product = productMap.get(item.productId);
+        const inStock = stockMap.get(item.productId) || 0;
+        return {
+          productId: item.productId,
+          productName: item.productName,
+          requested: item.quantity,
+          inStock: inStock,
+          unit: item.unit,
+          toDeliver: Math.min(item.quantity, inStock), // Default to requested qty or what's in stock
+        };
+      })
+      .sort((a, b) => a.productName.localeCompare(b.productName));
   }, [request, inventory, productMap]);
   
   const form = useForm<ProcessRequestFormValues>({

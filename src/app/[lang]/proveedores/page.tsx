@@ -360,8 +360,9 @@ export default function ProveedoresPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isLoading &&
-                      suppliers?.map((supplier) => (
+                    {!isLoading && (suppliers || [])
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((supplier) => (
                         <TableRow key={supplier.id}>
                           <TableCell className="font-medium">
                             {supplier.name}

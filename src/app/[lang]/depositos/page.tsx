@@ -451,8 +451,9 @@ export default function DepositosPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isLoadingDeposits &&
-                      deposits?.map((deposit) => (
+                    {!isLoadingDeposits && (deposits || [])
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((deposit) => (
                         <TableRow key={deposit.id}>
                           <TableCell className="font-medium">
                             {deposit.name}
@@ -472,11 +473,13 @@ export default function DepositosPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="unassigned">Sin asignar</SelectItem>
-                                  {jefesDeDeposito?.map(jefe => (
-                                    <SelectItem key={jefe.id} value={jefe.id}>
-                                      {jefe.firstName} {jefe.lastName}
-                                    </SelectItem>
-                                  ))}
+                                  {(jefesDeDeposito || [])
+                                    .sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''))
+                                    .map(jefe => (
+                                      <SelectItem key={jefe.id} value={jefe.id}>
+                                        {jefe.firstName} {jefe.lastName}
+                                      </SelectItem>
+                                    ))}
                                 </SelectContent>
                               </Select>
                             </TableCell>

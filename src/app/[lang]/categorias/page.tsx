@@ -335,8 +335,9 @@ export default function CategoriasPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isLoading &&
-                      categories?.map((category) => (
+                    {!isLoading && (categories || [])
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((category) => (
                         <TableRow key={category.id}>
                           <TableCell className="font-medium">
                             {category.name}

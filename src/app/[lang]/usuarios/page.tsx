@@ -191,7 +191,13 @@ function UserTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user) => (
+            {users
+              .sort((a, b) => {
+                const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim();
+                const nameB = `${b.firstName || ''} ${b.lastName || ''}`.trim();
+                return nameA.localeCompare(nameB);
+              })
+              .map((user) => (
               <TableRow key={user.id} className={user.disabled ? 'opacity-50' : ''}>
                 <TableCell>
                   <div className="flex items-center gap-3">

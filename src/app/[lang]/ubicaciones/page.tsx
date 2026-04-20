@@ -255,7 +255,9 @@ export default function UbicacionesPage() {
                   <TableBody>
                     {isLoadingLocations && [...Array(3)].map((_, i) => (<TableRow key={i}><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-48" /></TableCell>{canManageCurrentDeposit && <TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>}</TableRow>))}
                     {!isLoadingLocations && locations?.length === 0 && <TableRow><TableCell colSpan={canManageCurrentDeposit ? 3 : 2} className="h-24 text-center text-muted-foreground">Este depósito no tiene ubicaciones definidas.</TableCell></TableRow>}
-                    {!isLoadingLocations && locations?.map((loc) => (
+                    {!isLoadingLocations && (locations || [])
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((loc) => (
                       <TableRow key={loc.id}>
                         <TableCell className="font-mono">{loc.code}</TableCell>
                         <TableCell>{loc.name}</TableCell>

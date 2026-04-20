@@ -489,7 +489,9 @@ export default function ClientsPage() {
                       </TableRow>
                     )}
                     {!isLoading &&
-                      clients?.map((client) => (
+                      (clients || [])
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((client) => (
                         <TableRow key={client.id}>
                           <TableCell className="font-medium">
                             {client.name}

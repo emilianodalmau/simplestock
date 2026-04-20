@@ -183,6 +183,7 @@ type Product = {
   depositIds?: string[];
   preferredLocations?: { [key: string]: string };
   createdAt: any; // Used for client-side sorting
+  totalStock?: number;
 };
 
 type Workspace = {
@@ -285,7 +286,9 @@ export default function ProductosPage() {
     useCollection<Deposit>(depositsCollection);
     
   const depositOptions: Option[] = useMemo(() => {
-    return deposits?.map(d => ({ value: d.id, label: d.name })) || [];
+    return (deposits || [])
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(d => ({ value: d.id, label: d.name }));
   }, [deposits]);
 
   useEffect(() => {
@@ -334,7 +337,8 @@ const locationsByDeposit = useMemo(() => {
   const filteredProducts = useMemo(() => {
     if (!allProducts) return [];
     
-    return allProducts.filter((product) => {
+    return allProducts
+      .filter((product) => {
         const matchesSearch = searchTerm === '' ||
             product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             product.code.toLowerCase().includes(searchTerm.toLowerCase());
@@ -345,8 +349,8 @@ const locationsByDeposit = useMemo(() => {
         const matchesUnit = selectedUnit === 'all' || product.unit === selectedUnit;
 
         return matchesSearch && matchesCategory && matchesSupplier && matchesDeposit && matchesUnit;
-    });
-
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [allProducts, searchTerm, selectedCategory, selectedSupplier, selectedDeposit, selectedUnit]);
 
 
@@ -1159,13 +1163,15 @@ const locationsByDeposit = useMemo(() => {
                                 <SelectItem value="loading" disabled>
                                   Cargando...
                                 </SelectItem>
-                                {categories
+                              ) : (
+                                categories
                                   ?.sort((a, b) => a.name.localeCompare(b.name))
                                   .map((cat) => (
                                     <SelectItem key={cat.id} value={cat.id}>
                                       {cat.name}
                                     </SelectItem>
-                                  ))}
+                                  ))
+                              )}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -1193,13 +1199,15 @@ const locationsByDeposit = useMemo(() => {
                                 <SelectItem value="loading" disabled>
                                   Cargando...
                                 </SelectItem>
-                                {suppliers
+                              ) : (
+                                suppliers
                                   ?.sort((a, b) => a.name.localeCompare(b.name))
                                   .map((sup) => (
                                     <SelectItem key={sup.id} value={sup.id}>
                                       {sup.name}
                                     </SelectItem>
-                                  ))}
+                                  ))
+                              )}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -1244,7 +1252,9 @@ const locationsByDeposit = useMemo(() => {
                                                             <FormControl><SelectTrigger className="col-span-2"><SelectValue placeholder="Sin ubicación preferida" /></SelectTrigger></FormControl>
                                                             <SelectContent>
                                                                 <SelectItem value="none">Sin ubicación preferida</SelectItem>
-                                                                {locationsForDep.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name} ({loc.code})</SelectItem>)}
+                                                                {locationsForDep
+                                                                  .sort((a, b) => a.name.localeCompare(b.name))
+                                                                  .map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name} ({loc.code})</SelectItem>)}
                                                             </SelectContent>
                                                         </Select>
                                                     </FormItem>
@@ -1791,7 +1801,9 @@ const locationsByDeposit = useMemo(() => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {categories?.map((cat) => (
+                        {(categories || [])
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             {cat.name}
                           </SelectItem>
@@ -1818,7 +1830,9 @@ const locationsByDeposit = useMemo(() => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {suppliers?.map((sup) => (
+                        {(suppliers || [])
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((sup) => (
                           <SelectItem key={sup.id} value={sup.id}>
                             {sup.name}
                           </SelectItem>
@@ -1879,7 +1893,9 @@ const locationsByDeposit = useMemo(() => {
                                             <FormControl><SelectTrigger className="col-span-2"><SelectValue placeholder="Sin ubicación preferida" /></SelectTrigger></FormControl>
                                             <SelectContent>
                                                 <SelectItem value="none">Sin ubicación preferida</SelectItem>
-                                                {locationsForDep.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name} ({loc.code})</SelectItem>)}
+                                                {locationsForDep
+                                                  .sort((a, b) => a.name.localeCompare(b.name))
+                                                  .map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name} ({loc.code})</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </FormItem>
