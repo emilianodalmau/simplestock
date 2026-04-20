@@ -215,7 +215,7 @@ export default function UbicacionesPage() {
               <SelectValue placeholder="Elige un depósito para gestionar sus ubicaciones..." />
             </SelectTrigger>
             <SelectContent>
-              {deposits?.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+              {deposits?.sort((a, b) => a.name.localeCompare(b.name)).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </CardHeader>

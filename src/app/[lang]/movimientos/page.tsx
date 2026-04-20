@@ -992,7 +992,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                   </Select>
                   <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isJefeDeposito}>
                     <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por depósito" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">Todos los depósitos</SelectItem>{deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                    <SelectContent><SelectItem value="all">Todos los depósitos</SelectItem>{deposits?.sort((a, b) => a.name.localeCompare(b.name)).map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                   </Select>
                   <Select value={selectedActor} onValueChange={setSelectedActor}>
                     <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Filtrar por actor" /></SelectTrigger>

@@ -674,7 +674,7 @@ export default function UsuariosPage() {
                     <SelectContent>
                         <SelectItem value="all">Todos los Workspaces</SelectItem>
                         <SelectItem value="null">Sin Workspace</SelectItem>
-                        {workspaces?.map((ws) => (
+                        {workspaces?.sort((a, b) => a.name.localeCompare(b.name)).map((ws) => (
                             <SelectItem key={ws.id} value={ws.id}>{ws.name}</SelectItem>
                         ))}
                     </SelectContent>
