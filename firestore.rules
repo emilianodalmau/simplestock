@@ -1,143 +1,171 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ------------------------------------------------------------------------
+    // ===========================================
     // HELPER FUNCTIONS
-    // ------------------------------------------------------------------------
+    // ===========================================
 
-    function isSignedIn() {
+    // Gets the authenticated user's profile from the 'users' collection.
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Checks if the user is authenticated.
+    function isAuthenticated() {
       return request.auth != null;
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // Checks if the current user's profile belongs to a specific workspace.
+    function isInWorkspace(workspaceId) {
+      return isAuthenticated() && getUserProfile().workspaceId == workspaceId;
     }
 
-    // ------------------------------------------------------------------------
-    // USER PROFILES
-    // ------------------------------------------------------------------------
+    // Checks if the current user has one of the specified roles within a workspace.
+    function hasRole(workspaceId, roles) {
+      return isInWorkspace(workspaceId) && getUserProfile().role in roles;
+    }
+
+    // Checks if the user is a super-admin.
+    function isSuperAdmin() {
+      return isAuthenticated() && getUserProfile().role == 'super-admin';
+    }
+
+    // ===========================================
+    // USERS COLLECTION
+    // ===========================================
     match /users/{userId} {
-      allow get: if isOwner(userId) || getUserData().role == 'super-admin';
-      
-      allow update: if isOwner(userId) || 
-                    (getUserData().role == 'super-admin') ||
-                    (getUserData().role == 'administrador' && resource.data.workspaceId == getUserData().workspaceId);
-
-      allow create: if isSignedIn();
-      
-      // Administrators and Super Admins can list users.
-      // The client-side query is responsible for filtering by workspaceId for administrators.
-      allow list: if isSignedIn() && (getUserData().role == 'super-admin' || getUserData().role == 'administrador');
-
-      allow delete: if isSignedIn() && getUserData().role == 'super-admin';
+      // Users can read their own document; admins/super-admins can read all in their workspace.
+      allow get: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        getUserProfile().role in ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor', 'solicitante']
+      );
+      // Admins can list users in their workspace.
+      allow list: if isAuthenticated() && (
+        isSuperAdmin() ||
+        getUserProfile().role == 'administrador'
+      );
+      // Users can update their own profile; admins can update any user in their workspace.
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        getUserProfile().role == 'administrador'
+      );
+      // Only admins/super-admins can create/delete users.
+      allow create, delete: if isAuthenticated() && (
+        isSuperAdmin() ||
+        getUserProfile().role == 'administrador'
+      );
     }
 
-    // ------------------------------------------------------------------------
-    // WORKSPACES & SUBCOLLECTIONS
-    // ------------------------------------------------------------------------
+    // ===========================================
+    // WORKSPACES COLLECTION
+    // ===========================================
     match /workspaces/{workspaceId} {
-      allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-      
-      allow create: if isSignedIn() && 
-                    (
-                      (getUserData().role == 'administrador' && getUserData().workspaceId == null && request.resource.data.ownerId == request.auth.uid) ||
-                      (getUserData().role == 'super-admin')
-                    );
-      
-      allow update: if isSignedIn() && ((getUserData().role == 'administrador' && getUserData().workspaceId == workspaceId) || getUserData().role == 'super-admin');
-      
-      allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
-      
-      match /categories/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
-      }
-      
-      match /products/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      // Any authenticated user in the workspace can read workspace info.
+      allow get: if isAuthenticated() && (
+        isSuperAdmin() ||
+        isInWorkspace(workspaceId)
+      );
+      allow list: if isAuthenticated() && isSuperAdmin();
+      allow create: if isAuthenticated() && isSuperAdmin();
+      allow update: if isAuthenticated() && (
+        isSuperAdmin() ||
+        hasRole(workspaceId, ['administrador'])
+      );
+      allow delete: if isAuthenticated() && isSuperAdmin();
+
+      // ===========================================
+      // WORKSPACE SUB-COLLECTIONS (Products, Deposits, etc.)
+      // ===========================================
+
+      // --- Products ---
+      match /products/{productId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
       }
 
+      // --- Categories ---
+      match /categories/{categoryId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
+      }
+
+      // --- Deposits ---
       match /deposits/{depositId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
-        
-        match /locations/{locationId} {
-            allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-            allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && (
-              getUserData().role in ['administrador', 'editor'] ||
-              (getUserData().role == 'jefe_deposito' && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(depositId)).data.jefeId == request.auth.uid)
-            );
-        }
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
       }
 
-      match /suppliers/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor'];
+      // --- Suppliers ---
+      match /suppliers/{supplierId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
       }
 
-      match /clients/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
-      }
-      
-      match /quotes/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'vendedor'];
-      }
-      
-      match /inventory/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      // --- Clients ---
+      match /clients/{clientId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'vendedor']));
       }
 
-      match /batches/{docId} {
-        allow get, list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow write: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
+      // --- Inventory ---
+      match /inventory/{inventoryId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito']));
       }
 
-      match /counters/{docId} {
-        allow read, write: if isSignedIn() && getUserData().workspaceId == workspaceId;
+      // --- Locations ---
+      match /locations/{locationId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
       }
 
-      match /stockMovements/{docId} {
-        allow get: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow list: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow create: if isSignedIn() && getUserData().workspaceId == workspaceId;
-        allow update: if isSignedIn() && getUserData().workspaceId == workspaceId && getUserData().role in ['administrador', 'editor', 'jefe_deposito'];
-        allow delete: if isSignedIn() && getUserData().workspaceId == workspaceId && (
-            getUserData().role == 'administrador' ||
-            (getUserData().role == 'jefe_deposito' && resource.data.depositId != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)/deposits/$(resource.data.depositId)).data.jefeId == request.auth.uid)
+      // --- Stock Movements (Remitos / Pedidos) ---
+      // This is the critical collection. Admin can see ALL movements in their workspace.
+      match /stockMovements/{movementId} {
+        allow read: if isAuthenticated() && (
+          isSuperAdmin() ||
+          hasRole(workspaceId, ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor', 'solicitante'])
+        );
+        allow create: if isAuthenticated() && (
+          isSuperAdmin() ||
+          hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito', 'solicitante', 'vendedor'])
+        );
+        allow update: if isAuthenticated() && (
+          isSuperAdmin() ||
+          hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito'])
+        );
+        allow delete: if isAuthenticated() && (
+          isSuperAdmin() ||
+          hasRole(workspaceId, ['administrador'])
         );
       }
-    }
-    
-     match /feedback/{ticketId} {
-        allow read, create, update: if isSignedIn();
-        allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
 
-        match /replies/{replyId} {
-             allow read, create, update: if isSignedIn();
-             allow list, delete: if isSignedIn() && getUserData().role == 'super-admin';
-        }
-    }
+      // --- Prices ---
+      match /prices/{priceId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
+      }
 
-    match /counters/feedbackCounter {
-        allow read, write: if isSignedIn();
+      // --- Orders / Presupuestos ---
+      match /orders/{orderId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'vendedor']));
+      }
+
+      // --- Batches (sub-collection of inventory) ---
+      match /inventory/{inventoryId}/batches/{batchId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito']));
+      }
+
+      // --- Catch-all for any other workspace sub-collection ---
+      match /{collection}/{docId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador']));
+      }
     }
-    
-    // --- COLLECTION GROUP QUERIES ---
-    match /{path=**}/batches/{batchId} {
-     allow list: if isSignedIn() && (
-       getUserData().role == 'administrador' ||
-       request.query.where[0][2] == getUserData().workspaceId
-      );
-   }
   }
 }

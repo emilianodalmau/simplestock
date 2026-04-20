@@ -81,6 +81,7 @@ export type StockMovement = {
   processedAt?: any;
   processedBy?: string;
   processedFromRequestId?: string;
+  observation?: string;
 };
 
 

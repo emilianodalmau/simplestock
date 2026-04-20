@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Form,
   FormControl,
@@ -113,6 +114,7 @@ const movementFormSchema = z.object({
   depositId: z.string().min(1, 'Selecciona un depósito.'),
   remitoNumber: z.string().optional(),
   actorId: z.string().optional(),
+  observation: z.string().optional(),
   items: z.array(movementItemSchema).min(1, 'Debes agregar al menos un producto.'),
 });
 
@@ -271,6 +273,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       );
     }
   
+    // Para admin, en lugar de consultar toda la colección cruda, 
+    // filtramos por workspace si fuera necesario (aunque la UI ya lo restringe). 
+    // Por seguridad, aseguramos que haya una regla válida en next.
     return query(movementsCollectionRef);
   }, [firestore, collectionPrefix, isJefeDeposito, isSolicitante, user, assignedDepositIds]);
 
@@ -339,6 +344,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
       depositId: '',
       remitoNumber: '',
       actorId: '',
+      observation: '',
       items: [],
     },
   });
@@ -401,11 +407,10 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         (p) => !p.isArchived && (p.productType === 'COMBO' || p.depositIds?.includes(selectedDepositId))
     );
 
+    let result: Product[] = [];
     if (movementType === 'entrada') {
-        return productsInDeposit.filter(p => p.productType !== 'COMBO'); // Cannot stock a combo
-    }
-
-    if (movementType === 'salida') {
+        result = productsInDeposit.filter(p => p.productType !== 'COMBO'); // Cannot stock a combo
+    } else if (movementType === 'salida') {
         if (!inventory) return []; 
         const productsWithStockInDeposit = new Set(
             inventory
@@ -413,7 +418,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 .map(stockItem => stockItem.productId)
         );
         
-        return productsInDeposit.filter(product => {
+        result = productsInDeposit.filter(product => {
             if (product.productType === 'COMBO') {
                 if (!product.components) return false;
                  // A combo is available if all its components are available
@@ -423,7 +428,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
         });
     }
     
-    return [];
+    return result.sort((a, b) => a.name.localeCompare(b.name));
   }, [movementType, selectedDepositId, products, inventory]);
   
   const openBatchSelector = (index: number) => {
@@ -684,12 +689,13 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
               id: movementDocRef.id, remitoNumber: data.remitoNumber || formattedRemitoNumber, type: data.type, depositId: data.depositId,
               depositName: deposit?.name || 'N/A', actorId: finalActorId || null, actorName: actorName, actorType: finalActorId ? actorType : null,
               createdAt: serverTimestamp(), userId: user.uid, items: finalMovementItems, totalValue: totalMovementValue,
+              observation: data.observation || null,
             });
             transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });
         });
         toast({ title: 'Movimiento Registrado', description: 'El remito ha sido registrado exitosamente.' });
         form.reset({
-            type: 'salida', depositId: isJefeDeposito && deposits?.length === 1 ? deposits[0].id : '', remitoNumber: '', actorId: '', items: [],
+            type: 'salida', depositId: isJefeDeposito && deposits?.length === 1 ? deposits[0].id : '', remitoNumber: '', actorId: '', observation: '', items: [],
         });
     } catch(error: any) {
         console.error("Error en transacción de movimiento: ", error);
@@ -838,6 +844,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                         <FormField control={form.control} name="remitoNumber" render={({ field }) => (
                             <FormItem><FormLabel>Nº Remito (Auto)</FormLabel><FormControl><Input placeholder="Se genera automáticamente" {...field} disabled /></FormControl><FormMessage /></FormItem>
                         )}/>
+                        <FormField control={form.control} name="observation" render={({ field }) => (
+                            <FormItem className="sm:col-span-2 lg:col-span-4"><FormLabel>Observación</FormLabel><FormControl><Textarea placeholder="Notas adicionales sobre este movimiento..." {...field} /></FormControl><FormMessage /></FormItem>
+                        )}/>
                       </div>
                       <Separator />
                       <div>
@@ -936,7 +945,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Fecha</TableHead><TableHead>Remito Nº</TableHead><TableHead>Tipo</TableHead><TableHead>Depósito</TableHead><TableHead>Origen/Destino</TableHead><TableHead>Productos</TableHead><TableHead className='text-right'>Valor Total</TableHead>
+                        <TableHead>Fecha</TableHead><TableHead>Remito Nº</TableHead><TableHead>Tipo</TableHead><TableHead>Depósito</TableHead><TableHead>Origen/Destino</TableHead><TableHead>Observación</TableHead><TableHead>Productos</TableHead><TableHead className='text-right'>Valor Total</TableHead>
                         {canManageMovements && (<TableHead className="text-right">Acciones</TableHead>)}
                       </TableRow>
                     </TableHeader>
@@ -954,7 +963,9 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                               <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
                               <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
                               <TableCell><span className={`px-2 py-1 text-xs font-semibold rounded-full ${mov.type === 'entrada' ? 'bg-green-100 text-green-800' : mov.type === 'salida' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{mov.type.charAt(0).toUpperCase() + mov.type.slice(1)}</span></TableCell>
-                              <TableCell>{mov.depositName}</TableCell><TableCell>{mov.actorName || '-'}</TableCell><TableCell>{mov.items.length}</TableCell>
+                              <TableCell>{mov.depositName}</TableCell><TableCell>{mov.actorName || '-'}</TableCell>
+                              <TableCell className="max-w-[200px] truncate" title={mov.observation}>{mov.observation || '-'}</TableCell>
+                              <TableCell>{mov.items.length}</TableCell>
                               <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
                               {canManageMovements && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
                           </TableRow>
