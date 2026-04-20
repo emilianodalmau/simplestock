@@ -28,6 +28,7 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -87,6 +88,7 @@ const adjustmentItemSchema = z.object({
 
 const bulkAdjustmentSchema = z.object({
   items: z.array(adjustmentItemSchema),
+  observation: z.string().optional(),
 });
 
 type BulkAdjustmentFormValues = z.infer<typeof bulkAdjustmentSchema>;
@@ -222,6 +224,7 @@ function BulkAdjustmentForm({
           createdAt: serverTimestamp(),
           items: movementItems,
           totalValue: 0,
+          observation: data.observation || '',
         });
 
         for (const item of adjustedItems) {
@@ -277,8 +280,26 @@ function BulkAdjustmentForm({
                         </SelectContent>
                     </Select>
                 </div>
-                <div className="flex justify-start border-t pt-4">
-                    <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar Ajustes'}</Button>
+                <div className="grid gap-4 py-4 border-t">
+                    <FormField
+                      control={form.control}
+                      name="observation"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Observaciones</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Escribe el motivo del ajuste aquí..." 
+                              className="resize-none"
+                              {...field} 
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex justify-start pt-2">
+                        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar Ajustes'}</Button>
+                    </div>
                 </div>
 
                 <Table>
@@ -391,14 +412,15 @@ function AdjustmentHistory({
               <TableHead>Depósito</TableHead>
               <TableHead>Usuario</TableHead>
               <TableHead>Detalle</TableHead>
+              <TableHead>Observación</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? <TableRow><TableCell colSpan={4}>Cargando historial...</TableCell></TableRow> : 
-             error ? <TableRow><TableCell colSpan={4} className="text-destructive">Error al cargar historial: {error.message}</TableCell></TableRow> :
+            {isLoading ? <TableRow><TableCell colSpan={5}>Cargando historial...</TableCell></TableRow> : 
+             error ? <TableRow><TableCell colSpan={5} className="text-destructive">Error al cargar historial: {error.message}</TableCell></TableRow> :
              adjustments?.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center h-24 text-muted-foreground">
                         {isJefe && (!deposits || deposits.length === 0) 
                             ? "No tienes depósitos asignados." 
                             : "No hay historial de ajustes."
@@ -413,6 +435,9 @@ function AdjustmentHistory({
                 <TableCell>{adj.actorName || '-'}</TableCell>
                 <TableCell>
                   {adj.items.map((it, i) => <div key={i} className="text-xs">{it.productName}: {it.quantity > 0 ? '+' : ''}{it.quantity}</div>)}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground italic">
+                  {adj.observation || '-'}
                 </TableCell>
               </TableRow>
             ))}
