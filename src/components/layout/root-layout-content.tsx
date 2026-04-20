@@ -258,7 +258,7 @@
       { href: '/inventario', label: dict.sidebar.inventory, icon: Warehouse, roles: ['administrador', 'editor', 'visualizador', 'jefe_deposito', 'vendedor'] },
       { href: '/ajustes', label: dict.sidebar.adjustments, icon: Calculator, roles: ['administrador', 'jefe_deposito'] },
       { href: '/vencimientos', label: dict.sidebar.expirations, icon: AlertTriangle, roles: ['administrador', 'editor', 'jefe_deposito'] },
-      { href: '/solicitudes', label: dict.sidebar.requests, icon: ClipboardList, roles: ['solicitante'] },
+      { href: '/solicitudes', label: dict.sidebar.requests, icon: ClipboardList, roles: ['solicitante', 'jefe_deposito'] },
       { href: '/productos', label: dict.sidebar.products, icon: Box, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/categorias', label: dict.sidebar.categories, icon: Tags, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },
       { href: '/proveedores', label: dict.sidebar.suppliers, icon: Truck, roles: ['administrador', 'editor', 'visualizador', 'vendedor'] },

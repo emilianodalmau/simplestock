@@ -225,7 +225,7 @@ export default function SolicitudesPage() {
 
   const canCreateRequest = useMemo(() => {
     if (!currentUserProfile?.role) return false;
-    return currentUserProfile.role === 'solicitante';
+    return ['solicitante', 'jefe_deposito'].includes(currentUserProfile.role);
   }, [currentUserProfile?.role]);
 
   const workspaceId = currentUserProfile?.workspaceId;
