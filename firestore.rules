@@ -32,6 +32,18 @@ service cloud.firestore {
     }
 
     // ===========================================
+    // COLLECTION GROUP RULES
+    // ===========================================
+    // This allows the 'Vencimientos' page to query batches across all inventory locations
+    // within the user's workspace using collectionGroup queries.
+    match /{path=**}/batches/{batchId} {
+      allow read: if isAuthenticated() && (
+        isSuperAdmin() || 
+        getUserProfile().workspaceId == resource.data.workspaceId
+      );
+    }
+
+    // ===========================================
     // USERS COLLECTION
     // ===========================================
     match /users/{userId} {
