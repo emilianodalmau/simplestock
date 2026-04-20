@@ -23,6 +23,7 @@ export type Product = {
   supplierId: string;
   minStock: number;
   totalStock?: number;
+  stockStatus?: 'in-stock' | 'low-stock' | 'out-of-stock';
 };
 
 
@@ -149,6 +150,8 @@ export type Quote = {
 export type Workspace = {
     id: string;
     name: string;
+    appName?: string;
+    logoUrl?: string;
     language?: 'es' | 'en' | 'pt';
     showStockToRequesters?: boolean;
 }

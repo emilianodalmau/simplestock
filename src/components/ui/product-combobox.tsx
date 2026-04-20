@@ -61,12 +61,14 @@ export function ProductComboBox({
           <CommandList>
             <CommandEmpty>No se encontraron productos.</CommandEmpty>
             <CommandGroup>
-              {products.map((product) => (
+              {[...products]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((product) => (
                 <CommandItem
                   key={product.id}
-                  value={product.id}
-                  onSelect={(currentValue) => {
-                    onChange(currentValue);
+                  value={`${product.name} ${product.code} ${product.id}`}
+                  onSelect={() => {
+                    onChange(product.id);
                     setOpen(false);
                   }}
                 >

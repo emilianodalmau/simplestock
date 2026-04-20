@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { collection, doc, where, query } from 'firebase/firestore';
+import { collection, doc, where, query, getDocs, getCountFromServer, limit, startAfter, orderBy, increment, serverTimestamp } from 'firebase/firestore';
 import {
   Card,
   CardHeader,
@@ -55,6 +55,8 @@ type Product = {
   depositIds?: string[];
   productType?: 'SIMPLE' | 'COMBO';
   components?: { productId: string; quantity: number }[];
+  totalStock?: number;
+  stockStatus?: string;
 };
 
 type Category = {
@@ -119,7 +121,7 @@ export default function InventarioPage() {
 
 
   // State for detail modal
-  const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [assignedDepositId, setAssignedDepositId] = useState<string | null>(null);
 
@@ -138,6 +140,16 @@ export default function InventarioPage() {
     return `workspaces/${workspaceId}`;
   }, [workspaceId]);
 
+  // Pagination and Fetching State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(25);
+  const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
+  const [firstVisibleDoc, setFirstVisibleDoc] = useState<any>(null);
+  const [pageHistory, setPageHistory] = useState<any[]>([]); // To handle "Previous"
+  const [totalCount, setTotalCount] = useState(0);
+  const [pagedProducts, setPagedProducts] = useState<Product[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
+
   const depositsCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
     [firestore, collectionPrefix]
@@ -154,109 +166,163 @@ export default function InventarioPage() {
     }
   }, [isJefeDeposito, deposits, user]);
 
-
-  // Fetch all necessary collections
-  const productsCollection = useMemoFirebase(
-    () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/products`) : null),
-    [firestore, collectionPrefix]
-  );
-  const { data: products, isLoading: isLoadingProducts } =
-    useCollection<Product>(productsCollection);
-
   const categoriesCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/categories`) : null),
     [firestore, collectionPrefix]
   );
-  const { data: categories, isLoading: isLoadingCategories } =
-    useCollection<Category>(categoriesCollection);
+  const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(categoriesCollection);
 
-  const inventoryQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix) return null;
-    
-    // For 'jefe_deposito' with an assigned deposit, we can optimize the query
-    if (isJefeDeposito && assignedDepositId) {
-        return query(collection(firestore, `${collectionPrefix}/inventory`), where('depositId', '==', assignedDepositId));
+  // Fetch Paged Products
+  useEffect(() => {
+    if (!firestore || !collectionPrefix) return;
+
+    const fetchProducts = async () => {
+      setIsFetching(true);
+      try {
+        const productsRef = collection(firestore, `${collectionPrefix}/products`);
+        let baseQuery = query(productsRef, where('isArchived', '==', false));
+
+        // Apply Status Filter
+        if (selectedStatus !== 'all') {
+            const statusMap: Record<StockStatus, string> = {
+                'Sin Stock': 'out-of-stock',
+                'Stock Bajo': 'low-stock',
+                'En Stock': 'in-stock'
+            };
+            baseQuery = query(baseQuery, where('stockStatus', '==', statusMap[selectedStatus]));
+        }
+
+        // Apply Category Filter
+        if (selectedCategory !== 'all') {
+            baseQuery = query(baseQuery, where('categoryId', '==', selectedCategory));
+        }
+
+        // Apply Deposit Filter
+        if (selectedDeposit !== 'all') {
+            baseQuery = query(baseQuery, where('depositIds', 'array-contains', selectedDeposit));
+        }
+
+        // Apply Search (Prefix)
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            // Assuming we added a 'name_lowercase' or similar if case-insensitivity is needed, 
+            // but for now we'll use 'name' and assume users type correctly or we fix the data.
+            // A better way is a 'searchKeywords' array, but let's stick to prefix for simplicity.
+            baseQuery = query(baseQuery, 
+                where('name', '>=', searchTerm), 
+                where('name', '<=', searchTerm + '\uf8ff')
+            );
+        }
+
+        // Apply Sort
+        const sortField = sortConfig.key === 'productName' ? 'name' : 
+                          sortConfig.key === 'totalStock' ? 'totalStock' : 
+                          sortConfig.key === 'status' ? 'stockStatus' : 'name';
+        
+        const sortDirection = sortConfig.direction === 'ascending' ? 'asc' : 'desc';
+        let finalQuery = query(baseQuery, orderBy(sortField, sortDirection as any));
+
+        // Get Total Count (Only on first load or filter change)
+        if (currentPage === 1) {
+            const countSnapshot = await getCountFromServer(baseQuery);
+            setTotalCount(countSnapshot.data().count);
+        }
+
+        // Pagination
+        if (currentPage > 1 && lastVisibleDoc) {
+            finalQuery = query(finalQuery, startAfter(lastVisibleDoc), limit(pageSize));
+        } else {
+            finalQuery = query(finalQuery, limit(pageSize));
+        }
+
+        const snapshot = await getDocs(finalQuery);
+        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+        
+        setPagedProducts(docs);
+        setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
+        setFirstVisibleDoc(snapshot.docs[0]);
+      } catch (error) {
+        console.error("Error fetching inventory:", error);
+      } finally {
+        setIsFetching(false);
+      }
+    };
+
+    fetchProducts();
+  }, [firestore, collectionPrefix, selectedCategory, selectedStatus, searchTerm, sortConfig, currentPage, pageSize]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setLastVisibleDoc(null);
+    setPageHistory([]);
+  }, [selectedCategory, selectedStatus, searchTerm, sortConfig]);
+
+  // We no longer fetch all inventory here. 
+  const [productInventory, setProductInventory] = useState<InventoryStock[]>([]);
+  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
+
+  // Fetch Detail Inventory when a product is selected
+  useEffect(() => {
+    if (!firestore || !collectionPrefix || !selectedProduct) {
+        setProductInventory([]);
+        return;
     }
-    
-    // Admins/Editors/Viewers see all inventory. 'jefe_deposito' without an assigned deposit also fetches all to show an empty state.
-    return collection(firestore, `${collectionPrefix}/inventory`);
-  }, [firestore, collectionPrefix, isJefeDeposito, assignedDepositId]);
 
-  const { data: inventory, isLoading: isLoadingInventory } =
-    useCollection<InventoryStock>(inventoryQuery);
+    const fetchDetail = async () => {
+        setIsFetchingDetail(true);
+        try {
+            const inventoryRef = collection(firestore, `${collectionPrefix}/inventory`);
+            
+            if (selectedProduct.productType === 'COMBO') {
+                // For combos, we need inventory of ALL components
+                const componentIds = selectedProduct.components?.map((c: any) => c.productId) || [];
+                if (componentIds.length === 0) {
+                    setProductInventory([]);
+                    return;
+                }
+                const q = query(inventoryRef, where('productId', 'in', componentIds));
+                const snap = await getDocs(q);
+                setProductInventory(snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryStock)));
+            } else {
+                const q = query(inventoryRef, where('productId', '==', selectedProduct.id));
+                const snap = await getDocs(q);
+                setProductInventory(snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryStock)));
+            }
+        } catch (error) {
+            console.error("Error fetching detail inventory:", error);
+        } finally {
+            setIsFetchingDetail(false);
+        }
+    };
+
+    fetchDetail();
+  }, [firestore, collectionPrefix, selectedProduct]);
+
+  const { data: inventory, isLoading: isLoadingInventory } = { data: productInventory, isLoading: isFetchingDetail };
 
   const isLoading =
     isLoadingProfile ||
-    isLoadingProducts ||
+    isFetching ||
     isLoadingCategories ||
-    isLoadingInventory ||
     isLoadingDeposits;
     
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
   }
 
-  // Memoize the data processing for the main table
+  // Processed Data for the current page
   const processedInventoryData = useMemo(() => {
-    if (!products || !categories || !inventory) {
-      return [];
-    }
+    if (!pagedProducts || !categories) return [];
 
     const categoryMap = new Map(categories.map((cat) => [cat.id, cat.name]));
-    const productsMap = new Map(products.map((p) => [p.id, p]));
-    const stockMap = new Map<string, number>();
-    
-    const relevantInventory = selectedDeposit === 'all' 
-      ? inventory 
-      : inventory.filter(stock => stock.depositId === selectedDeposit);
 
-    for (const stockItem of relevantInventory) {
-      const currentStock = stockMap.get(stockItem.productId) || 0;
-      stockMap.set(stockItem.productId, currentStock + stockItem.quantity);
-    }
-    
-    const productsInScope = selectedDeposit === 'all'
-      ? products
-      : products.filter(p => p.productType === 'COMBO' || p.depositIds?.includes(selectedDeposit));
-
-
-    const combinedData: InventoryItem[] = productsInScope.map((product) => {
-        let totalStock: number;
-        let totalCost: number;
-        let unit: string = product.unit;
-
-        if (product.productType === 'COMBO') {
-            let maxKits = Infinity;
-            let componentsCost = 0;
-            if (product.components && product.components.length > 0) {
-                for (const component of product.components) {
-                    const componentStock = stockMap.get(component.productId) || 0;
-                    const possibleSets = Math.floor(componentStock / component.quantity);
-                    if (possibleSets < maxKits) {
-                        maxKits = possibleSets;
-                    }
-                    const componentProduct = productsMap.get(component.productId);
-                    componentsCost += (componentProduct?.costPrice || 0) * component.quantity;
-                }
-            } else {
-                maxKits = 0;
-            }
-            totalStock = maxKits === Infinity ? 0 : maxKits;
-            totalCost = totalStock * componentsCost;
-            unit = 'combo';
-        } else {
-            totalStock = stockMap.get(product.id) || 0;
-            totalCost = (product.costPrice || 0) * totalStock;
-        }
-
-      const minStock = product.minStock;
-      const totalValue = (product.price || 0) * totalStock;
-      let status: StockStatus = 'En Stock';
-      if (totalStock === 0) {
-        status = 'Sin Stock';
-      } else if (totalStock <= minStock && product.productType !== 'COMBO') { // Min stock alert doesn't apply to combos
-        status = 'Stock Bajo';
-      }
+    return pagedProducts.map((product) => {
+      const statusMap: Record<string, StockStatus> = {
+        'out-of-stock': 'Sin Stock',
+        'low-stock': 'Stock Bajo',
+        'in-stock': 'En Stock'
+      };
 
       return {
         productId: product.id,
@@ -264,114 +330,81 @@ export default function InventarioPage() {
         productCode: product.code,
         categoryId: product.categoryId,
         categoryName: categoryMap.get(product.categoryId) || 'Sin categoría',
-        totalStock: totalStock,
-        minStock: product.productType === 'COMBO' ? 0 : minStock,
-        totalValue: totalValue,
-        totalCost: totalCost,
-        unit: unit,
-        status: status,
+        totalStock: product.totalStock || 0,
+        minStock: product.minStock || 0,
+        totalValue: (product.price || 0) * (product.totalStock || 0),
+        totalCost: (product.costPrice || 0) * (product.totalStock || 0),
+        unit: product.unit,
+        status: statusMap[product.stockStatus || 'in-stock'] || 'En Stock',
         productType: product.productType,
       };
     });
-
-    // Apply other filters and search
-    let filteredData = combinedData.filter((item) => {
-      const matchesCategory =
-        selectedCategory === 'all' || item.categoryId === selectedCategory;
-      const matchesStatus =
-        selectedStatus === 'all' || item.status === selectedStatus;
-      const matchesSearch =
-        searchTerm === '' ||
-        item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.productCode.toLowerCase().includes(searchTerm.toLowerCase());
-
-      return matchesCategory && matchesStatus && matchesSearch;
-    });
-
-    // Apply sorting
-    if (sortConfig.key !== null) {
-      const statusOrder: Record<StockStatus, number> = {
-        'Sin Stock': 1,
-        'Stock Bajo': 2,
-        'En Stock': 3,
-      };
-
-      filteredData.sort((a, b) => {
-        const aValue = a[sortConfig.key!];
-        const bValue = b[sortConfig.key!];
-
-        let comparison = 0;
-
-        if (sortConfig.key === 'status') {
-            comparison = statusOrder[aValue as StockStatus] - statusOrder[bValue as StockStatus];
-        } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-            comparison = aValue - bValue;
-        } else if (typeof aValue === 'string' && typeof bValue === 'string') {
-            comparison = aValue.localeCompare(bValue);
-        }
-
-        return sortConfig.direction === 'ascending' ? comparison : -comparison;
-      });
-    }
-
-    return filteredData;
-
-  }, [
-    products,
-    categories,
-    inventory,
-    searchTerm,
-    selectedCategory,
-    selectedDeposit,
-    selectedStatus,
-    sortConfig,
-  ]);
+  }, [pagedProducts, categories]);
 
   // Memoize data for the detail modal, now with aggregation
   const productStockDetails = useMemo(() => {
-    if (!selectedProduct || !inventory || !deposits) return [];
-
-    if (selectedProduct.productType === 'COMBO') {
-        const combo = products?.find(p => p.id === selectedProduct.productId);
-        if (!combo || !combo.components) return [];
-
-        const componentDetails = combo.components.map(comp => {
-            const componentProduct = products?.find(p => p.id === comp.productId);
-            const totalStock = Array.from(inventory.values())
-                                    .filter(inv => inv.productId === comp.productId)
-                                    .reduce((sum, inv) => sum + inv.quantity, 0);
-            return {
-                depositName: componentProduct?.name || 'Componente desconocido',
-                quantity: `${totalStock} ${componentProduct?.unit || ''} (Req: ${comp.quantity} por combo)`
-            };
-        });
-        return componentDetails;
+    if (!selectedProduct || !deposits || !productInventory) {
+      return [];
     }
-    
-    // Non-jefes see all deposits, so we need the full deposit map.
-    // Jefes only see their own deposit.
-    const depositMap = new Map(deposits.map((dep) => [dep.id, dep.name]));
 
+    const depositMap = new Map(deposits.map((d) => [d.id, d.name]));
+    
+    // Aggregates stock by deposit
     const stockByDeposit = new Map<string, number>();
 
-    // Filter and aggregate stock for the selected product
-    inventory
-      .filter((stock) => stock.productId === selectedProduct.productId)
-      .forEach((stockItem) => {
-        // If the user is a jefe, only include their assigned deposit.
-        if (isJefeDeposito && stockItem.depositId !== assignedDepositId) {
-            return;
-        }
-        const currentQuantity = stockByDeposit.get(stockItem.depositId) || 0;
-        stockByDeposit.set(stockItem.depositId, currentQuantity + stockItem.quantity);
-      });
+    if (selectedProduct.productType === 'COMBO') {
+        // Calculate combo stock per deposit
+        const componentsSnap = selectedProduct.components || [];
+        // Map component stock per deposit: Map<depositId, Map<productId, quantity>>
+        const componentStockByDeposit = new Map<string, Map<string, number>>();
+        
+        productInventory.forEach(stockItem => {
+            if (!componentStockByDeposit.has(stockItem.depositId)) {
+                componentStockByDeposit.set(stockItem.depositId, new Map());
+            }
+            componentStockByDeposit.get(stockItem.depositId)!.set(stockItem.productId, stockItem.quantity);
+        });
+
+        // For each deposit, calculate how many combos can be made
+        deposits.forEach(deposit => {
+            if (isJefeDeposito && deposit.id !== assignedDepositId) return;
+            
+            const depositStock = componentStockByDeposit.get(deposit.id);
+            if (!depositStock) {
+                stockByDeposit.set(deposit.id, 0);
+                return;
+            }
+
+            let minKits = Infinity;
+            componentsSnap.forEach((comp: any) => {
+                const available = depositStock.get(comp.productId) || 0;
+                const kits = Math.floor(available / comp.quantity);
+                if (kits < minKits) minKits = kits;
+            });
+            
+            if (minKits !== Infinity && minKits > 0) {
+                stockByDeposit.set(deposit.id, minKits);
+            }
+        });
+
+    } else {
+        productInventory.forEach((stockItem) => {
+            if (isJefeDeposito && stockItem.depositId !== assignedDepositId) {
+                return;
+            }
+            const currentQuantity = stockByDeposit.get(stockItem.depositId) || 0;
+            stockByDeposit.set(stockItem.depositId, currentQuantity + stockItem.quantity);
+        });
+    }
 
     // Create the final details array from the aggregated map
-    return Array.from(stockByDeposit.entries()).map(([depositId, quantity]) => ({
-      depositName: depositMap.get(depositId) || 'Depósito desconocido',
-      quantity: `${quantity} ${selectedProduct?.unit}`,
-    }));
-  }, [selectedProduct, inventory, deposits, isJefeDeposito, assignedDepositId, products]);
+    return Array.from(stockByDeposit.entries())
+      .filter(([_, qty]) => qty > 0) // Only show deposits with stock
+      .map(([depositId, quantity]) => ({
+        depositName: depositMap.get(depositId) || 'Depósito desconocido',
+        quantity: `${quantity} ${selectedProduct?.unit || ''}`,
+      }));
+  }, [selectedProduct, productInventory, deposits, isJefeDeposito, assignedDepositId]);
   
   const requestSort = (key: keyof InventoryItem) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -444,7 +477,7 @@ export default function InventarioPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos los depósitos</SelectItem>
-                {deposits?.map((dep) => (
+                {deposits?.sort((a, b) => a.name.localeCompare(b.name)).map((dep) => (
                   <SelectItem key={dep.id} value={dep.id}>
                     {dep.name}
                   </SelectItem>
@@ -461,7 +494,7 @@ export default function InventarioPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las categorías</SelectItem>
-                {categories?.map((cat) => (
+                {categories?.sort((a, b) => a.name.localeCompare(b.name)).map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
                     {cat.name}
                   </SelectItem>
@@ -569,7 +602,14 @@ export default function InventarioPage() {
                 )}
                 {!isLoading &&
                   processedInventoryData.map((item) => (
-                    <TableRow key={item.productId} onClick={() => setSelectedProduct(item)} className="cursor-pointer">
+                    <TableRow 
+                      key={item.productId} 
+                      onClick={() => {
+                        const product = pagedProducts.find(p => p.id === item.productId);
+                        if (product) setSelectedProduct(product);
+                      }} 
+                      className="cursor-pointer"
+                    >
                       <TableCell>
                         <div className="font-medium flex items-center gap-2">
                             {item.productName}
@@ -601,6 +641,40 @@ export default function InventarioPage() {
                   ))}
               </TableBody>
             </Table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Mostrando {processedInventoryData.length} de {totalCount} productos
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newHistory = [...pageHistory];
+                  const prevDoc = newHistory.pop();
+                  setPageHistory(newHistory);
+                  setLastVisibleDoc(prevDoc);
+                  setCurrentPage(prev => Math.max(1, prev - 1));
+                }}
+                disabled={currentPage === 1}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPageHistory([...pageHistory, firstVisibleDoc]);
+                  setCurrentPage(prev => prev + 1);
+                }}
+                disabled={processedInventoryData.length < pageSize}
+              >
+                Siguiente
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

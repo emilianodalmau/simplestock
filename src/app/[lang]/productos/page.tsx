@@ -325,7 +325,7 @@ const locationsByDeposit = useMemo(() => {
     }, {} as Record<string, Location[]>);
 }, [allLocations]);
   
-  const simpleProducts = useMemo(() => allProducts?.filter(p => p.productType === 'SIMPLE'), [allProducts]);
+  const simpleProducts = useMemo(() => allProducts?.filter(p => p.productType === 'SIMPLE').sort((a, b) => a.name.localeCompare(b.name)), [allProducts]);
 
 
   const productCount = allProducts?.length ?? 0;
@@ -458,6 +458,7 @@ const locationsByDeposit = useMemo(() => {
           price: data.price,
           productType: 'COMBO',
           components: data.components || [],
+          componentIds: (data.components || []).map(c => c.productId),
           imageUrl: finalImageUrl,
           code: productCode,
           isArchived: false,
@@ -569,6 +570,7 @@ const locationsByDeposit = useMemo(() => {
           price: data.price,
           productType: 'COMBO',
           components: data.components || [],
+          componentIds: (data.components || []).map(c => c.productId),
           imageUrl: finalImageUrl,
           costPrice: 0,
           minStock: 0,
@@ -1157,13 +1159,13 @@ const locationsByDeposit = useMemo(() => {
                                 <SelectItem value="loading" disabled>
                                   Cargando...
                                 </SelectItem>
-                              ) : (
-                                categories?.map((cat) => (
-                                  <SelectItem key={cat.id} value={cat.id}>
-                                    {cat.name}
-                                  </SelectItem>
-                                ))
-                              )}
+                                {categories
+                                  ?.sort((a, b) => a.name.localeCompare(b.name))
+                                  .map((cat) => (
+                                    <SelectItem key={cat.id} value={cat.id}>
+                                      {cat.name}
+                                    </SelectItem>
+                                  ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -1191,13 +1193,13 @@ const locationsByDeposit = useMemo(() => {
                                 <SelectItem value="loading" disabled>
                                   Cargando...
                                 </SelectItem>
-                              ) : (
-                                suppliers?.map((sup) => (
-                                  <SelectItem key={sup.id} value={sup.id}>
-                                    {sup.name}
-                                  </SelectItem>
-                                ))
-                              )}
+                                {suppliers
+                                  ?.sort((a, b) => a.name.localeCompare(b.name))
+                                  .map((sup) => (
+                                    <SelectItem key={sup.id} value={sup.id}>
+                                      {sup.name}
+                                    </SelectItem>
+                                  ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -1431,11 +1433,13 @@ const locationsByDeposit = useMemo(() => {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todas las categorías</SelectItem>
-                            {categories?.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                                {cat.name}
-                            </SelectItem>
-                            ))}
+                            {categories
+                              ?.sort((a, b) => a.name.localeCompare(b.name))
+                              .map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))}
                         </SelectContent>
                     </Select>
                      <Select value={selectedSupplier} onValueChange={setSelectedSupplier} disabled={isLoadingSuppliers}>
@@ -1444,11 +1448,13 @@ const locationsByDeposit = useMemo(() => {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todos los proveedores</SelectItem>
-                            {suppliers?.map((sup) => (
-                            <SelectItem key={sup.id} value={sup.id}>
-                                {sup.name}
-                            </SelectItem>
-                            ))}
+                            {suppliers
+                              ?.sort((a, b) => a.name.localeCompare(b.name))
+                              .map((sup) => (
+                                <SelectItem key={sup.id} value={sup.id}>
+                                  {sup.name}
+                                </SelectItem>
+                              ))}
                         </SelectContent>
                     </Select>
                     <Select value={selectedDeposit} onValueChange={setSelectedDeposit} disabled={isLoadingDeposits}>
@@ -1457,11 +1463,13 @@ const locationsByDeposit = useMemo(() => {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todos los depósitos</SelectItem>
-                            {deposits?.map((dep) => (
-                            <SelectItem key={dep.id} value={dep.id}>
-                                {dep.name}
-                            </SelectItem>
-                            ))}
+                            {deposits
+                              ?.sort((a, b) => a.name.localeCompare(b.name))
+                              .map((dep) => (
+                                <SelectItem key={dep.id} value={dep.id}>
+                                  {dep.name}
+                                </SelectItem>
+                              ))}
                         </SelectContent>
                     </Select>
                      <Select value={selectedUnit} onValueChange={(value) => setSelectedUnit(value as any)}>

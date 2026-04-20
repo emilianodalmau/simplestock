@@ -21,6 +21,9 @@ import {
   where,
   query,
   getDocs,
+  getCountFromServer,
+  limit,
+  startAfter,
   orderBy,
   writeBatch,
 } from 'firebase/firestore';
@@ -74,7 +77,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { RemitoActions } from '@/components/remito-actions';
 import type { AppSettings } from '@/types/settings';
-import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock, Batch } from '@/types/inventory';
+import type { Product, Deposit, Supplier, UserProfile, StockMovementItem, StockMovement, InventoryStock, Batch, Workspace } from '@/types/inventory';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -121,11 +124,7 @@ const movementFormSchema = z.object({
 type MovementFormValues = z.infer<typeof movementFormSchema>;
 
 
-type Workspace = {
-    name?: string;
-    appName?: string;
-    logoUrl?: string;
-}
+// Removed local Workspace type, now using global type from @/types/inventory
 
 // --- Skeleton Component ---
 function MovementPageSkeleton() {
@@ -252,72 +251,102 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   const { data: suppliers, isLoading: isLoadingSuppliers } =
     useCollection<Supplier>(suppliersCollection);
 
-  const movementsQuery = useMemoFirebase(() => {
-    if (!firestore || !collectionPrefix || !user) return null;
-  
-    const movementsCollectionRef = collection(firestore, `${collectionPrefix}/stockMovements`);
-  
-    if (isJefeDeposito) {
-      if (assignedDepositIds === null) return null;
-      if (assignedDepositIds.length === 0) return null;
-      return query(
-        movementsCollectionRef,
-        where('depositId', 'in', assignedDepositIds)
-      );
-    }
-  
-    if (isSolicitante) {
-      return query(
-        movementsCollectionRef,
-        where('userId', '==', user.uid)
-      );
-    }
-  
-    // Para admin, en lugar de consultar toda la colección cruda, 
-    // filtramos por workspace si fuera necesario (aunque la UI ya lo restringe). 
-    // Por seguridad, aseguramos que haya una regla válida en next.
-    return query(movementsCollectionRef);
-  }, [firestore, collectionPrefix, isJefeDeposito, isSolicitante, user, assignedDepositIds]);
+  // Pagination and Fetching State (History)
+  const [currentHistoryPage, setCurrentHistoryPage] = useState(1);
+  const [historyPageSize] = useState(20);
+  const [historyLastVisible, setHistoryLastVisible] = useState<any>(null);
+  const [historyFirstVisible, setHistoryFirstVisible] = useState<any>(null);
+  const [historyPageHistory, setHistoryPageHistory] = useState<any[]>([]);
+  const [historyTotalCount, setHistoryTotalCount] = useState(0);
+  const [pagedMovements, setPagedMovements] = useState<StockMovement[]>([]);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
 
-  const { data: movements, isLoading: isLoadingMovements } = useCollection<StockMovement>(movementsQuery);
-    
-  const filteredMovements = useMemo(() => {
-    if (!movements) return [];
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentHistoryPage(1);
+    setHistoryLastVisible(null);
+    setHistoryPageHistory([]);
+  }, [searchTerm, selectedType, selectedDeposit, dateRange]);
 
-    let filtered = movements;
+  // Fetch Paged Movements History
+  useEffect(() => {
+    if (!firestore || !collectionPrefix || !user) return;
 
-    if (searchTerm) {
-        const lowerCaseSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter(mov => 
-            mov.remitoNumber?.toLowerCase().includes(lowerCaseSearch) ||
-            mov.items.some(item => item.productName.toLowerCase().includes(lowerCaseSearch))
-        );
-    }
-    if (selectedType !== 'all') {
-        filtered = filtered.filter(mov => mov.type === selectedType);
-    }
-    if (selectedDeposit !== 'all' && !isJefeDeposito) { 
-        filtered = filtered.filter(mov => mov.depositId === selectedDeposit);
-    }
-    if (selectedActor !== 'all') {
-        filtered = filtered.filter(mov => mov.actorId === selectedActor);
-    }
-    if (dateRange?.from) {
-        filtered = filtered.filter(mov => mov.createdAt.toDate() >= dateRange.from!);
-    }
-    if (dateRange?.to) {
-        const toDate = new Date(dateRange.to);
-        toDate.setDate(toDate.getDate() + 1);
-        filtered = filtered.filter(mov => mov.createdAt.toDate() < toDate);
-    }
+    const fetchHistory = async () => {
+        setIsFetchingHistory(true);
+        try {
+            const movementsRef = collection(firestore, `${collectionPrefix}/stockMovements`);
+            let baseQuery = query(movementsRef);
 
-    return filtered.sort((a, b) => {
-        const dateA = a.createdAt?.toDate().getTime() || 0;
-        const dateB = b.createdAt?.toDate().getTime() || 0;
-        return dateB - dateA; 
-    });
+            // Role-based restrictions
+            if (isJefeDeposito) {
+                if (assignedDepositIds && assignedDepositIds.length > 0) {
+                    baseQuery = query(baseQuery, where('depositId', 'in', assignedDepositIds));
+                } else {
+                    setPagedMovements([]);
+                    setHistoryTotalCount(0);
+                    setIsFetchingHistory(false);
+                    return;
+                }
+            } else if (isSolicitante) {
+                baseQuery = query(baseQuery, where('userId', '==', user.uid));
+            }
 
-  }, [movements, searchTerm, selectedType, selectedDeposit, selectedActor, dateRange, isJefeDeposito]);
+            // Apply Filters
+            if (selectedType !== 'all') {
+                baseQuery = query(baseQuery, where('type', '==', selectedType));
+            }
+            if (selectedDeposit !== 'all' && !isJefeDeposito) {
+                baseQuery = query(baseQuery, where('depositId', '==', selectedDeposit));
+            }
+            if (dateRange?.from) {
+                baseQuery = query(baseQuery, where('createdAt', '>=', dateRange.from));
+            }
+            if (dateRange?.to) {
+                const toDate = new Date(dateRange.to);
+                toDate.setHours(23, 59, 59, 999);
+                baseQuery = query(baseQuery, where('createdAt', '<=', toDate));
+            }
+            
+            // Note: Search by remitoNumber or productName is complex natively. 
+            // We'll prioritize the other filters first.
+
+            // Get Total Count (Only on first load or filter change)
+            if (currentHistoryPage === 1) {
+                const countSnapshot = await getCountFromServer(baseQuery);
+                setHistoryTotalCount(countSnapshot.data().count);
+            }
+
+            // Apply Sort and Pagination
+            let finalQuery = query(baseQuery, orderBy('createdAt', 'desc'));
+
+            if (currentHistoryPage > 1 && historyLastVisible) {
+                finalQuery = query(finalQuery, startAfter(historyLastVisible), limit(historyPageSize));
+            } else {
+                finalQuery = query(finalQuery, limit(historyPageSize));
+            }
+
+            const snapshot = await getDocs(finalQuery);
+            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as StockMovement));
+            
+            setPagedMovements(docs);
+            setHistoryLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+            setHistoryFirstVisible(snapshot.docs[0]);
+        } catch (error) {
+            console.error("Error fetching movements history:", error);
+        } finally {
+            setIsFetchingHistory(false);
+        }
+    };
+
+    fetchHistory();
+  }, [firestore, collectionPrefix, isJefeDeposito, isSolicitante, user, assignedDepositIds, selectedType, selectedDeposit, dateRange, currentHistoryPage, historyPageSize]);
+
+  // We no longer need movementsQuery and the bulk useCollection
+  const { data: movements, isLoading: isLoadingMovements } = { data: pagedMovements, isLoading: isFetchingHistory };
+
+  // filteredMovements is now just pagedMovements
+  const filteredMovements = pagedMovements;
 
 
   const inventoryCollection = useMemoFirebase(
@@ -388,16 +417,13 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   ]);
   
   const allActorsForFilter = useMemo(() => {
-      if (!movements) return [];
-      const actorsMap = new Map<string, string>();
-      movements.forEach(mov => {
-        if (mov.actorId && mov.actorName) {
-            actorsMap.set(mov.actorId, mov.actorName);
-        }
-      });
-      return Array.from(actorsMap.entries())
-        .map(([id, name]) => ({ id, name }))
-        .sort((a,b) => a.name.localeCompare(b.name));
+    const uniqueActors = new Map<string, { id: string; name: string }>();
+    movements.forEach(m => {
+      if (m.actorId && m.actorName) {
+        uniqueActors.set(m.actorId, { id: m.actorId, name: m.actorName });
+      }
+    });
+    return Array.from(uniqueActors.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [movements]);
 
   const availableProductsForMovement = useMemo(() => {
@@ -573,6 +599,29 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             const formattedRemitoNumber = `R-${String(newRemitoNumber).padStart(5, '0')}`;
             
             let finalMovementItems: StockMovementItem[] = [];
+            // 1. Collect all affected simple product IDs
+            const affectedProductIds = new Set<string>();
+            for (const item of data.items) {
+                const product = productsMap.get(item.productId);
+                if (product?.productType === 'COMBO') {
+                    product.components?.forEach(c => affectedProductIds.add(c.productId));
+                } else {
+                    affectedProductIds.add(item.productId);
+                }
+            }
+
+            // 2. Read current product data for affected products to get minStock and current totalStock
+            const productDocsMap = new Map<string, any>();
+            for (const id of affectedProductIds) {
+                const pRef = doc(firestore, `${collectionPrefix}/products`, id);
+                const pSnap = await transaction.get(pRef);
+                if (pSnap.exists()) {
+                    productDocsMap.set(id, { id, ...pSnap.data() });
+                }
+            }
+
+            // Delta tracking for real-time update
+            const deltas = new Map<string, number>();
 
             for (const formItem of data.items) {
                 const product = productsMap.get(formItem.productId);
@@ -590,7 +639,16 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                         const componentStockDocId = `${component.productId}_${data.depositId}`;
                         const componentStockRef = doc(firestore, `${collectionPrefix}/inventory/${componentStockDocId}`);
                         
-                        transaction.set(componentStockRef, { quantity: increment(-quantityToDeduct) }, { merge: true });
+                        transaction.set(componentStockRef, { 
+                            quantity: increment(-quantityToDeduct),
+                            productId: component.productId,
+                            depositId: data.depositId,
+                            workspaceId,
+                            updatedAt: serverTimestamp()
+                        }, { merge: true });
+
+                        // Track delta for product document
+                        deltas.set(component.productId, (deltas.get(component.productId) || 0) - quantityToDeduct);
 
                         const price = componentProduct.price || 0;
                         finalMovementItems.push({
@@ -605,39 +663,35 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 } else { // Product is SIMPLE
                     const inventoryDocId = `${formItem.productId}_${data.depositId}`;
                     const stockDocRef = doc(firestore, `${collectionPrefix}/inventory/${inventoryDocId}`);
+                    const movementQty = data.type === 'entrada' ? formItem.quantity : -formItem.quantity;
 
-                    if (data.type === 'entrada') {
-                        transaction.set(stockDocRef, { quantity: increment(formItem.quantity), lastUpdated: serverTimestamp(), productId: formItem.productId, depositId: data.depositId }, { merge: true });
+                    transaction.set(stockDocRef, { 
+                        quantity: increment(movementQty), 
+                        lastUpdated: serverTimestamp(), 
+                        productId: formItem.productId, 
+                        depositId: data.depositId,
+                        workspaceId,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
 
-                        if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                    // Track delta for product document
+                    deltas.set(formItem.productId, (deltas.get(formItem.productId) || 0) + movementQty);
+
+                    if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                        if (data.type === 'entrada') {
                             if (!formItem.loteId || !formItem.expirationDate) throw new Error(`El producto ${product.name} requiere lote y fecha de vencimiento.`);
                             const batchRef = doc(collection(firestore, `${collectionPrefix}/batches`));
                             transaction.set(batchRef, {
                                 id: batchRef.id, productId: formItem.productId, depositId: data.depositId, loteId: formItem.loteId,
                                 quantity: formItem.quantity, expirationDate: formItem.expirationDate, createdAt: serverTimestamp(), workspaceId: workspaceId,
                             });
-                        }
-                        const price = product.price || 0;
-                        finalMovementItems.push({
-                            productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
-                            price: price, total: price * formItem.quantity, loteId: formItem.loteId, expirationDate: formItem.expirationDate,
-                        });
-                    } else { // Salida de producto SIMPLE
-                        transaction.set(stockDocRef, { quantity: increment(-formItem.quantity) }, { merge: true });
-
-                        if (product.trackingType === 'BATCH_AND_EXPIRY') {
+                        } else { // Salida de producto SIMPLE con lotes
                             if (formItem.manualBatches && formItem.manualBatches.length > 0) {
                                 for (const selection of formItem.manualBatches) {
                                     const batchRef = doc(firestore, `${collectionPrefix}/batches`, selection.batchId);
                                     const batchSnap = await transaction.get(batchRef);
                                     if (!batchSnap.exists() || batchSnap.data()!.quantity < selection.quantity) throw new Error(`Stock insuficiente para el lote ${selection.loteId}.`);
                                     transaction.update(batchRef, { quantity: increment(-selection.quantity) });
-
-                                    const price = product.price || 0;
-                                    finalMovementItems.push({
-                                        productId: product.id, productName: product.name, quantity: selection.quantity, unit: product.unit,
-                                        price: price, total: price * selection.quantity, loteId: selection.loteId, expirationDate: batchSnap.data()!.expirationDate,
-                                    });
                                 }
                             } else {
                                 let quantityToDeduct = formItem.quantity;
@@ -654,24 +708,38 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                                     const deductFromThisBatch = Math.min(batchData.quantity, quantityToDeduct);
                                     transaction.update(batchDoc.ref, { quantity: increment(-deductFromThisBatch) });
                                     quantityToDeduct -= deductFromThisBatch;
-                                    
-                                    const price = product.price || 0;
-                                    finalMovementItems.push({
-                                        productId: product.id, productName: product.name, quantity: deductFromThisBatch, unit: product.unit,
-                                        price: price, total: price * deductFromThisBatch, loteId: batchData.loteId, expirationDate: batchData.expirationDate,
-                                    });
                                 }
-                                 if (quantityToDeduct > 0) throw new Error(`Stock de lotes insuficiente para ${product.name}.`);
+                                if (quantityToDeduct > 0) throw new Error(`Stock de lotes insuficiente para ${product.name}.`);
                             }
-                        } else {
-                            const price = product.price || 0;
-                            finalMovementItems.push({
-                                productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
-                                price: price, total: price * formItem.quantity,
-                            });
                         }
                     }
+
+                    const price = product.price || 0;
+                    finalMovementItems.push({
+                        productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
+                        price: price, total: price * formItem.quantity, loteId: formItem.loteId, expirationDate: formItem.expirationDate,
+                    });
                 }
+            }
+
+            // 3. Update Product documents with new totalStock and status
+            for (const [productId, delta] of deltas.entries()) {
+                const productData = productDocsMap.get(productId);
+                if (!productData) continue;
+
+                const currentTotal = productData.totalStock || 0;
+                const newTotal = currentTotal + delta;
+                const minStock = productData.minStock || 0;
+
+                let newStatus: 'in-stock' | 'low-stock' | 'out-of-stock' = 'in-stock';
+                if (newTotal <= 0) newStatus = 'out-of-stock';
+                else if (newTotal < minStock) newStatus = 'low-stock';
+
+                const pRef = doc(firestore, `${collectionPrefix}/products`, productId);
+                transaction.update(pRef, {
+                    totalStock: newTotal,
+                    stockStatus: newStatus
+                });
             }
             
             const deposit = deposits?.find((d) => d.id === data.depositId);
@@ -834,11 +902,11 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                             <FormItem><FormLabel>Tipo</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="salida">Salida</SelectItem><SelectItem value="entrada">Entrada</SelectItem></SelectContent></Select></FormItem>
                         )}/>
                         <FormField control={form.control} name="depositId" render={({ field }) => (
-                            <FormItem><FormLabel>Depósito</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito && deposits?.length === 1}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger></FormControl><SelectContent>{deposits?.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
+                            <FormItem><FormLabel>Depósito</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isJefeDeposito && deposits?.length === 1}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger></FormControl><SelectContent>{deposits?.sort((a, b) => a.name.localeCompare(b.name)).map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
                         )}/>
                         {movementType === 'entrada' && (
                           <FormField control={form.control} name="actorId" render={({ field }) => (
-                              <FormItem><FormLabel>Proveedor</FormLabel><Select onValueChange={field.onChange} value={field.value || ''}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un proveedor"/></SelectTrigger></FormControl><SelectContent>{suppliers?.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></FormItem>
+                              <FormItem><FormLabel>Proveedor</FormLabel><Select onValueChange={field.onChange} value={field.value || ''}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona un proveedor"/></SelectTrigger></FormControl><SelectContent>{suppliers?.sort((a, b) => a.name.localeCompare(b.name)).map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}</SelectContent></Select></FormItem>
                           )}/>
                         )}
                         <FormField control={form.control} name="remitoNumber" render={({ field }) => (
@@ -950,15 +1018,23 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {isLoadingMovements && [...Array(3)].map((_, i) => (
-                          <TableRow key={i}><TableCell><Skeleton className="h-4 w-36" /></TableCell><TableCell><Skeleton className="h-4 w-20" /></TableCell><TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-10" /></TableCell><TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                            {canManageMovements && (<TableCell><Skeleton className="h-8 w-20 ml-auto" /></TableCell>)}
-                          </TableRow>
-                      ))}
-                      {!isLoadingMovements && filteredMovements?.length === 0 && (
-                        <TableRow><TableCell colSpan={canManageMovements ? 8 : 7} className="text-center h-24">{isJefeDeposito && (assignedDepositIds === null || assignedDepositIds.length === 0) ? "No tienes depósitos asignados para ver movimientos." : "No se encontraron movimientos con los filtros aplicados."}</TableCell></TableRow>
-                      )}
-                      {!isLoadingMovements && (filteredMovements || []).map((mov) => (
+                      {isFetchingHistory ? (
+                        <TableRow>
+                          <TableCell colSpan={canManageMovements ? 9 : 8} className="h-24 text-center">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground mt-2 block">Cargando movimientos...</span>
+                          </TableCell>
+                        </TableRow>
+                      ) : (filteredMovements || [])?.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={canManageMovements ? 9 : 8} className="text-center h-24">
+                            {isJefeDeposito && (!assignedDepositIds || assignedDepositIds.length === 0) 
+                              ? "No tienes depósitos asignados para ver movimientos." 
+                              : "No se encontraron movimientos con los filtros aplicados."}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        (filteredMovements || []).map((mov) => (
                           <TableRow key={mov.id}>
                               <TableCell className="font-medium">{format(mov.createdAt.toDate(), 'PPpp', { locale: es })}</TableCell>
                               <TableCell className="font-mono">{mov.remitoNumber || '-'}</TableCell>
@@ -969,7 +1045,8 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                               <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
                               {canManageMovements && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
                           </TableRow>
-                      ))}
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>

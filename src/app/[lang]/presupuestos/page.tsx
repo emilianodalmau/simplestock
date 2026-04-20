@@ -120,7 +120,11 @@ function QuoteForm({
     const { data: products, isLoading: isLoadingProducts } = useCollection<Product>(
         useMemoFirebase(() => collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '!=', true)) : null, [collectionPrefix, firestore])
     );
-    const productsMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products]);
+    const sortedProducts = useMemo(() => {
+        if (!products) return [];
+        return [...products].sort((a, b) => a.name.localeCompare(b.name));
+    }, [products]);
+    const productsMap = useMemo(() => new Map(sortedProducts.map(p => [p.id, p])), [sortedProducts]);
 
     const isEditMode = !!editingQuote;
 
@@ -289,7 +293,7 @@ function QuoteForm({
                                 <FormItem><FormLabel>Cliente</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingClients}>
                                     <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un cliente" /></SelectTrigger></FormControl>
-                                    <SelectContent>{clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                                    <SelectContent>{clients?.sort((a, b) => a.name.localeCompare(b.name)).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                                 </Select><FormMessage /></FormItem>
                             )}/>
                             <FormField control={form.control} name="validUntil" render={({ field }) => (
@@ -315,7 +319,7 @@ function QuoteForm({
                                     <div key={field.id} className="grid grid-cols-[1fr_100px_100px_120px_auto] gap-2 items-start p-3 border rounded-md">
                                         <FormField control={form.control} name={`items.${index}.productId`} render={({ field: productField }) => (
                                             <FormItem><FormLabel className="sr-only">Producto</FormLabel>
-                                            <ProductComboBox products={products || []} value={productField.value} onChange={(value) => handleProductChange(index, value)} disabled={isLoadingProducts} noStockMessage="Selecciona un producto" />
+                                            <ProductComboBox products={sortedProducts} value={productField.value} onChange={(value) => handleProductChange(index, value)} disabled={isLoadingProducts} noStockMessage="Selecciona un producto" />
                                             <FormMessage /></FormItem>
                                         )}/>
                                         <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (

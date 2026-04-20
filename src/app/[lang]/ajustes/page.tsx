@@ -300,7 +300,7 @@ function BulkAdjustmentForm({
             <Select onValueChange={setSelectedDepositId} value={selectedDepositId}>
               <SelectTrigger><SelectValue placeholder="Selecciona un depósito" /></SelectTrigger>
               <SelectContent>
-                {deposits?.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                {deposits?.sort((a, b) => a.name.localeCompare(b.name)).map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
               </SelectContent>
             </Select>
             {selectedDepositId && (
@@ -311,7 +311,7 @@ function BulkAdjustmentForm({
                         <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todas las categorías</SelectItem>
-                            {categories?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            {categories?.sort((a, b) => a.name.localeCompare(b.name)).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     <Select value={filters.type} onValueChange={(value) => setFilters(f => ({...f, type: value as any}))}>

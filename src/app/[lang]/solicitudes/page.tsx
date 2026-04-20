@@ -331,24 +331,26 @@ export default function SolicitudesPage() {
   const availableProductsForRequest = useMemo(() => {
     if (!products || !selectedDepositId) return [];
     
+    let filteredProducts = [];
+
     // If stock visibility is off, show all products of the deposit.
     if (workspaceData?.showStockToRequesters === false) {
-      return products.filter(p => !p.isArchived && (p.depositIds || []).includes(selectedDepositId));
+      filteredProducts = products.filter(p => !p.isArchived && (p.depositIds || []).includes(selectedDepositId));
+    } else {
+      // If stock visibility is on, only show products with stock.
+      if (!inventory) return [];
+      const productsWithStock = new Set(
+        inventory
+          ?.filter(
+            (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
+          )
+          .map((stock) => stock.productId)
+      );
+
+      filteredProducts = products.filter((product) => !product.isArchived && productsWithStock.has(product.id));
     }
 
-    // If stock visibility is on, only show products with stock.
-    if (!inventory) return [];
-    const productsWithStock = new Set(
-      inventory
-        ?.filter(
-          (stock) => stock.depositId === selectedDepositId && stock.quantity > 0
-        )
-        .map((stock) => stock.productId)
-    );
-
-    return products.filter(
-      (product) => !product.isArchived && productsWithStock.has(product.id)
-    );
+    return filteredProducts.sort((a, b) => a.name.localeCompare(b.name));
   }, [selectedDepositId, products, inventory, workspaceData]);
 
   const onSubmit: SubmitHandler<RequestFormValues> = async (data) => {
@@ -542,11 +544,13 @@ export default function SolicitudesPage() {
                                 </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                {deposits?.map((d) => (
+                                {deposits
+                                  ?.sort((a, b) => a.name.localeCompare(b.name))
+                                  .map((d) => (
                                     <SelectItem key={d.id} value={d.id}>
-                                    {d.name}
+                                      {d.name}
                                     </SelectItem>
-                                ))}
+                                  ))}
                                 </SelectContent>
                             </Select>
                             <FormMessage />
