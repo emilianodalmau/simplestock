@@ -143,12 +143,6 @@ export default function InventarioPage() {
   // Pagination and Fetching State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(25);
-  const [lastVisibleDoc, setLastVisibleDoc] = useState<any>(null);
-  const [firstVisibleDoc, setFirstVisibleDoc] = useState<any>(null);
-  const [pageHistory, setPageHistory] = useState<any[]>([]); // To handle "Previous"
-  const [totalCount, setTotalCount] = useState(0);
-  const [pagedProducts, setPagedProducts] = useState<Product[]>([]);
-  const [isFetching, setIsFetching] = useState(false);
 
   const depositsCollection = useMemoFirebase(
     () => (firestore && collectionPrefix ? collection(firestore, `${collectionPrefix}/deposits`) : null),
@@ -172,91 +166,82 @@ export default function InventarioPage() {
   );
   const { data: categories, isLoading: isLoadingCategories } = useCollection<Category>(categoriesCollection);
 
-  // Fetch Paged Products
-  useEffect(() => {
-    if (!firestore || !collectionPrefix) return;
+  // Fetch All Active Products
+  const productsQuery = useMemoFirebase(
+    () => (firestore && collectionPrefix ? query(collection(firestore, `${collectionPrefix}/products`), where('isArchived', '==', false)) : null),
+    [firestore, collectionPrefix]
+  );
+  
+  const { data: allProducts, isLoading: isFetchingProducts } = useCollection<Product>(productsQuery);
 
-    const fetchProducts = async () => {
-      setIsFetching(true);
-      try {
-        const productsRef = collection(firestore, `${collectionPrefix}/products`);
-        let baseQuery = query(productsRef, where('isArchived', '==', false));
-
-        // Apply Status Filter
-        if (selectedStatus !== 'all') {
-            const statusMap: Record<StockStatus, string> = {
-                'Sin Stock': 'out-of-stock',
-                'Stock Bajo': 'low-stock',
-                'En Stock': 'in-stock'
-            };
-            baseQuery = query(baseQuery, where('stockStatus', '==', statusMap[selectedStatus]));
-        }
-
-        // Apply Category Filter
-        if (selectedCategory !== 'all') {
-            baseQuery = query(baseQuery, where('categoryId', '==', selectedCategory));
-        }
-
-        // Apply Deposit Filter
-        if (selectedDeposit !== 'all') {
-            baseQuery = query(baseQuery, where('depositIds', 'array-contains', selectedDeposit));
-        }
-
-        // Apply Search (Prefix)
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            // Assuming we added a 'name_lowercase' or similar if case-insensitivity is needed, 
-            // but for now we'll use 'name' and assume users type correctly or we fix the data.
-            // A better way is a 'searchKeywords' array, but let's stick to prefix for simplicity.
-            baseQuery = query(baseQuery, 
-                where('name', '>=', searchTerm), 
-                where('name', '<=', searchTerm + '\uf8ff')
-            );
-        }
-
-        // Apply Sort
-        const sortField = sortConfig.key === 'productName' ? 'name' : 
-                          sortConfig.key === 'totalStock' ? 'totalStock' : 
-                          sortConfig.key === 'status' ? 'stockStatus' : 'name';
+  // Apply filters and sorting client-side
+  const filteredAndSortedProducts = useMemo(() => {
+     if (!allProducts) return [];
+     let filtered = allProducts;
+     
+     if (selectedStatus !== 'all') {
+         const statusMap: Record<StockStatus, string> = {
+             'Sin Stock': 'out-of-stock',
+             'Stock Bajo': 'low-stock',
+             'En Stock': 'in-stock'
+         };
+         filtered = filtered.filter(p => p.stockStatus === statusMap[selectedStatus]);
+     }
+     
+     if (selectedCategory !== 'all') {
+         filtered = filtered.filter(p => p.categoryId === selectedCategory);
+     }
+     
+     if (selectedDeposit !== 'all') {
+         filtered = filtered.filter(p => p.depositIds?.includes(selectedDeposit));
+     }
+     
+     if (searchTerm) {
+         const term = searchTerm.toLowerCase();
+         filtered = filtered.filter(p => p.name.toLowerCase().includes(term) || (p.code || '').toLowerCase().includes(term));
+     }
+     
+     // Sorting
+     const sortField = sortConfig.key === 'productName' ? 'name' : 
+                       sortConfig.key === 'totalStock' ? 'totalStock' : 
+                       sortConfig.key === 'status' ? 'stockStatus' : 'name';
+     
+     const sortDirection = sortConfig.direction === 'ascending' ? 1 : -1;
+     
+     filtered.sort((a: any, b: any) => {
+        let valA = a[sortField] || '';
+        let valB = b[sortField] || '';
         
-        const sortDirection = sortConfig.direction === 'ascending' ? 'asc' : 'desc';
-        let finalQuery = query(baseQuery, orderBy(sortField, sortDirection as any));
-
-        // Get Total Count (Only on first load or filter change)
-        if (currentPage === 1) {
-            const countSnapshot = await getCountFromServer(baseQuery);
-            setTotalCount(countSnapshot.data().count);
+        // Handle stockStatus mapping for proper sorting if needed, but string comparison is usually fine
+        if (sortField === 'stockStatus') {
+            const statusOrder = { 'in-stock': 3, 'low-stock': 2, 'out-of-stock': 1 };
+            valA = statusOrder[valA as keyof typeof statusOrder] || 0;
+            valB = statusOrder[valB as keyof typeof statusOrder] || 0;
+            return (valA - valB) * sortDirection;
         }
 
-        // Pagination
-        if (currentPage > 1 && lastVisibleDoc) {
-            finalQuery = query(finalQuery, startAfter(lastVisibleDoc), limit(pageSize));
-        } else {
-            finalQuery = query(finalQuery, limit(pageSize));
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            return valA.localeCompare(valB) * sortDirection;
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+            return (valA - valB) * sortDirection;
         }
+        return 0;
+     });
+     
+     return filtered;
+  }, [allProducts, selectedStatus, selectedCategory, selectedDeposit, searchTerm, sortConfig]);
 
-        const snapshot = await getDocs(finalQuery);
-        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-        
-        setPagedProducts(docs);
-        setLastVisibleDoc(snapshot.docs[snapshot.docs.length - 1]);
-        setFirstVisibleDoc(snapshot.docs[0]);
-      } catch (error) {
-        console.error("Error fetching inventory:", error);
-      } finally {
-        setIsFetching(false);
-      }
-    };
-
-    fetchProducts();
-  }, [firestore, collectionPrefix, selectedCategory, selectedStatus, searchTerm, sortConfig, currentPage, pageSize]);
+  // Paginate client-side
+  const totalCount = filteredAndSortedProducts.length;
+  const pagedProducts = useMemo(() => {
+      const startIndex = (currentPage - 1) * pageSize;
+      return filteredAndSortedProducts.slice(startIndex, startIndex + pageSize);
+  }, [filteredAndSortedProducts, currentPage, pageSize]);
 
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-    setLastVisibleDoc(null);
-    setPageHistory([]);
-  }, [selectedCategory, selectedStatus, searchTerm, sortConfig]);
+  }, [selectedCategory, selectedStatus, searchTerm, sortConfig, selectedDeposit]);
 
   // We no longer fetch all inventory here. 
   const [productInventory, setProductInventory] = useState<InventoryStock[]>([]);
@@ -303,7 +288,7 @@ export default function InventarioPage() {
 
   const isLoading =
     isLoadingProfile ||
-    isFetching ||
+    isFetchingProducts ||
     isLoadingCategories ||
     isLoadingDeposits;
     
@@ -652,13 +637,7 @@ export default function InventarioPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  const newHistory = [...pageHistory];
-                  const prevDoc = newHistory.pop();
-                  setPageHistory(newHistory);
-                  setLastVisibleDoc(prevDoc);
-                  setCurrentPage(prev => Math.max(1, prev - 1));
-                }}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
                 Anterior
@@ -666,11 +645,8 @@ export default function InventarioPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setPageHistory([...pageHistory, firstVisibleDoc]);
-                  setCurrentPage(prev => prev + 1);
-                }}
-                disabled={processedInventoryData.length < pageSize}
+                onClick={() => setCurrentPage(prev => prev + 1)}
+                disabled={currentPage * pageSize >= totalCount}
               >
                 Siguiente
               </Button>
