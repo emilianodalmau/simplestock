@@ -201,9 +201,16 @@ function BulkAdjustmentForm({
     const timestamp = Date.now(); // Generate timestamp before the transaction
     try {
       await runTransaction(firestore, async (transaction) => {
+        // --- PHASE 1: ALL READS ---
         const depositSnap = await transaction.get(doc(firestore, `${collectionPrefix}/deposits/${selectedDepositId}`));
         if (!depositSnap.exists()) throw new Error('Depósito no encontrado.');
-        
+
+        // Pre-fetch all product documents
+        const productSnaps = await Promise.all(
+          adjustedItems.map((item) => transaction.get(doc(firestore, `${collectionPrefix}/products`, item.productId)))
+        );
+
+        // --- PHASE 2: ALL WRITES ---
         const movementRef = doc(collection(firestore, `${collectionPrefix}/stockMovements`));
         const movementItems = adjustedItems.map(item => ({
           productId: item.productId,
@@ -232,10 +239,12 @@ function BulkAdjustmentForm({
         let lowStockDelta = 0;
         let outOfStockDelta = 0;
 
-        for (const item of adjustedItems) {
+        for (let i = 0; i < adjustedItems.length; i++) {
+          const item = adjustedItems[i];
           const productRef = doc(firestore, `${collectionPrefix}/products`, item.productId);
-          const productSnap = await transaction.get(productRef);
+          const productSnap = productSnaps[i];
           const productData = productSnap.data();
+          
           const minStock = productData?.minStock || 0;
           const oldTotalStock = productData?.totalStock || 0;
           
