@@ -64,8 +64,8 @@ export type StockMovementItem = {
   unit: string;
   price: number;
   total: number;
-  loteId?: string;
-  expirationDate?: any;
+  loteId?: string | null;
+  expirationDate?: any | null;
 };
 
 export type StockMovement = {

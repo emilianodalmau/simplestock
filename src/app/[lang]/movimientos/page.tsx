@@ -716,8 +716,14 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
 
                     const price = product.price || 0;
                     finalMovementItems.push({
-                        productId: formItem.productId, productName: product.name, quantity: formItem.quantity, unit: product.unit,
-                        price: price, total: price * formItem.quantity, loteId: formItem.loteId, expirationDate: formItem.expirationDate,
+                        productId: formItem.productId, 
+                        productName: product.name, 
+                        quantity: formItem.quantity, 
+                        unit: product.unit,
+                        price: price, 
+                        total: price * formItem.quantity, 
+                        loteId: formItem.loteId || null, 
+                        expirationDate: formItem.expirationDate || null,
                     });
                 }
             }
@@ -746,17 +752,28 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
             let actorName: string | null = null, actorType: 'user' | 'supplier' | null = null, finalActorId = data.actorId;
     
             if (data.type === 'salida') {
-              actorType = 'user'; finalActorId = user.uid;
-              actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim() || user.email;
+              actorType = 'user'; 
+              finalActorId = user.uid;
+              actorName = `${currentUserProfile?.firstName || ''} ${currentUserProfile?.lastName || ''}`.trim() || user.email || user.uid;
             } else {
-              actorType = 'supplier'; const actor = suppliers?.find((s) => s.id === data.actorId);
-              actorName = actor ? actor.name : null;
+              actorType = 'supplier'; 
+              const actor = suppliers?.find((s) => s.id === data.actorId);
+              actorName = actor ? actor.name : 'N/A';
             }
             
             transaction.set(movementDocRef, {
-              id: movementDocRef.id, remitoNumber: data.remitoNumber || formattedRemitoNumber, type: data.type, depositId: data.depositId,
-              depositName: deposit?.name || 'N/A', actorId: finalActorId || null, actorName: actorName, actorType: finalActorId ? actorType : null,
-              createdAt: serverTimestamp(), userId: user.uid, items: finalMovementItems, totalValue: totalMovementValue,
+              id: movementDocRef.id, 
+              remitoNumber: data.remitoNumber || formattedRemitoNumber, 
+              type: data.type, 
+              depositId: data.depositId,
+              depositName: deposit?.name || 'N/A', 
+              actorId: finalActorId || null, 
+              actorName: actorName || 'N/A', 
+              actorType: finalActorId ? actorType : null,
+              createdAt: serverTimestamp(), 
+              userId: user.uid, 
+              items: finalMovementItems, 
+              totalValue: totalMovementValue,
               observation: data.observation || null,
             });
             transaction.set(counterRef, { lastNumber: newRemitoNumber }, { merge: true });

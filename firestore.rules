@@ -173,10 +173,22 @@ service cloud.firestore {
         allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito']));
       }
 
-      // --- Catch-all for any other workspace sub-collection ---
-      match /{collection}/{docId} {
+      // --- Counters ---
+      match /counters/{counterId} {
         allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
-        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador']));
+        allow write: if isAuthenticated() && (
+          isSuperAdmin() || 
+          hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito', 'vendedor', 'solicitante'])
+        );
+      }
+
+      // --- Metadata ---
+      match /metadata/{metadataId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
+        allow write: if isAuthenticated() && (
+          isSuperAdmin() || 
+          hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito', 'vendedor', 'solicitante'])
+        );
       }
     }
   }
