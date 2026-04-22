@@ -176,13 +176,22 @@ export function ProcessRequestDialog({
           return doc(firestore, collectionPrefix, 'inventory', inventoryDocId);
         });
 
+        const productRefs = itemsToDeliver.map(item => {
+          return doc(firestore, collectionPrefix, 'products', item.productId);
+        });
+
         const allReads = [
           transaction.get(counterRef),
           transaction.get(originalRequestRef),
           ...stockRefs.map(ref => transaction.get(ref)),
+          ...productRefs.map(ref => transaction.get(ref)),
         ];
 
-        const [counterSnap, originalRequestSnap, ...stockSnaps] = await Promise.all(allReads);
+        const results = await Promise.all(allReads);
+        const counterSnap = results[0];
+        const originalRequestSnap = results[1];
+        const stockSnaps = results.slice(2, 2 + stockRefs.length);
+        const productSnaps = results.slice(2 + stockRefs.length);
         
         // --- 2. LOGIC & VALIDATION PHASE ---
 
@@ -228,8 +237,8 @@ export function ProcessRequestDialog({
         for (let i = 0; i < itemsToDeliver.length; i++) {
           const item = itemsToDeliver[i];
           const stockRef = stockRefs[i];
-          const productRef = doc(firestore, collectionPrefix, 'products', item.productId);
-          const productSnap = await transaction.get(productRef);
+          const productRef = productRefs[i];
+          const productSnap = productSnaps[i];
           const productData = productSnap.data();
           const minStock = productData?.minStock || 0;
           const oldTotalStock = productData?.totalStock || 0;
