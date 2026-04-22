@@ -95,7 +95,7 @@ service cloud.firestore {
       // --- Products ---
       match /products/{productId} {
         allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
-        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor']));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito', 'vendedor', 'solicitante']));
       }
 
       // --- Categories ---
@@ -125,7 +125,7 @@ service cloud.firestore {
       // --- Inventory ---
       match /inventory/{inventoryId} {
         allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
-        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito']));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito', 'vendedor', 'solicitante']));
       }
 
       // --- Locations ---
@@ -170,7 +170,7 @@ service cloud.firestore {
       // --- Batches (sub-collection of inventory) ---
       match /inventory/{inventoryId}/batches/{batchId} {
         allow read: if isAuthenticated() && (isSuperAdmin() || isInWorkspace(workspaceId));
-        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito']));
+        allow write: if isAuthenticated() && (isSuperAdmin() || hasRole(workspaceId, ['administrador', 'editor', 'jefe_deposito', 'vendedor', 'solicitante']));
       }
 
       // --- Counters ---
