@@ -64,7 +64,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Trash2, PlusCircle, CalendarIcon, FileDown, FileText, ScanLine } from 'lucide-react';
+import { Loader2, Trash2, PlusCircle, CalendarIcon, FileDown, FileText, ScanLine, Eye } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -153,6 +153,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
   
   const [scanMode, setScanMode] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [selectedMovementForDetail, setSelectedMovementForDetail] = useState<StockMovement | null>(null);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [scannedQuantity, setScannedQuantity] = useState<number>(1);
   
@@ -289,7 +290,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     return;
                 }
             } else if (isSolicitante) {
-                baseQuery = query(baseQuery, where('userId', '==', user.uid));
+                baseQuery = query(baseQuery, where('actorId', '==', user.uid));
             }
 
             // Apply Filters
@@ -998,7 +999,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 {isJefeDeposito ? (
                   <CardDescription>Solo se muestran los movimientos de tus depósitos asignados.</CardDescription>
                 ) : isSolicitante ? (
-                  <CardDescription>Solo se muestran los movimientos registrados por ti.</CardDescription>
+                  <CardDescription>Se muestran tus solicitudes y los remitos de entrega realizados para ti.</CardDescription>
                 ) : (
                   <CardDescription>Filtra y busca entre todos los remitos generados.</CardDescription>
                 )}
@@ -1063,7 +1064,19 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                               <TableCell className="max-w-[200px] truncate" title={mov.observation}>{mov.observation || '-'}</TableCell>
                               <TableCell>{mov.items.length}</TableCell>
                               <TableCell className="text-right font-medium">{mov.type === 'ajuste' && mov.items[0]?.quantity < 0 ? '-' : ''}{formatPrice(Math.abs(mov.totalValue || 0))}</TableCell>
-                              {(canManageMovements || isSolicitante) && (<TableCell className="text-right"><RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/></TableCell>)}
+                              {(canManageMovements || isSolicitante) && (
+                                <TableCell className="text-right flex items-center justify-end gap-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    onClick={() => setSelectedMovementForDetail(mov)}
+                                    title="Ver detalle"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <RemitoActions movement={mov} settings={pdfSettings} canDelete={isAdmin} onDelete={() => handleDeleteMovement(mov)}/>
+                                </TableCell>
+                              )}
                           </TableRow>
                         ))
                       )}
@@ -1105,6 +1118,63 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
           <DialogFooter>
             <Button variant="outline" onClick={() => setScannedProduct(null)}>Cancelar</Button>
             <Button onClick={handleAddScannedProduct}>Agregar al Remito</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!selectedMovementForDetail} onOpenChange={() => setSelectedMovementForDetail(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalle del Remito {selectedMovementForDetail?.remitoNumber}</DialogTitle>
+            <DialogDescription>
+              {selectedMovementForDetail?.type === 'salida' ? 'Entrega de Productos' : selectedMovementForDetail?.type === 'entrada' ? 'Ingreso de Productos' : 'Ajuste de Stock'} - {selectedMovementForDetail && format(selectedMovementForDetail.createdAt.toDate(), 'PPpp', { locale: es })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Depósito</p>
+                <p className="font-medium">{selectedMovementForDetail?.depositName}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">{selectedMovementForDetail?.type === 'entrada' ? 'Proveedor' : 'Solicitante'}</p>
+                <p className="font-medium">{selectedMovementForDetail?.actorName || '-'}</p>
+              </div>
+              {selectedMovementForDetail?.observation && (
+                <div className="col-span-2">
+                  <p className="text-muted-foreground">Observación</p>
+                  <p>{selectedMovementForDetail.observation}</p>
+                </div>
+              )}
+            </div>
+            <Separator />
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto</TableHead>
+                    <TableHead className="text-right">Cantidad</TableHead>
+                    <TableHead className="text-right">Unitario</TableHead>
+                    <TableHead className="text-right">Subtotal</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedMovementForDetail?.items.map((item, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{item.productName}</TableCell>
+                      <TableCell className="text-right">{item.quantity} {item.unit}</TableCell>
+                      <TableCell className="text-right">{formatPrice(item.price)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatPrice(item.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="flex justify-end pt-2">
+              <p className="text-lg font-bold">Total: {formatPrice(selectedMovementForDetail?.totalValue || 0)}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setSelectedMovementForDetail(null)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
