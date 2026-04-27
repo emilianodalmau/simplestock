@@ -340,7 +340,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 // Fallback for missing composite index on OR query
                 if (isSolicitante && error.code === 'failed-precondition') {
                     let fallbackQuery = query(
-                        collection(db, 'workspaces', workspaceId, 'stockMovements'),
+                        collection(firestore, `${collectionPrefix}/stockMovements`),
                         where('userId', '==', user.uid),
                         orderBy('createdAt', 'desc'),
                         limit(historyPageSize)
