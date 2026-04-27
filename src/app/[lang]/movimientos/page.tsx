@@ -20,6 +20,7 @@ import {
   increment,
   where,
   query,
+  or,
   getDocs,
   getCountFromServer,
   limit,
@@ -290,7 +291,7 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                     return;
                 }
             } else if (isSolicitante) {
-                baseQuery = query(baseQuery, where('actorId', '==', user.uid));
+                baseQuery = query(baseQuery, or(where('userId', '==', user.uid), where('actorId', '==', user.uid)));
             }
 
             // Apply Filters
