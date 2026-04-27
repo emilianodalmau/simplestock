@@ -328,12 +328,32 @@ function MovimientosContent({ currentUserProfile }: { currentUserProfile: UserPr
                 finalQuery = query(finalQuery, limit(historyPageSize));
             }
 
-            const snapshot = await getDocs(finalQuery);
-            const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as StockMovement));
-            
-            setPagedMovements(docs);
-            setHistoryLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-            setHistoryFirstVisible(snapshot.docs[0]);
+            try {
+                const snapshot = await getDocs(finalQuery);
+                const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as StockMovement));
+                
+                setPagedMovements(docs);
+                setHistoryLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+                setHistoryFirstVisible(snapshot.docs[0]);
+            } catch (error: any) {
+                console.error("Error fetching movements history:", error);
+                // Fallback for missing composite index on OR query
+                if (isSolicitante && error.code === 'failed-precondition') {
+                    let fallbackQuery = query(
+                        collection(db, 'workspaces', workspaceId, 'stockMovements'),
+                        where('userId', '==', user.uid),
+                        orderBy('createdAt', 'desc'),
+                        limit(historyPageSize)
+                    );
+                    const fallbackSnapshot = await getDocs(fallbackQuery);
+                    const fallbackDocs = fallbackSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as StockMovement));
+                    setPagedMovements(fallbackDocs);
+                    setHistoryLastVisible(fallbackSnapshot.docs[fallbackSnapshot.docs.length - 1]);
+                    setHistoryFirstVisible(fallbackSnapshot.docs[0]);
+                } else {
+                    setPagedMovements([]);
+                }
+            }
         } catch (error) {
             console.error("Error fetching movements history:", error);
         } finally {
